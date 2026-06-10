@@ -1,4 +1,8 @@
-// Helpers de permisos por rol. Sprint 1 los conectará con la sesión real.
+// Helpers de permisos y guards por rol.
+import { redirect } from "next/navigation";
+
+import { auth } from "@/auth";
+
 export const ROLES = ["ADMIN", "SELLER", "DISPATCH"] as const;
 export type Role = (typeof ROLES)[number];
 
@@ -16,4 +20,22 @@ export function canManageConfiguration(role: Role | undefined): boolean {
 
 export function canManageShipments(role: Role | undefined): boolean {
   return role === "ADMIN" || role === "DISPATCH";
+}
+
+export async function getCurrentUser() {
+  const session = await auth();
+  return session?.user ?? null;
+}
+
+export async function requireUser() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  return user;
+}
+
+export async function requireRole(roles: Role | Role[]) {
+  const user = await requireUser();
+  const allowed = Array.isArray(roles) ? roles : [roles];
+  if (!allowed.includes(user.role)) redirect("/dashboard");
+  return user;
 }

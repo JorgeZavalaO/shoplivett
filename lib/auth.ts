@@ -1,12 +1,2 @@
-// Configuración de Auth.js.
-// Sprint 1 implementará el provider, sesión y helpers.
-export const authConfig = {
-  pages: {
-    signIn: "/login",
-  },
-  session: {
-    strategy: "jwt",
-  },
-  callbacks: {},
-  providers: [],
-} as const;
+// Punto único de Auth.js. Reexportar desde aquí evita acoplar al import path raíz.
+export { auth, signIn, signOut } from "@/auth";
