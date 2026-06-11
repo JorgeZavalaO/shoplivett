@@ -1,5 +1,7 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+
+export type PrismaTransactionClient = Prisma.TransactionClient;
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;

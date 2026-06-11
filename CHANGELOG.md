@@ -5,6 +5,30 @@ Todos los cambios notables de Shoplivett se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - Sprint 7 - Pedidos, reservas y venta rápida
+
+### Añadido
+- Módulo de **Pedidos** con creación, listado, detalle y estados.
+- Módulo de **Venta rápida** con búsqueda de clienta, variante, carrito y adelanto.
+- Modelos Prisma: `Order`, `OrderItem`, `Payment`, `PaymentReceipt`.
+- Enums: `OrderStatus` (`PAYMENT_VALIDATION_PENDING`, `RESERVED`, `PARTIALLY_PAID`, `PAID`, `CANCELLED`, `EXPIRED`) y `PaymentStatus` (`PENDING`, `VALIDATED`, `REJECTED`).
+- Relaciones inversas: `Customer.orders/payments`, `LiveSession.orders`, `ProductVariant.orderItems`.
+- `lib/orders.ts` con `generateOrderNumber` (formato `ORD-YYYYMMDD-NNNN`), `calculateOrderTotals`, `calculateOrderBalance`, `calculateOrderExpiry`.
+- `lib/sales.ts` con `createQuickSale` — transacción atómica que crea `Order + OrderItem[] + Payment + PaymentReceipt[] + reserveStock`.
+- `reserveStock` en `lib/inventory.ts` admite `opts.tx` para anidar en transacciones externas.
+- `lib/payments.ts` (placeholder para Sprint 8).
+- Server actions: `createQuickSaleAction`, `getActiveLivesAction`, `searchVariantsForSaleAction`, `searchCustomersForSaleAction`, `listOrdersAction`, `getOrderDetailAction`.
+- Validadores Zod: `SaleItemSchema`, `CreateOrderSchema` con `superRefine` para items no duplicados.
+- Componentes: `QuickSaleForm` (cliente con carrito, búsqueda asíncrona de clientas/variantes, cálculo de totales, captura opcional), `OrdersTable` (TanStack Table, filtro por estado y búsqueda, paginación), `OrderStatusBadge`.
+- Páginas: `/ventas` (con live activo detectado automáticamente), `/pedidos` (listado con filtros), `/pedidos/[id]` (detalle con items, pagos, capturas y resumen financiero).
+- Reglas de adelanto: si `total <= minimumAdvance` → pago completo; si `total > minimumAdvance` → `advance >= minimumAdvance`.
+- Generación automática de número de pedido diario (contador reinicia cada día).
+- Vencimiento calculado desde `reservationDays` en `BusinessSettings`.
+
+### Cambiado
+- `lib/inventory.ts`: `reserveStock` ahora acepta `opts.tx` para integrarse en transacciones anidadas.
+- `/ventas` y `/pedidos` dejaron de ser placeholders y usan server components con datos reales.
+
 ## [0.7.0] - Sprint 6 - Sesiones de Live
 
 ### Añadido

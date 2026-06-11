@@ -38,6 +38,7 @@ export type Movement = {
 };
 
 type Tx = Prisma.TransactionClient;
+export type TransactionTx = Tx;
 
 function computeAvailable(
   stock: number,
@@ -96,6 +97,7 @@ export async function getStockSummaries(
 
 type MovementOptions = {
   reason?: string;
+  tx?: Tx;
 };
 
 async function findVariantOrThrow(tx: Tx, variantId: string) {
@@ -125,6 +127,29 @@ async function recordMovement(
  * Reserva stock: reduce el disponible moviendo unidades a `reservedStock`.
  * Usa Serializable para evitar race conditions.
  */
+async function doReserve(
+  tx: Tx,
+  variantId: string,
+  quantity: number,
+  reason: string | null,
+): Promise<StockSummary> {
+  const v = await findVariantOrThrow(tx, variantId);
+  const available = computeAvailable(v.stock, v.reservedStock, v.soldStock);
+  if (available < quantity) {
+    throw new InventoryError(
+      `Stock disponible insuficiente (${available} < ${quantity}).`,
+      "INSUFFICIENT_STOCK",
+    );
+  }
+  const updated = await tx.productVariant.update({
+    where: { id: variantId },
+    data: { reservedStock: { increment: quantity } },
+    select: { stock: true, reservedStock: true, soldStock: true },
+  });
+  await recordMovement(tx, variantId, "RESERVE", quantity, reason);
+  return toStockSummary(updated);
+}
+
 export async function reserveStock(
   variantId: string,
   quantity: number,
@@ -137,30 +162,14 @@ export async function reserveStock(
     );
   }
 
+  if (opts.tx) {
+    return doReserve(opts.tx, variantId, quantity, opts.reason ?? null);
+  }
+
   const prisma = getPrisma();
   try {
     return await prisma.$transaction(
-      async (tx) => {
-        const v = await findVariantOrThrow(tx, variantId);
-        const available = computeAvailable(
-          v.stock,
-          v.reservedStock,
-          v.soldStock,
-        );
-        if (available < quantity) {
-          throw new InventoryError(
-            `Stock disponible insuficiente (${available} < ${quantity}).`,
-            "INSUFFICIENT_STOCK",
-          );
-        }
-        const updated = await tx.productVariant.update({
-          where: { id: variantId },
-          data: { reservedStock: { increment: quantity } },
-          select: { stock: true, reservedStock: true, soldStock: true },
-        });
-        await recordMovement(tx, variantId, "RESERVE", quantity, opts.reason ?? null);
-        return toStockSummary(updated);
-      },
+      (tx) => doReserve(tx, variantId, quantity, opts.reason ?? null),
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 10000 },
     );
   } catch (error) {

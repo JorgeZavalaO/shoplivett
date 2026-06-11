@@ -1,4 +1,4 @@
-// Prisma schema - Sprint 4 (categorías, productos, variantes)
+// Prisma schema - Sprint 7 (pedidos, reservas y venta rápida)
 
 generator client {
   provider = "prisma-client-js"
@@ -65,6 +65,21 @@ enum InventoryMovementType {
   ADJUSTMENT
 }
 
+enum OrderStatus {
+  PAYMENT_VALIDATION_PENDING
+  RESERVED
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  VALIDATED
+  REJECTED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -123,6 +138,8 @@ model Customer {
   isActive   Boolean        @default(true)
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
+  orders     Order[]
+  payments   Payment[]
 
   @@index([searchName])
   @@index([whatsapp])
@@ -178,6 +195,7 @@ model ProductVariant {
   updatedAt     DateTime            @updatedAt
   images        ProductImage[]
   movements     InventoryMovement[]
+  orderItems    OrderItem[]
 
   @@index([productId])
   @@index([status])
@@ -224,8 +242,84 @@ model LiveSession {
   notes         String?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+  orders        Order[]
 
   @@index([status])
   @@index([startedAt])
   @@index([responsibleId])
+}
+
+model Order {
+  id             String       @id @default(cuid())
+  orderNumber    String       @unique
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  liveSessionId  String?
+  liveSession    LiveSession? @relation(fields: [liveSessionId], references: [id], onDelete: SetNull)
+  status         OrderStatus  @default(PAYMENT_VALIDATION_PENDING)
+  subtotal       Decimal      @db.Decimal(12, 2)
+  discount       Decimal      @db.Decimal(12, 2) @default(0)
+  shippingAmount Decimal      @db.Decimal(12, 2) @default(0)
+  total          Decimal      @db.Decimal(12, 2)
+  validatedPaid  Decimal      @db.Decimal(12, 2) @default(0)
+  balance        Decimal      @db.Decimal(12, 2)
+  expiresAt      DateTime
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  items     OrderItem[]
+  payments  Payment[]
+
+  @@index([customerId])
+  @@index([liveSessionId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model OrderItem {
+  id        String         @id @default(cuid())
+  orderId   String
+  order     Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  quantity  Int
+  unitPrice Decimal        @db.Decimal(12, 2)
+  lineTotal Decimal        @db.Decimal(12, 2)
+  createdAt DateTime       @default(now())
+
+  @@index([orderId])
+  @@index([variantId])
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  customerId      String
+  customer        Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  orderId         String?
+  order           Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  method          PaymentMethod
+  status          PaymentStatus @default(PENDING)
+  amount          Decimal       @db.Decimal(12, 2)
+  operationNumber String?
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  receipts PaymentReceipt[]
+
+  @@index([customerId])
+  @@index([orderId])
+  @@index([status])
+}
+
+model PaymentReceipt {
+  id        String   @id @default(cuid())
+  paymentId String
+  payment   Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  url       String
+  pathname  String
+  createdAt DateTime @default(now())
+
+  @@index([paymentId])
 }

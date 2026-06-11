@@ -189,6 +189,20 @@ Páginas:
 - `/lives/[id]` — Detalle con acciones de cerrar/cancelar.
 - `/lives/[id]/editar` — Editar live abierto.
 
+### Pedidos y venta rápida (Sprint 7)
+
+- **Venta rápida** con búsqueda asíncrona de clienta y variantes, carrito, cálculo de totales y adelanto.
+- Pedidos con número autogenerado (`ORD-YYYYMMDD-NNNN`), estado, items, pagos y capturas.
+- Reglas de adelanto configurables desde `BusinessSettings`.
+- Transacción atómica: crear pedido, items, pago pendiente y reserva de stock en un solo paso.
+- Detalle de pedido con resumen financiero, items, pagos y capturas.
+
+Páginas:
+
+- `/ventas` — Pantalla de venta rápida (detecta live activo automáticamente).
+- `/pedidos` — Listado con búsqueda, filtro por estado y paginación.
+- `/pedidos/[id]` — Detalle completo del pedido.
+
 ## Estado de sprints
 
 - ✅ Sprint 0 — Base técnica
@@ -198,7 +212,8 @@ Páginas:
 - ✅ Sprint 4 — Categorías, productos y variantes
 - ✅ Sprint 5 — Inventario por variante
 - ✅ Sprint 6 — Sesiones de Live
-- ⏳ Sprints 7–15 — ver `docs/PLAN_DESARROLLO_SPRINTS.md`
+- ✅ Sprint 7 — Pedidos, reservas y venta rápida
+- ⏳ Sprints 8–15 — ver `docs/PLAN_DESARROLLO_SPRINTS.md`
 
 ## Versión
 

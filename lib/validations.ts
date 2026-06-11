@@ -339,3 +339,75 @@ export const LiveSessionUpdateSchema = LiveSessionCreateSchema;
 
 export type LiveSessionCreateInput = z.infer<typeof LiveSessionCreateSchema>;
 export type LiveSessionUpdateInput = z.infer<typeof LiveSessionUpdateSchema>;
+
+// =====================================================================
+// Quick sale / orders
+// =====================================================================
+
+const decimalOptional = z
+  .string()
+  .trim()
+  .refine((s) => s === "" || /^\d+(\.\d{1,2})?$/.test(s), {
+    message: "Debe tener hasta 2 decimales.",
+  })
+  .transform((s) => (s === "" ? "0" : s));
+
+export const SaleItemSchema = z.object({
+  variantId: z.string().min(1, "Falta la variante."),
+  quantity: z.coerce
+    .number({ message: "La cantidad es obligatoria." })
+    .int("Debe ser un número entero.")
+    .min(1, "Mínimo 1.")
+    .max(1000, "Máximo 1000."),
+});
+
+export const CreateOrderSchema = z
+  .object({
+    customerId: z.string().min(1, "Selecciona una clienta."),
+    liveSessionId: z
+      .string()
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    items: z
+      .string()
+      .min(1, "Agrega al menos un producto.")
+      .transform((s) => {
+        try { return JSON.parse(s) as { variantId: string; quantity: number }[]; }
+        catch { return []; }
+      }),
+    discount: decimalOptional,
+    shippingAmount: decimalOptional,
+    advanceAmount: z
+      .string({ message: "El adelanto es obligatorio." })
+      .min(1, "El adelanto es obligatorio.")
+      .refine((s) => /^\d+(\.\d{1,2})?$/.test(s), {
+        message: "El adelanto debe tener hasta 2 decimales.",
+      }),
+    paymentMethod: z.enum(PaymentMethod, { message: "Selecciona un método de pago." }),
+    operationNumber: z.string().trim().max(60).optional().or(z.literal("").transform(() => undefined)),
+    notes: z.string().trim().max(1000).optional().or(z.literal("").transform(() => undefined)),
+  })
+  .superRefine((data, ctx) => {
+    if (!Array.isArray(data.items) || data.items.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["items"],
+        message: "Agrega al menos un producto.",
+      });
+      return;
+    }
+    const ids = new Set<string>();
+    for (const item of data.items) {
+      if (!item?.variantId) continue;
+      if (ids.has(item.variantId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["items"],
+          message: "No repitas la misma variante.",
+        });
+      }
+      ids.add(item.variantId);
+    }
+  });
+
+export type CreateOrderInput = z.infer<typeof CreateOrderSchema>;

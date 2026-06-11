@@ -1,17 +1,21 @@
-import { ModulePlaceholder } from "@/components/layout/module-placeholder";
+import { QuickSaleForm } from "@/components/forms/quick-sale-form";
+import { getOpenLive } from "@/lib/live";
 
-export default function VentasPage() {
+export const dynamic = "force-dynamic";
+
+export default async function VentasPage() {
+  const openLive = await getOpenLive();
+
   return (
-    <ModulePlaceholder
-      title="Venta rápida"
-      description="Registro de ventas durante el live con adelanto obligatorio."
-      sprint="Sprint 7"
-      bullets={[
-        "Selección de live activo",
-        "Buscar o crear clienta",
-        "Buscar variante por código, nombre o color",
-        "Adelanto obligatorio y validación contra configuración",
-      ]}
-    />
+    <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Venta rápida</h1>
+        <p className="text-sm text-muted-foreground">
+          Registra pedidos durante el live. Busca la clienta, agrega productos y
+          confirma el adelanto.
+        </p>
+      </div>
+      <QuickSaleForm openLive={openLive} />
+    </div>
   );
 }
