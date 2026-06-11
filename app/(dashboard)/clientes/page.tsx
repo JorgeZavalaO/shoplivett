@@ -1,17 +1,45 @@
-import { ModulePlaceholder } from "@/components/layout/module-placeholder";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 
-export default function ClientesPage() {
+import { Button } from "@/components/ui/button";
+import { CustomersTable } from "@/components/tables/customers-table";
+import { searchCustomersAction } from "@/actions/customers";
+
+export const dynamic = "force-dynamic";
+
+type SearchParams = Promise<{ q?: string | string[]; page?: string | string[] }>;
+
+export default async function ClientesPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const sp = await searchParams;
+  const q = Array.isArray(sp.q) ? sp.q[0] : sp.q;
+  const pageRaw = Array.isArray(sp.page) ? sp.page[0] : sp.page;
+  const page = pageRaw ? Math.max(1, Number(pageRaw)) || 1 : 1;
+
+  const result = await searchCustomersAction(q ?? "", page, 20);
+
   return (
-    <ModulePlaceholder
-      title="Clientes"
-      description="Gestión de clientas, deuda acumulada y crédito disponible."
-      sprint="Sprint 3"
-      bullets={[
-        "Modelo Customer con normalización de WhatsApp",
-        "Búsqueda por nombre y teléfono",
-        "Indicadores de deuda y crédito",
-        "Marcas: activa, frecuente, riesgosa, bloqueada",
-      ]}
-    />
+    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Clientes</h1>
+          <p className="text-sm text-muted-foreground">
+            Clientas registradas. Busca por nombre o WhatsApp.
+          </p>
+        </div>
+        <Button render={<Link href="/clientes/nuevo"><Plus className="size-4" /> Nueva clienta</Link>} />
+      </div>
+
+      <CustomersTable
+        items={result.items}
+        total={result.total}
+        page={result.page}
+        perPage={result.perPage}
+        query={result.query}
+      />
+    </div>
   );
 }

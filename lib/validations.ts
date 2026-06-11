@@ -1,6 +1,6 @@
 // Validadores Zod centralizados.
 import { z } from "zod";
-import { PaymentMethod, Role, ShippingMethod } from "@prisma/client";
+import { CustomerStatus, PaymentMethod, Role, ShippingMethod } from "@prisma/client";
 
 export const PaginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -84,3 +84,56 @@ export const BusinessSettingsSchema = z.object({
 });
 
 export type BusinessSettingsInput = z.infer<typeof BusinessSettingsSchema>;
+
+// =====================================================================
+// Customers
+// =====================================================================
+
+const optionalString = z
+  .string()
+  .trim()
+  .max(120, "Máximo 120 caracteres.")
+  .optional()
+  .or(z.literal("").transform(() => undefined));
+
+const optionalLongString = z
+  .string()
+  .trim()
+  .max(500, "Máximo 500 caracteres.")
+  .optional()
+  .or(z.literal("").transform(() => undefined));
+
+export const CustomerStatusSchema = z.enum(CustomerStatus);
+
+const whatsappInputSchema = z
+  .string({ message: "El WhatsApp es obligatorio." })
+  .trim()
+  .min(8, "El WhatsApp es obligatorio.")
+  .max(20, "Máximo 20 caracteres.");
+
+const customerBaseShape = {
+  name: z
+    .string({ message: "El nombre es obligatorio." })
+    .trim()
+    .min(2, "Mínimo 2 caracteres.")
+    .max(100, "Máximo 100 caracteres."),
+  whatsapp: whatsappInputSchema,
+  document: optionalString,
+  address: optionalLongString,
+  district: optionalString,
+  reference: optionalLongString,
+  channel: optionalString,
+  notes: optionalLongString,
+};
+
+export const CustomerCreateSchema = z.object({
+  ...customerBaseShape,
+});
+
+export const CustomerUpdateSchema = z.object({
+  ...customerBaseShape,
+  status: CustomerStatusSchema.optional(),
+});
+
+export type CustomerCreateInput = z.infer<typeof CustomerCreateSchema>;
+export type CustomerUpdateInput = z.infer<typeof CustomerUpdateSchema>;

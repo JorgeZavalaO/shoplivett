@@ -1,4 +1,4 @@
-// Prisma schema - Sprint 2 (configuración del negocio)
+// Prisma schema - Sprint 3 (clientes)
 
 generator client {
   provider = "prisma-client-js"
@@ -12,6 +12,13 @@ enum Role {
   ADMIN
   SELLER
   DISPATCH
+}
+
+enum CustomerStatus {
+  ACTIVE
+  FREQUENT
+  RISKY
+  BLOCKED
 }
 
 enum PaymentMethod {
@@ -69,4 +76,26 @@ model BusinessSettings {
   paymentValidatorRoles  Role[]             @default([ADMIN, SELLER])
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
+}
+
+model Customer {
+  id         String         @id @default(cuid())
+  name       String
+  searchName String
+  whatsapp   String         @unique
+  document   String?
+  address    String?
+  district   String?
+  reference  String?
+  channel    String?
+  notes      String?
+  status     CustomerStatus @default(ACTIVE)
+  isActive   Boolean        @default(true)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([searchName])
+  @@index([whatsapp])
+  @@index([status])
+  @@index([isActive])
 }

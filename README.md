@@ -10,6 +10,7 @@ Administrador interno de ventas para una tienda de carteras que vende principalm
 - Prisma 7 + Neon PostgreSQL
 - Auth.js v5 (Credentials) con sesión JWT en cookie httpOnly
 - React Hook Form + Zod
+- TanStack Table (Sprint 3+)
 - Vercel Blob (Sprint 4+)
 - Sonner, Lucide React
 
@@ -87,21 +88,72 @@ app/
   (auth)/login/        Página de inicio de sesión
   (dashboard)/         Rutas protegidas (layout valida sesión)
     dashboard/         Panel principal con resumen por rol
+    clientes/          Listado, alta, edición y detalle de clientas
     configuracion/     Ajustes de negocio (solo ADMIN)
   api/auth/[...nextauth]/  Handler de Auth.js
 auth.ts                Configuración de Auth.js v5
-proxy.ts               Middleware de protección de rutas
-actions/               Server actions (auth, settings, etc.)
+proxy.ts               Middleware (Next 16) de protección de rutas
+actions/               Server actions (auth, settings, customers, etc.)
 components/            UI, layout, forms, tables, dashboard
-lib/                   auth, prisma, validations, permissions, settings, blob, utils
+lib/                   auth, prisma, validations, permissions, settings, phone, customer-helpers, blob, utils
 prisma/                schema.prisma y seed
 types/                 Enums compartidos del dominio
 docs/                  Plan de sprints, requisitos funcionales y no funcionales, flujos
+CHANGELOG.md           Historial de versiones
 ```
+
+## Módulos
+
+### Autenticación (Sprint 1)
+
+Sistema de login con sesión JWT en cookie httpOnly, roles y protección de rutas:
+
+- **Login** en `/login` con email y contraseña, validación por campo y redirección automática (`?from=...`).
+- **Roles**: ADMIN, SELLER, DISPATCH. Cada rol accede a diferentes módulos del sidebar.
+- **Middleware** (`proxy.ts`) protege todas las rutas del dashboard; usuarios no autenticados son redirigidos a login.
+- **Permisos**: helpers `requireUser()`, `requireRole()`, `canValidatePayments()`, `canManageConfiguration()`, `canManageShipments()`.
+- **Hash de contraseñas** con bcryptjs.
+- **Panel de desarrollo** en `/login` con credenciales seed (oculto en producción).
+- **Server actions**: `loginAction` y `logoutAction`.
+
+### Configuración del negocio (Sprint 2)
+
+Modelo singleton `BusinessSettings` con ajustes centralizados del negocio:
+
+- **Página** `/configuracion` accesible solo por ADMIN.
+- **Formulario** dividido en 4 secciones: reservas, moneda y catálogo, envíos, pagos.
+- **Campos**: días de reserva (1–60), adelanto mínimo, moneda (3 letras), prefijo de código, envío gratis + umbral, métodos de pago y envío habilitados, roles que validan pagos, crédito por sobrepago y devolución.
+- **Validación** integral con Zod en server action `updateSettingsAction`.
+- **Caché en memoria** (`lib/settings.ts`) con invalidación automática tras guardar.
+- **Helpers**: `getReservationDays()`, `getEnabledPaymentMethods()`, `getPaymentValidatorRoles()`, `isPaymentValidator()`, `getFreeShippingRule()`, etc.
+- **Labels legibles** para métodos de pago (Yape, Plin, Efectivo, Otro) y envío (Delivery propio, Olva, Shalom, Motorizado, Recojo en tienda).
+
+### Clientes (Sprint 3)
+
+CRUD completo de clientas con:
+
+- Búsqueda por nombre o WhatsApp (insensible a acentos y mayúsculas).
+- Normalización automática del WhatsApp al formato E.164 peruano (`+519XXXXXXXXX`).
+- Estado configurable: Activa, Frecuente, Riesgosa, Bloqueada.
+- Soft delete (`isActive`) en lugar de eliminación física.
+- Detalle con tarjetas de deuda acumulada y crédito disponible (se llenarán con datos reales en los Sprints 7 y 9).
+- Listado paginado (20 por página) con TanStack Table.
+
+Páginas:
+
+- `/clientes` — Listado y búsqueda.
+- `/clientes/nuevo` — Alta de clienta.
+- `/clientes/[id]` — Detalle, cambio de estado y dar de baja.
+- `/clientes/[id]/editar` — Edición de datos.
 
 ## Estado de sprints
 
 - ✅ Sprint 0 — Base técnica
 - ✅ Sprint 1 — Autenticación, usuarios y roles
 - ✅ Sprint 2 — Configuración del negocio
-- ⏳ Sprints 3–15 — ver `docs/PLAN_DESARROLLO_SPRINTS.md`
+- ✅ Sprint 3 — Clientes
+- ⏳ Sprints 4–15 — ver `docs/PLAN_DESARROLLO_SPRINTS.md`
+
+## Versión
+
+La versión actual se rastrea en `package.json` y en el [CHANGELOG](./CHANGELOG.md).
