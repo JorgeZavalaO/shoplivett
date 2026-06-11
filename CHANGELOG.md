@@ -5,6 +5,25 @@ Todos los cambios notables de Shoplivett se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - Sprint 5 - Inventario por variante
+
+### Añadido
+- Módulo de **Inventario** con resumen por variante (Stock, Reservado, Vendido, Disponible).
+- `lib/inventory.ts` con helpers internos:
+  - `getStockSummary`, `getStockSummaries`
+  - `reserveStock`, `releaseStock`, `confirmSaleStock`, `cancelStock`
+  - `adjustStock` con validación anti-stock-negativo
+  - `getMovementHistory`
+- Clase `InventoryError` con códigos (`INSUFFICIENT_STOCK`, `NEGATIVE_STOCK`, `CONFLICT`, etc.).
+- `reserveStock` y `confirmSaleStock` usan `Prisma.TransactionIsolationLevel.Serializable` para prevenir race conditions.
+- `InventoryAdjustSchema` con Zod (motivo obligatorio, validación de tipo/cantidad).
+- `actions/inventory.ts` con `adjustStockAction` (UI), `getInventorySummaryAction` (listado paginado).
+- Componentes: `StockSummaryCards`, `MovementTypeBadge`, `InventoryAdjustForm`, `InventoryTable`, `MovementsTable`.
+- Páginas: `/inventario` (listado), `/inventario/[variantId]` (detalle con cards de stock, Sheet de ajuste, historial de movimientos).
+
+### Cambiado
+- `InventoryMovement` ahora se usa para `IN` (Sprint 4), `RESERVE`, `RELEASE`, `SALE`, `CANCEL`, `ADJUSTMENT` (estos últimos tipos los disparan otras server actions en Sprints 7-9).
+
 ## [0.5.0] - Sprint 4 - Categorías, productos y variantes
 
 ### Añadido

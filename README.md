@@ -162,6 +162,18 @@ Páginas:
 - `/productos`, `/productos/nuevo`, `/productos/[id]`, `/productos/[id]/editar`
 - `/productos/[id]/variantes/nueva`, `/productos/[id]/variantes/[variantId]/editar`
 
+### Inventario (Sprint 5)
+
+- Resumen por variante: **Stock**, **Reservado**, **Vendido**, **Disponible**.
+- Ajuste manual con motivo obligatorio (ingreso o ajuste +/-).
+- Historial completo de movimientos por variante.
+- Operaciones internas (`reserveStock`, `releaseStock`, `confirmSaleStock`, `cancelStock`) disponibles para los Sprints 7–9 con aislamiento **Serializable** para evitar condiciones de carrera.
+
+Páginas:
+
+- `/inventario` — Listado paginado de variantes con métricas.
+- `/inventario/[variantId]` — Detalle con cards de stock, historial y form de ajuste.
+
 ## Estado de sprints
 
 - ✅ Sprint 0 — Base técnica
@@ -169,7 +181,8 @@ Páginas:
 - ✅ Sprint 2 — Configuración del negocio
 - ✅ Sprint 3 — Clientes
 - ✅ Sprint 4 — Categorías, productos y variantes
-- ⏳ Sprints 5–15 — ver `docs/PLAN_DESARROLLO_SPRINTS.md`
+- ✅ Sprint 5 — Inventario por variante
+- ⏳ Sprints 6–15 — ver `docs/PLAN_DESARROLLO_SPRINTS.md`
 
 ## Versión
 

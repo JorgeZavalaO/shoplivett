@@ -268,3 +268,37 @@ export const ProductVariantUpdateSchema = z.object({
 
 export type ProductVariantCreateInput = z.infer<typeof ProductVariantCreateSchema>;
 export type ProductVariantUpdateInput = z.infer<typeof ProductVariantUpdateSchema>;
+
+// =====================================================================
+// Inventory adjustments
+// =====================================================================
+
+export const InventoryAdjustSchema = z
+  .object({
+    type: z.enum(["IN", "ADJUSTMENT"]),
+    quantity: z.coerce
+      .number({ message: "La cantidad es obligatoria." })
+      .int("Debe ser un número entero.")
+      .refine((n) => n !== 0, { message: "La cantidad no puede ser cero." })
+      .refine((n) => Math.abs(n) <= 100000, { message: "Cantidad fuera de rango." }),
+    reason: z
+      .string({ message: "El motivo es obligatorio." })
+      .trim()
+      .min(5, "El motivo debe tener al menos 5 caracteres.")
+      .max(200, "Máximo 200 caracteres."),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === "IN" && data.quantity < 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["quantity"],
+        message: "Para INGRESO la cantidad debe ser positiva.",
+      });
+    }
+  })
+  .transform((data) => ({
+    ...data,
+    signedQuantity: data.type === "IN" ? Math.abs(data.quantity) : data.quantity,
+  }));
+
+export type InventoryAdjustInput = z.infer<typeof InventoryAdjustSchema>;
