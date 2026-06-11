@@ -1,6 +1,12 @@
 // Validadores Zod centralizados.
 import { z } from "zod";
-import { CustomerStatus, PaymentMethod, Role, ShippingMethod } from "@prisma/client";
+import {
+  CustomerStatus,
+  LiveChannel,
+  PaymentMethod,
+  Role,
+  ShippingMethod,
+} from "@prisma/client";
 
 export const PaginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -302,3 +308,34 @@ export const InventoryAdjustSchema = z
   }));
 
 export type InventoryAdjustInput = z.infer<typeof InventoryAdjustSchema>;
+
+// =====================================================================
+// Live sessions
+// =====================================================================
+
+export const LiveChannelSchema = z.enum(LiveChannel);
+
+export const LiveSessionCreateSchema = z.object({
+  name: z
+    .string({ message: "El nombre del live es obligatorio." })
+    .trim()
+    .min(3, "Mínimo 3 caracteres.")
+    .max(120, "Máximo 120 caracteres."),
+  channel: LiveChannelSchema,
+  responsibleId: z
+    .string()
+    .trim()
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  notes: z
+    .string()
+    .trim()
+    .max(1000, "Máximo 1000 caracteres.")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+});
+
+export const LiveSessionUpdateSchema = LiveSessionCreateSchema;
+
+export type LiveSessionCreateInput = z.infer<typeof LiveSessionCreateSchema>;
+export type LiveSessionUpdateInput = z.infer<typeof LiveSessionUpdateSchema>;

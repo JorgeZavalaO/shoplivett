@@ -5,6 +5,31 @@ Todos los cambios notables de Shoplivett se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - Sprint 6 - Sesiones de Live
+
+### Añadido
+- Módulo de **Lives** con listado, creación, edición y detalle.
+- Modelo Prisma `LiveSession` con enums `LiveChannel` (`TIKTOK`, `INSTAGRAM`, `FACEBOOK`, `WHATSAPP`, `OTHER`) y `LiveStatus` (`OPEN`, `CLOSED`, `CANCELLED`).
+- Relación opcional `responsibleId -> User` para asignar responsable del live.
+- `lib/live.ts` con helpers reutilizables:
+  - `getOpenLive`
+  - `canOpenNewLive`
+  - `assertLiveIsOpen`
+  - `listLiveSessions`
+  - `getLiveMetrics`
+  - `getLiveDetail`
+  - `assertCanOpenLive`
+- Clase `LiveError` con códigos (`LIVE_NOT_FOUND`, `LIVE_ALREADY_OPEN`, `LIVE_NOT_OPEN`, etc.).
+- Server actions: `createLiveAction`, `updateLiveAction`, `closeLiveAction`, `cancelLiveAction`, `getLiveSessionsAction`, `getLiveDetailAction`.
+- Validadores Zod: `LiveSessionCreateSchema`, `LiveSessionUpdateSchema`, `LiveChannelSchema`.
+- Componentes: `LiveStatusBadge`, `LiveSummaryCards`, `LiveForm`, `LivesTable`.
+- Páginas: `/lives`, `/lives/nuevo`, `/lives/[id]`, `/lives/[id]/editar`.
+- Regla de negocio del MVP: solo puede existir **un live abierto a la vez**.
+
+### Cambiado
+- `/lives` dejó de ser placeholder y ahora usa filtros por estado, búsqueda y paginación server-side.
+- El detalle de live deja listos los indicadores de pedidos, vendido, cobrado y pendiente en `0.00` para conectarse con Sprints 7 y 8.
+
 ## [0.6.0] - Sprint 5 - Inventario por variante
 
 ### Añadido

@@ -174,6 +174,21 @@ Páginas:
 - `/inventario` — Listado paginado de variantes con métricas.
 - `/inventario/[variantId]` — Detalle con cards de stock, historial y form de ajuste.
 
+### Lives (Sprint 6)
+
+- Gestión de sesiones de live con estados **Abierto**, **Cerrado** y **Cancelado**.
+- Regla del MVP: solo puede existir **un live abierto a la vez**.
+- Asignación opcional de responsable (`ADMIN` o `SELLER`).
+- Detalle del live con métricas preparadas para Sprint 7/8: pedidos, vendido, cobrado y pendiente.
+- Helpers reutilizables para Sprints 7 y 8: `getOpenLive`, `assertLiveIsOpen`.
+
+Páginas:
+
+- `/lives` — Listado, búsqueda y filtro por estado.
+- `/lives/nuevo` — Crear live.
+- `/lives/[id]` — Detalle con acciones de cerrar/cancelar.
+- `/lives/[id]/editar` — Editar live abierto.
+
 ## Estado de sprints
 
 - ✅ Sprint 0 — Base técnica
@@ -182,7 +197,8 @@ Páginas:
 - ✅ Sprint 3 — Clientes
 - ✅ Sprint 4 — Categorías, productos y variantes
 - ✅ Sprint 5 — Inventario por variante
-- ⏳ Sprints 6–15 — ver `docs/PLAN_DESARROLLO_SPRINTS.md`
+- ✅ Sprint 6 — Sesiones de Live
+- ⏳ Sprints 7–15 — ver `docs/PLAN_DESARROLLO_SPRINTS.md`
 
 ## Versión
 
