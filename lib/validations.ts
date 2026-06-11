@@ -137,3 +137,134 @@ export const CustomerUpdateSchema = z.object({
 
 export type CustomerCreateInput = z.infer<typeof CustomerCreateSchema>;
 export type CustomerUpdateInput = z.infer<typeof CustomerUpdateSchema>;
+
+// =====================================================================
+// Categories
+// =====================================================================
+
+export const CategoryCreateSchema = z.object({
+  name: z
+    .string({ message: "El nombre es obligatorio." })
+    .trim()
+    .min(2, "Mínimo 2 caracteres.")
+    .max(60, "Máximo 60 caracteres."),
+});
+
+export const CategoryUpdateSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Mínimo 2 caracteres.")
+    .max(60, "Máximo 60 caracteres."),
+  isActive: z
+    .union([z.boolean(), z.literal("on"), z.literal("true"), z.literal("false")])
+    .transform((v) => v === true || v === "on" || v === "true")
+    .optional(),
+});
+
+export type CategoryCreateInput = z.infer<typeof CategoryCreateSchema>;
+export type CategoryUpdateInput = z.infer<typeof CategoryUpdateSchema>;
+
+// =====================================================================
+// Products
+// =====================================================================
+
+const optionalShort = z
+  .string()
+  .trim()
+  .max(60, "Máximo 60 caracteres.")
+  .optional()
+  .or(z.literal("").transform(() => undefined));
+
+const optionalDescription = z
+  .string()
+  .trim()
+  .max(2000, "Máximo 2000 caracteres.")
+  .optional()
+  .or(z.literal("").transform(() => undefined));
+
+export const ProductCreateSchema = z.object({
+  name: z
+    .string({ message: "El nombre es obligatorio." })
+    .trim()
+    .min(2, "Mínimo 2 caracteres.")
+    .max(120, "Máximo 120 caracteres."),
+  description: optionalDescription,
+  categoryId: z
+    .string({ message: "Selecciona una categoría." })
+    .min(1, "Selecciona una categoría."),
+});
+
+export const ProductUpdateSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Mínimo 2 caracteres.")
+    .max(120, "Máximo 120 caracteres."),
+  description: optionalDescription,
+  categoryId: z.string().min(1, "Selecciona una categoría."),
+  isActive: z
+    .union([z.boolean(), z.literal("on"), z.literal("true"), z.literal("false")])
+    .transform((v) => v === true || v === "on" || v === "true")
+    .optional(),
+});
+
+export type ProductCreateInput = z.infer<typeof ProductCreateSchema>;
+export type ProductUpdateInput = z.infer<typeof ProductUpdateSchema>;
+
+// =====================================================================
+// Product Variants
+// =====================================================================
+
+const decimalPrice = (opts: { label: string; required: boolean }) => {
+  if (!opts.required) {
+    return z
+      .string()
+      .trim()
+      .max(20)
+      .optional()
+      .or(z.literal("").transform(() => undefined))
+      .refine(
+        (s) => s === undefined || /^\d+(\.\d{1,2})?$/.test(s!),
+        { message: `${opts.label} debe tener hasta 2 decimales.` },
+      );
+  }
+  return decimalString({ label: opts.label, min: 0.01 }).pipe(
+    z.string().min(1, `${opts.label} es obligatorio.`),
+  );
+};
+
+const optionalBarcode = z
+  .string()
+  .trim()
+  .max(40, "Máximo 40 caracteres.")
+  .optional()
+  .or(z.literal("").transform(() => undefined));
+
+export const ProductVariantCreateSchema = z.object({
+  productId: z.string().min(1, "Falta el producto."),
+  color: optionalShort,
+  material: optionalShort,
+  size: optionalShort,
+  price: decimalPrice({ label: "El precio de venta", required: true }),
+  cost: decimalPrice({ label: "El costo", required: false }),
+  stock: z.coerce
+    .number({ message: "El stock inicial es obligatorio." })
+    .int("Debe ser un número entero.")
+    .min(0, "El stock no puede ser negativo.")
+    .max(100000, "Stock máximo 100000."),
+  barcode: optionalBarcode,
+});
+
+export const ProductVariantUpdateSchema = z.object({
+  color: optionalShort,
+  material: optionalShort,
+  size: optionalShort,
+  price: decimalPrice({ label: "El precio de venta", required: true }),
+  cost: decimalPrice({ label: "El costo", required: false }),
+  barcode: optionalBarcode,
+  status: z.enum(["ACTIVE", "HIDDEN", "ARCHIVED"]).optional(),
+});
+
+export type ProductVariantCreateInput = z.infer<typeof ProductVariantCreateSchema>;
+export type ProductVariantUpdateInput = z.infer<typeof ProductVariantUpdateSchema>;

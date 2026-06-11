@@ -146,13 +146,30 @@ Páginas:
 - `/clientes/[id]` — Detalle, cambio de estado y dar de baja.
 - `/clientes/[id]/editar` — Edición de datos.
 
+### Productos y categorías (Sprint 4)
+
+- **Categorías** con slug autogenerado, activar/desactivar y conteo de productos.
+- **Productos** con nombre, descripción, categoría, activar/desactivar.
+- **Variantes** con código autogenerado formato `PREFIX-CAT-COLOR-NNNN` (ej. `CART-MANO-NEG-0001`), color, material, tamaño, precio, costo, stock inicial, código de barras opcional.
+- **Imágenes** subidas a Vercel Blob (PNG, JPEG, WebP; máx 5 MB) con imagen principal automática.
+- **Detalle de producto** con tabs: Información, Variantes, Imágenes.
+- Crear variante registra un movimiento `IN` en `InventoryMovement` (preparado para Sprint 5).
+- Estado de variante: Activa, Oculta, Archivada.
+
+Páginas:
+
+- `/categorias`, `/categorias/nueva`, `/categorias/[id]/editar`
+- `/productos`, `/productos/nuevo`, `/productos/[id]`, `/productos/[id]/editar`
+- `/productos/[id]/variantes/nueva`, `/productos/[id]/variantes/[variantId]/editar`
+
 ## Estado de sprints
 
 - ✅ Sprint 0 — Base técnica
 - ✅ Sprint 1 — Autenticación, usuarios y roles
 - ✅ Sprint 2 — Configuración del negocio
 - ✅ Sprint 3 — Clientes
-- ⏳ Sprints 4–15 — ver `docs/PLAN_DESARROLLO_SPRINTS.md`
+- ✅ Sprint 4 — Categorías, productos y variantes
+- ⏳ Sprints 5–15 — ver `docs/PLAN_DESARROLLO_SPRINTS.md`
 
 ## Versión
 

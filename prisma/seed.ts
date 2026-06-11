@@ -97,6 +97,20 @@ async function main() {
   });
   console.log("✔ SETTINGS default");
 
+  const seedCategories = [
+    { name: "Carteras de mano", slug: "cartera-de-mano" },
+    { name: "Mochilas", slug: "mochilas" },
+    { name: "Accesorios", slug: "accesorios" },
+  ];
+  for (const c of seedCategories) {
+    await prisma.category.upsert({
+      where: { slug: c.slug },
+      update: {},
+      create: { name: c.name, slug: c.slug },
+    });
+    console.log(`✔ CATEGORY ${c.slug}`);
+  }
+
   if (users.some((u) => u.password === FALLBACK)) {
     console.warn(
       "\n⚠ Algunas contraseñas usan el valor por defecto. Define SEED_*_PASSWORD en .env y vuelve a correr el seed.",

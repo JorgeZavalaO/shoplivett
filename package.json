@@ -1,6 +1,6 @@
 {
   "name": "shoplivett",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -25,6 +25,7 @@
     "@prisma/client": "^7.8.0",
     "@tanstack/react-table": "^8.21.3",
     "@types/pg": "^8.20.0",
+    "@vercel/blob": "^2.4.0",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
