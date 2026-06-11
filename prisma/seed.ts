@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { Role } from "@prisma/client";
 
 import { prisma } from "../lib/prisma";
+import { DEFAULT_BUSINESS_SETTINGS } from "../lib/settings-defaults";
 
 type SeedUser = {
   role: Role;
@@ -14,7 +15,13 @@ type SeedUser = {
 
 const FALLBACK = "change-me-in-env";
 
-function readUser(envEmail: string | undefined, envPassword: string | undefined, envName: string | undefined, role: Role, defaults: { email: string; name: string }): SeedUser {
+function readUser(
+  envEmail: string | undefined,
+  envPassword: string | undefined,
+  envName: string | undefined,
+  role: Role,
+  defaults: { email: string; name: string },
+): SeedUser {
   return {
     role,
     email: envEmail || defaults.email,
@@ -25,7 +32,9 @@ function readUser(envEmail: string | undefined, envPassword: string | undefined,
 
 async function main() {
   if (!process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL no está definida. Configura tu .env antes de ejecutar el seed.");
+    throw new Error(
+      "DATABASE_URL no está definida. Configura tu .env antes de ejecutar el seed.",
+    );
   }
 
   const users: SeedUser[] = [
@@ -67,6 +76,26 @@ async function main() {
     });
     console.log(`✔ ${u.role.padEnd(8)} ${u.email}`);
   }
+
+  await prisma.businessSettings.upsert({
+    where: { id: "default" },
+    update: {},
+    create: {
+      id: "default",
+      reservationDays: DEFAULT_BUSINESS_SETTINGS.reservationDays,
+      minimumAdvance: DEFAULT_BUSINESS_SETTINGS.minimumAdvance,
+      currency: DEFAULT_BUSINESS_SETTINGS.currency,
+      freeShippingEnabled: DEFAULT_BUSINESS_SETTINGS.freeShippingEnabled,
+      freeShippingThreshold: DEFAULT_BUSINESS_SETTINGS.freeShippingThreshold,
+      productCodePrefix: DEFAULT_BUSINESS_SETTINGS.productCodePrefix,
+      allowOverpaymentCredit: DEFAULT_BUSINESS_SETTINGS.allowOverpaymentCredit,
+      allowRefund: DEFAULT_BUSINESS_SETTINGS.allowRefund,
+      enabledPaymentMethods: DEFAULT_BUSINESS_SETTINGS.enabledPaymentMethods,
+      enabledShippingMethods: DEFAULT_BUSINESS_SETTINGS.enabledShippingMethods,
+      paymentValidatorRoles: DEFAULT_BUSINESS_SETTINGS.paymentValidatorRoles,
+    },
+  });
+  console.log("✔ SETTINGS default");
 
   if (users.some((u) => u.password === FALLBACK)) {
     console.warn(

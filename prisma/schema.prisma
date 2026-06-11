@@ -1,4 +1,4 @@
-// Prisma schema - Sprint 1 (auth, usuarios y roles)
+// Prisma schema - Sprint 2 (configuración del negocio)
 
 generator client {
   provider = "prisma-client-js"
@@ -12,6 +12,21 @@ enum Role {
   ADMIN
   SELLER
   DISPATCH
+}
+
+enum PaymentMethod {
+  YAPE
+  PLIN
+  CASH
+  OTHER
+}
+
+enum ShippingMethod {
+  DELIVERY_PROPIO
+  OLVA
+  SHALOM
+  MOTORIZADO
+  RECOJO
 }
 
 model User {
@@ -37,4 +52,21 @@ model Session {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model BusinessSettings {
+  id                     String   @id @default("default")
+  reservationDays        Int      @default(5)
+  minimumAdvance         Decimal  @default(50) @db.Decimal(12, 2)
+  currency               String   @default("PEN") @db.VarChar(3)
+  freeShippingEnabled    Boolean  @default(true)
+  freeShippingThreshold  Decimal  @default(150) @db.Decimal(12, 2)
+  productCodePrefix      String   @default("CART") @db.VarChar(6)
+  allowOverpaymentCredit Boolean  @default(true)
+  allowRefund            Boolean  @default(true)
+  enabledPaymentMethods  PaymentMethod[]    @default([YAPE, PLIN])
+  enabledShippingMethods ShippingMethod[]   @default([DELIVERY_PROPIO, OLVA, SHALOM, MOTORIZADO, RECOJO])
+  paymentValidatorRoles  Role[]             @default([ADMIN, SELLER])
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }

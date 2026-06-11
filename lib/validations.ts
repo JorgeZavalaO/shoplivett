@@ -1,5 +1,6 @@
 // Validadores Zod centralizados.
 import { z } from "zod";
+import { PaymentMethod, Role, ShippingMethod } from "@prisma/client";
 
 export const PaginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -19,3 +20,67 @@ export const LoginSchema = z.object({
 });
 
 export type LoginInput = z.infer<typeof LoginSchema>;
+
+// Helpers para strings que representan montos en formato decimal (12,2).
+const decimalString = (opts: { min?: number; label: string; allowZero?: boolean }) =>
+  z
+    .string()
+    .trim()
+    .min(1, `${opts.label} es obligatorio.`)
+    .refine((s) => /^\d+(\.\d{1,2})?$/.test(s), {
+      message: `${opts.label} debe tener hasta 2 decimales.`,
+    })
+    .transform((s) => s)
+    .refine(
+      (s) => {
+        const n = Number(s);
+        if (Number.isNaN(n)) return false;
+        if (!opts.allowZero && n <= 0) return false;
+        if (opts.allowZero && n < 0) return false;
+        if (opts.min !== undefined && n < opts.min) return false;
+        return true;
+      },
+      {
+        message: opts.allowZero
+          ? `${opts.label} no puede ser negativo.`
+          : `${opts.label} debe ser mayor a 0.`,
+      },
+    );
+
+export const BusinessSettingsSchema = z.object({
+  reservationDays: z.coerce
+    .number({ message: "Los días de reserva son obligatorios." })
+    .int("Debe ser un número entero.")
+    .min(1, "Debe ser al menos 1 día.")
+    .max(60, "Máximo 60 días."),
+  minimumAdvance: decimalString({ label: "El adelanto mínimo", min: 0.01 }),
+  currency: z
+    .string()
+    .trim()
+    .length(3, "La moneda debe tener 3 letras.")
+    .regex(/^[A-Z]{3}$/, "Usa un código de moneda en mayúsculas (ej. PEN)."),
+  freeShippingEnabled: z.boolean(),
+  freeShippingThreshold: decimalString({
+    label: "El monto mínimo para envío gratis",
+    allowZero: true,
+  }),
+  productCodePrefix: z
+    .string()
+    .trim()
+    .min(2, "Mínimo 2 caracteres.")
+    .max(6, "Máximo 6 caracteres.")
+    .regex(/^[A-Z0-9-]+$/, "Solo mayúsculas, números y guiones."),
+  allowOverpaymentCredit: z.boolean(),
+  allowRefund: z.boolean(),
+  enabledPaymentMethods: z
+    .array(z.enum(PaymentMethod))
+    .min(1, "Selecciona al menos un medio de pago."),
+  enabledShippingMethods: z
+    .array(z.enum(ShippingMethod))
+    .min(1, "Selecciona al menos un medio de envío."),
+  paymentValidatorRoles: z
+    .array(z.enum(Role))
+    .min(1, "Selecciona al menos un rol que pueda validar pagos."),
+});
+
+export type BusinessSettingsInput = z.infer<typeof BusinessSettingsSchema>;
