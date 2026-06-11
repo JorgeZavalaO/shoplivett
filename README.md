@@ -86,19 +86,22 @@ Por defecto, el seed crea tres usuarios (solo para desarrollo):
 app/
   (auth)/login/        Página de inicio de sesión
   (dashboard)/         Rutas protegidas (layout valida sesión)
+    dashboard/         Panel principal con resumen por rol
+    configuracion/     Ajustes de negocio (solo ADMIN)
   api/auth/[...nextauth]/  Handler de Auth.js
 auth.ts                Configuración de Auth.js v5
-middleware.ts          Protección de rutas
-actions/               Server actions (auth, etc.)
+proxy.ts               Middleware de protección de rutas
+actions/               Server actions (auth, settings, etc.)
 components/            UI, layout, forms, tables, dashboard
-lib/                   auth, prisma, validations, permissions, blob, utils
+lib/                   auth, prisma, validations, permissions, settings, blob, utils
 prisma/                schema.prisma y seed
 types/                 Enums compartidos del dominio
+docs/                  Plan de sprints, requisitos funcionales y no funcionales, flujos
 ```
 
 ## Estado de sprints
 
 - ✅ Sprint 0 — Base técnica
 - ✅ Sprint 1 — Autenticación, usuarios y roles
-- ⏳ Sprint 2 — Configuración del negocio
+- ✅ Sprint 2 — Configuración del negocio
 - ⏳ Sprints 3–15 — ver `docs/PLAN_DESARROLLO_SPRINTS.md`
