@@ -1,4 +1,4 @@
-// Prisma schema - Sprint 7 (pedidos, reservas y venta rápida)
+// Prisma schema - Sprint 10 (envíos agrupados)
 
 generator client {
   provider = "prisma-client-js"
@@ -63,6 +63,7 @@ enum InventoryMovementType {
   SALE
   CANCEL
   ADJUSTMENT
+  EXPIRE
 }
 
 enum OrderStatus {
@@ -80,6 +81,29 @@ enum PaymentStatus {
   REJECTED
 }
 
+enum CreditOrigin {
+  OVERPAYMENT
+  MANUAL
+  REFUND
+}
+
+enum CreditStatus {
+  AVAILABLE
+  PARTIALLY_USED
+  USED
+  REFUNDED
+  VOIDED
+}
+
+enum ShipmentStatus {
+  PENDING
+  PREPARING
+  READY
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -91,6 +115,14 @@ model User {
   updatedAt    DateTime @updatedAt
   sessions     Session[]
   lives        LiveSession[]
+  validatedPayments Payment[] @relation("PaymentValidator")
+  rejectedPayments  Payment[] @relation("PaymentRejector")
+  createdCredits  CustomerCredit[]   @relation("CreditCreator")
+  refundedCredits  CustomerCredit[]   @relation("CreditRefunder")
+  createdCreditApplications CustomerCreditApplication[] @relation("CreditApplicationCreator")
+  cancelledReservations   Order[]            @relation("OrderExpirer")
+  createdShipments        Shipment[]         @relation("ShipmentCreator")
+  updatedShipments        Shipment[]         @relation("ShipmentUpdater")
 
   @@index([email])
   @@index([role])
@@ -140,6 +172,8 @@ model Customer {
   updatedAt  DateTime       @updatedAt
   orders     Order[]
   payments   Payment[]
+  credits    CustomerCredit[]
+  shipments  Shipment[]
 
   @@index([searchName])
   @@index([whatsapp])
@@ -270,6 +304,12 @@ model Order {
 
   items     OrderItem[]
   payments  Payment[]
+  paymentApplications PaymentApplication[]
+  creditApplications  CustomerCreditApplication[]
+  shipmentOrder        ShipmentOrder?
+  expiredById  String?
+  expiredBy    User?      @relation("OrderExpirer", fields: [expiredById], references: [id], onDelete: SetNull)
+  expiredAt    DateTime?
 
   @@index([customerId])
   @@index([liveSessionId])
@@ -303,14 +343,25 @@ model Payment {
   amount          Decimal       @db.Decimal(12, 2)
   operationNumber String?
   notes           String?
+  validatedAt     DateTime?
+  validatedById   String?
+  validatedBy     User?         @relation("PaymentValidator", fields: [validatedById], references: [id], onDelete: SetNull)
+  rejectedAt      DateTime?
+  rejectedById    String?
+  rejectedBy      User?         @relation("PaymentRejector", fields: [rejectedById], references: [id], onDelete: SetNull)
+  rejectionReason String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  receipts PaymentReceipt[]
+  receipts    PaymentReceipt[]
+  applications PaymentApplication[]
+  credits        CustomerCredit[]
 
   @@index([customerId])
   @@index([orderId])
   @@index([status])
+  @@index([validatedById])
+  @@index([rejectedById])
 }
 
 model PaymentReceipt {
@@ -322,4 +373,107 @@ model PaymentReceipt {
   createdAt DateTime @default(now())
 
   @@index([paymentId])
+}
+
+model PaymentApplication {
+  id        String   @id @default(cuid())
+  paymentId String
+  payment   Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount    Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+
+  @@unique([paymentId, orderId])
+  @@index([paymentId])
+  @@index([orderId])
+}
+
+model CustomerCredit {
+  id              String       @id @default(cuid())
+  customerId      String
+  customer        Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  paymentId       String?
+  payment         Payment?     @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  origin          CreditOrigin
+  status          CreditStatus @default(AVAILABLE)
+  amount          Decimal      @db.Decimal(12, 2)
+  availableAmount Decimal      @db.Decimal(12, 2)
+  notes           String?
+  createdById     String?
+  createdBy       User?        @relation("CreditCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  refundedAt      DateTime?
+  refundedById    String?
+  refundedBy      User?        @relation("CreditRefunder", fields: [refundedById], references: [id], onDelete: SetNull)
+  refundReason    String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  applications CustomerCreditApplication[]
+
+  @@index([customerId])
+  @@index([paymentId])
+  @@index([status])
+  @@index([origin])
+}
+
+model CustomerCreditApplication {
+  id        String        @id @default(cuid())
+  creditId  String
+  credit    CustomerCredit @relation(fields: [creditId], references: [id], onDelete: Cascade)
+  orderId   String
+  order     Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount    Decimal        @db.Decimal(12, 2)
+  createdById String?
+  createdBy   User?        @relation("CreditApplicationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt DateTime       @default(now())
+
+  @@index([creditId])
+  @@index([orderId])
+}
+
+model Shipment {
+  id                 String          @id @default(cuid())
+  customerId         String
+  customer           Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  shippingMethod     ShippingMethod
+  status             ShipmentStatus  @default(PENDING)
+  shippingCost       Decimal         @db.Decimal(12, 2) @default(0)
+  isFreeShipping     Boolean         @default(false)
+  freeShippingRule   Json?
+  agencyName         String?
+  trackingCode       String?
+  addressSnapshot    String?
+  districtSnapshot   String?
+  referenceSnapshot  String?
+  notes              String?
+  preparedAt         DateTime?
+  shippedAt          DateTime?
+  deliveredAt        DateTime?
+  cancelledAt        DateTime?
+  createdById        String?
+  createdBy          User?           @relation("ShipmentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById        String?
+  updatedBy          User?           @relation("ShipmentUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  orders ShipmentOrder[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([shippingMethod])
+  @@index([createdAt])
+}
+
+model ShipmentOrder {
+  id         String   @id @default(cuid())
+  shipmentId String
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  orderId    String   @unique
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@index([shipmentId])
+  @@index([orderId])
 }

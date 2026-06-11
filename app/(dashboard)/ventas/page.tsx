@@ -1,10 +1,11 @@
 import { QuickSaleForm } from "@/components/forms/quick-sale-form";
 import { getOpenLive } from "@/lib/live";
+import { getSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
 export default async function VentasPage() {
-  const openLive = await getOpenLive();
+  const [openLive, settings] = await Promise.all([getOpenLive(), getSettings()]);
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
@@ -15,7 +16,10 @@ export default async function VentasPage() {
           confirma el adelanto.
         </p>
       </div>
-      <QuickSaleForm openLive={openLive} />
+      <QuickSaleForm
+        openLive={openLive}
+        enabledPaymentMethods={settings.enabledPaymentMethods}
+      />
     </div>
   );
 }

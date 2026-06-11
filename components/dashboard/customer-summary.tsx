@@ -71,20 +71,16 @@ export function CustomerSummary({ customer, debt, credit }: SummaryProps) {
         </CardHeader>
         <CardContent className="text-xs text-muted-foreground">
           Suma de saldos pendientes de pedidos activos.
-          <br />
-          Disponible en Sprint 7.
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
           <CardDescription>Crédito disponible</CardDescription>
-          <CardTitle className="text-3xl">S/ {credit}</CardTitle>
+          <CardTitle className="text-3xl text-emerald-600">S/ {credit}</CardTitle>
         </CardHeader>
         <CardContent className="text-xs text-muted-foreground">
-          Créditos activos por sobrepago o devolución.
-          <br />
-          Disponible en Sprint 9.
+          Créditos activos por sobrepago, manuales o devoluciones.
         </CardContent>
       </Card>
 

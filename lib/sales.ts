@@ -1,8 +1,6 @@
 // Lógica de venta rápida: crea pedido, items, pago pendiente, reserva stock.
 // Todo corre dentro de una transacción Prisma.
 
-import { Prisma } from "@prisma/client";
-
 import { getPrisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { reserveStock } from "@/lib/inventory";
@@ -14,6 +12,7 @@ import {
 } from "@/lib/orders";
 import { assertLiveIsOpen, LiveError } from "@/lib/live";
 import { uploadImage, ImageUploadError } from "@/lib/blob";
+import { createPayment, PaymentError } from "@/lib/payments";
 
 export class OrderError extends Error {
   constructor(
@@ -25,6 +24,7 @@ export class OrderError extends Error {
       | "INVALID_ADVANCE"
       | "LIVE_CLOSED"
       | "BLOB_ERROR"
+      | "PAYMENT_ERROR"
       | "CONFLICT",
   ) {
     super(message);
@@ -48,6 +48,7 @@ export type QuickSaleInput = {
 export type QuickSaleResult = {
   orderId: string;
   orderNumber: string;
+  paymentId: string;
 };
 
 export async function createQuickSale(
@@ -123,84 +124,101 @@ export async function createQuickSale(
     );
   }
 
-  return prisma.$transaction(async (tx) => {
-    const orderNumber = await generateOrderNumber(tx);
-    const expiresAt = await calculateOrderExpiry(new Date(), settings.reservationDays);
-    const balance = calculateOrderBalance(totals.total, "0");
-
-    const order = await tx.order.create({
-      data: {
-        orderNumber,
-        customerId: input.customerId,
-        liveSessionId: input.liveSessionId ?? null,
-        status: "PAYMENT_VALIDATION_PENDING",
-        subtotal: totals.subtotal,
-        discount: input.discount || "0",
-        shippingAmount: input.shippingAmount || "0",
-        total: totals.total,
-        validatedPaid: "0",
-        balance,
-        expiresAt,
-        notes: input.notes ?? null,
-      },
-    });
-
-    for (const li of lineItems) {
-      await tx.orderItem.create({
-        data: {
-          orderId: order.id,
-          variantId: li.variantId,
-          quantity: li.quantity,
-          unitPrice: li.unitPrice,
-          lineTotal: (Number(li.unitPrice) * li.quantity).toFixed(2),
-        },
-      });
-    }
-
-    const payment = await tx.payment.create({
-      data: {
-        customerId: input.customerId,
-        orderId: order.id,
-        method: input.paymentMethod as Prisma.PaymentCreateInput["method"],
-        status: "PENDING",
-        amount: input.advanceAmount,
-        operationNumber: input.operationNumber ?? null,
-        notes: null,
-      },
-    });
-
-    if (input.receiptFiles && input.receiptFiles.length > 0) {
-      for (const file of input.receiptFiles) {
-        if (file.size === 0) continue;
-        try {
-          const uploaded = await uploadImage(
-            file,
-            `payments/receipts`,
-            `${order.id}`,
-          );
-          await tx.paymentReceipt.create({
-            data: {
-              paymentId: payment.id,
-              url: uploaded.url,
-              pathname: uploaded.pathname,
-            },
-          });
-        } catch (error) {
-          if (error instanceof ImageUploadError) {
-            throw new OrderError(error.message, "BLOB_ERROR");
-          }
-          throw error;
+  const uploadedReceipts: { url: string; pathname: string }[] = [];
+  if (input.receiptFiles && input.receiptFiles.length > 0) {
+    for (const file of input.receiptFiles) {
+      if (file.size === 0) continue;
+      try {
+        const uploaded = await uploadImage(
+          file,
+          `payments/receipts`,
+          `quick-sale-${Date.now()}`,
+        );
+        uploadedReceipts.push({ url: uploaded.url, pathname: uploaded.pathname });
+      } catch (error) {
+        if (error instanceof ImageUploadError) {
+          throw new OrderError(error.message, "BLOB_ERROR");
         }
+        throw error;
       }
     }
+  }
 
-    for (const item of input.items) {
-      await reserveStock(item.variantId, item.quantity, {
-        reason: `Orden ${orderNumber}`,
-        tx,
-      });
+  let orderResult: { orderId: string; orderNumber: string; paymentId: string };
+  try {
+    orderResult = await prisma.$transaction(
+      async (tx) => {
+        const orderNumber = await generateOrderNumber(tx);
+        const expiresAt = await calculateOrderExpiry(new Date(), settings.reservationDays);
+        const balance = calculateOrderBalance(totals.total, "0");
+
+        const order = await tx.order.create({
+          data: {
+            orderNumber,
+            customerId: input.customerId,
+            liveSessionId: input.liveSessionId ?? null,
+            status: "PAYMENT_VALIDATION_PENDING",
+            subtotal: totals.subtotal,
+            discount: input.discount || "0",
+            shippingAmount: input.shippingAmount || "0",
+            total: totals.total,
+            validatedPaid: "0",
+            balance,
+            expiresAt,
+            notes: input.notes ?? null,
+          },
+        });
+
+        for (const li of lineItems) {
+          await tx.orderItem.create({
+            data: {
+              orderId: order.id,
+              variantId: li.variantId,
+              quantity: li.quantity,
+              unitPrice: li.unitPrice,
+              lineTotal: (Number(li.unitPrice) * li.quantity).toFixed(2),
+            },
+          });
+        }
+
+        const created = await createPayment({
+          customerId: input.customerId,
+          method: input.paymentMethod as Parameters<typeof createPayment>[0]["method"],
+          amount: input.advanceAmount,
+          operationNumber: input.operationNumber ?? null,
+          notes: null,
+          sourceOrderId: order.id,
+          applications: [{ orderId: order.id, amount: input.advanceAmount }],
+        });
+
+        for (const r of uploadedReceipts) {
+          await tx.paymentReceipt.create({
+            data: {
+              paymentId: created.paymentId,
+              url: r.url,
+              pathname: r.pathname,
+            },
+          });
+        }
+
+        for (const item of input.items) {
+          await reserveStock(item.variantId, item.quantity, {
+            reason: `Orden ${orderNumber}`,
+            tx,
+          });
+        }
+
+        return { orderId: order.id, orderNumber, paymentId: created.paymentId };
+      },
+      { isolationLevel: "Serializable", maxWait: 5000, timeout: 15000 },
+    );
+  } catch (error) {
+    if (error instanceof PaymentError) {
+      throw new OrderError(error.message, "PAYMENT_ERROR");
     }
+    if (error instanceof OrderError) throw error;
+    throw error;
+  }
 
-    return { orderId: order.id, orderNumber };
-  });
+  return orderResult;
 }

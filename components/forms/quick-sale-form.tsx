@@ -48,9 +48,10 @@ function SubmitButton() {
 
 type Props = {
   openLive?: { id: string; name: string } | null;
+  enabledPaymentMethods: ("YAPE" | "PLIN" | "CASH" | "OTHER")[];
 };
 
-export function QuickSaleForm({ openLive }: Props) {
+export function QuickSaleForm({ openLive, enabledPaymentMethods }: Props) {
   const [state, formAction] = useActionState<OrderActionResult, FormData>(
     createQuickSaleAction,
     initialState,
@@ -128,7 +129,7 @@ export function QuickSaleForm({ openLive }: Props) {
   }, [cart, discount, shippingAmount]);
 
   // --- Payment method ---
-  const [paymentMethod, setPaymentMethod] = useState("YAPE");
+  const [paymentMethod, setPaymentMethod] = useState(enabledPaymentMethods[0] ?? "YAPE");
   const [operationNumber, setOperationNumber] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -351,13 +352,14 @@ export function QuickSaleForm({ openLive }: Props) {
               <label className="text-xs text-muted-foreground">Método de pago</label>
               <select
                 value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
+                onChange={(e) => setPaymentMethod(e.target.value as typeof paymentMethod)}
                 className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
               >
-                <option value="YAPE">Yape</option>
-                <option value="PLIN">Plin</option>
-                <option value="CASH">Efectivo</option>
-                <option value="OTHER">Otro</option>
+                {enabledPaymentMethods.map((m) => (
+                  <option key={m} value={m}>
+                    {m === "YAPE" ? "Yape" : m === "PLIN" ? "Plin" : m === "CASH" ? "Efectivo" : "Otro"}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -372,8 +374,8 @@ export function QuickSaleForm({ openLive }: Props) {
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted-foreground">Captura (opcional)</label>
-              <input type="file" name="receipts" accept="image/png,image/jpeg,image/webp" className="text-xs" />
+              <label className="text-xs text-muted-foreground">Capturas (opcional, varias)</label>
+              <input type="file" name="receipts" multiple accept="image/png,image/jpeg,image/webp" className="text-xs" />
             </div>
 
             <div className="flex flex-col gap-1">

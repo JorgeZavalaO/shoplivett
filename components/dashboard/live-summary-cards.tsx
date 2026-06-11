@@ -24,7 +24,7 @@ export function LiveSummaryCards({ metrics }: Props) {
           <CardTitle className="text-3xl">{metrics.ordersCount}</CardTitle>
         </CardHeader>
         <CardContent className="text-xs text-muted-foreground">
-          Se poblará en Sprint 7.
+          Total de pedidos del live.
         </CardContent>
       </Card>
       <Card>
@@ -33,25 +33,29 @@ export function LiveSummaryCards({ metrics }: Props) {
           <CardTitle className="text-3xl">S/ {metrics.soldAmount}</CardTitle>
         </CardHeader>
         <CardContent className="text-xs text-muted-foreground">
-          Se poblará en Sprint 7.
+          Suma de los totales.
         </CardContent>
       </Card>
       <Card>
         <CardHeader>
           <CardDescription>Cobrado</CardDescription>
-          <CardTitle className="text-3xl">S/ {metrics.collectedAmount}</CardTitle>
+          <CardTitle className="text-3xl text-emerald-600">
+            S/ {metrics.collectedAmount}
+          </CardTitle>
         </CardHeader>
         <CardContent className="text-xs text-muted-foreground">
-          Se poblará en Sprint 8.
+          Pagos validados del live.
         </CardContent>
       </Card>
       <Card>
         <CardHeader>
           <CardDescription>Pendiente</CardDescription>
-          <CardTitle className="text-3xl">S/ {metrics.pendingAmount}</CardTitle>
+          <CardTitle className="text-3xl text-amber-600">
+            S/ {metrics.pendingAmount}
+          </CardTitle>
         </CardHeader>
         <CardContent className="text-xs text-muted-foreground">
-          Se poblará en Sprint 8.
+          Saldo por cobrar (validado + pendiente de validación).
         </CardContent>
       </Card>
     </div>

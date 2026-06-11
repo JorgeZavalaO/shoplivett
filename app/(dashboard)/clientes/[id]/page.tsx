@@ -4,7 +4,11 @@ import { ArrowLeft, Pencil, UserX } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { CustomerSummary } from "@/components/dashboard/customer-summary";
+import { CustomerCreditsHistory } from "@/components/dashboard/customer-credits-history";
+import { CustomerShipmentsHistory } from "@/components/dashboard/customer-shipments-history";
 import { getCustomerSummary } from "@/lib/customer-helpers";
+import { getCustomerCreditsAction } from "@/actions/credits";
+import { listCustomerShipmentsAction } from "@/actions/shipments";
 import {
   deactivateCustomerAction,
   setCustomerStatusAction,
@@ -18,14 +22,17 @@ type Params = Promise<{ id: string }>;
 const HISTORY_TABS = [
   { label: "Pedidos", sprint: "Sprint 7" },
   { label: "Pagos", sprint: "Sprint 8" },
-  { label: "Créditos", sprint: "Sprint 9" },
-  { label: "Envíos", sprint: "Sprint 10" },
 ];
 
 export default async function ClienteDetallePage({ params }: { params: Params }) {
   const { id } = await params;
   const summary = await getCustomerSummary(id);
   if (!summary) notFound();
+
+  const [credits, shipments] = await Promise.all([
+    getCustomerCreditsAction(id),
+    listCustomerShipmentsAction(id),
+  ]);
 
   const whatsappLink = `https://wa.me/${summary.whatsapp.replace(/[^\d]/g, "")}`;
 
@@ -124,9 +131,16 @@ export default async function ClienteDetallePage({ params }: { params: Params })
         </form>
       </div>
 
+      <CustomerCreditsHistory
+        credits={credits as never}
+        customer={{ name: summary.name, whatsapp: summary.whatsapp }}
+      />
+
+      <CustomerShipmentsHistory shipments={shipments as never} />
+
       <div className="flex flex-col gap-3">
         <h2 className="text-base font-semibold">Historial</h2>
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {HISTORY_TABS.map((tab) => (
             <div
               key={tab.label}

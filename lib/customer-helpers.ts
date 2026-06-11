@@ -1,6 +1,4 @@
 // Helpers para resumen de cliente: deuda acumulada y crédito disponible.
-// Los modelos Order y CustomerCredit entran en Sprints 7 y 9; mientras
-// tanto estas funciones devuelven 0.00 para que la UI ya muestre los indicadores.
 
 import { getPrisma } from "@/lib/prisma";
 
@@ -23,16 +21,50 @@ export type CustomerSummary = {
   credit: string;
 };
 
-export async function getCustomerDebt(_customerId: string): Promise<string> {
-  // Sprint 7 introduce Order. Cuando exista, aquí se sumará el balance de pedidos activos.
-  void _customerId;
-  return ZERO;
+function toCents(value: string): number {
+  const [whole, fraction = ""] = value.trim().split(".");
+  const safeWhole = (whole || "0").replace(/[^0-9]/g, "") || "0";
+  const safeFraction = (fraction || "").replace(/[^0-9]/g, "").padEnd(2, "0").slice(0, 2);
+  return Number(safeWhole) * 100 + Number(safeFraction);
 }
 
-export async function getCustomerCredit(_customerId: string): Promise<string> {
-  // Sprint 9 introduce CustomerCredit. Cuando exista, aquí se sumará el crédito disponible.
-  void _customerId;
-  return ZERO;
+function centsToDecimalString(cents: number): string {
+  const negative = cents < 0;
+  const abs = negative ? -cents : cents;
+  const whole = Math.trunc(abs / 100);
+  const fraction = Math.trunc(abs % 100);
+  const fracStr = String(fraction).padStart(2, "0");
+  return `${negative ? "-" : ""}${whole}.${fracStr}`;
+}
+
+export async function getCustomerDebt(customerId: string): Promise<string> {
+  const prisma = getPrisma();
+  const result = await prisma.order.aggregate({
+    where: {
+      customerId,
+      status: {
+        in: ["PAYMENT_VALIDATION_PENDING", "RESERVED", "PARTIALLY_PAID"],
+      },
+    },
+    _sum: { balance: true },
+  });
+  const sum = result._sum.balance;
+  if (!sum) return ZERO;
+  return centsToDecimalString(toCents(sum.toString()));
+}
+
+export async function getCustomerCredit(customerId: string): Promise<string> {
+  const prisma = getPrisma();
+  const result = await prisma.customerCredit.aggregate({
+    where: {
+      customerId,
+      status: { in: ["AVAILABLE", "PARTIALLY_USED"] },
+    },
+    _sum: { availableAmount: true },
+  });
+  const sum = result._sum.availableAmount;
+  if (!sum) return ZERO;
+  return centsToDecimalString(toCents(sum.toString()));
 }
 
 export async function getCustomerSummary(

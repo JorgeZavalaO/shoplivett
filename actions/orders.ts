@@ -100,8 +100,20 @@ export async function getOrderDetailAction(orderId: string) {
         },
       },
       payments: {
-        include: { receipts: true },
+        include: {
+          receipts: true,
+          applications: {
+            include: {
+              order: { select: { id: true, orderNumber: true } },
+            },
+          },
+        },
         orderBy: { createdAt: "desc" },
+      },
+      shipmentOrder: {
+        include: {
+          shipment: { select: { id: true, status: true } },
+        },
       },
     },
   });

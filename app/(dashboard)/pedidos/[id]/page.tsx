@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Truck } from "lucide-react";
 
 import { getOrderDetailAction } from "@/actions/orders";
 import { OrderStatusBadge } from "@/components/dashboard/order-status-badge";
+import { PaymentStatusBadge } from "@/components/dashboard/payment-status-badge";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -14,16 +14,25 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { requireRole, requireUser } from "@/lib/permissions";
 import { formatWhatsAppDisplay } from "@/lib/phone";
+import { PAYMENT_METHOD_LABELS } from "@/lib/settings-defaults";
 
 export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string }>;
 
 export default async function PedidoDetallePage({ params }: { params: Params }) {
+  const user = await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   const { id } = await params;
   const order = await getOrderDetailAction(id);
   if (!order) notFound();
+
+  const canCreateShipment =
+    (user.role === "ADMIN" || user.role === "DISPATCH") &&
+    order.status === "PAID" &&
+    (!order.shipmentOrder || order.shipmentOrder.shipment.status === "CANCELLED");
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -61,7 +70,33 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
               </Link>
             </>
           ) : null}
+          {order.shipmentOrder && order.shipmentOrder.shipment.status !== "CANCELLED" ? (
+            <>
+              {" · Envío: "}
+              <Link
+                href={`/envios/${order.shipmentOrder.shipment.id}`}
+                className="font-mono hover:underline"
+              >
+                {order.shipmentOrder.shipment.id.slice(-6).toUpperCase()}
+              </Link>
+            </>
+          ) : null}
         </p>
+        {canCreateShipment ? (
+          <div className="mt-2">
+            <Button
+              size="sm"
+              variant="outline"
+              render={
+                <Link
+                  href={`/envios/nuevo?customerId=${order.customer.id}&orderId=${order.id}`}
+                >
+                  <Truck className="size-4" /> Crear envío con este pedido
+                </Link>
+              }
+            />
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -152,7 +187,7 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
           <CardHeader>
             <CardTitle className="text-base">Pagos y capturas</CardTitle>
             <CardDescription>
-              Los pagos se validan manualmente desde el módulo de Pagos (Sprint 8).
+              Los saldos solo se actualizan al validar los pagos.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -161,11 +196,15 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
             ) : (
               <div className="flex flex-col gap-3">
                 {order.payments.map((payment) => (
-                  <div key={payment.id} className="rounded-lg border border-border p-3">
+                  <Link
+                    key={payment.id}
+                    href={`/pagos/${payment.id}`}
+                    className="block rounded-lg border border-border p-3 hover:bg-muted"
+                  >
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium">
-                          {payment.method} · S/ {payment.amount.toString()}
+                          {PAYMENT_METHOD_LABELS[payment.method]} · S/ {payment.amount.toString()}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {new Intl.DateTimeFormat("es-PE", {
@@ -174,21 +213,7 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
                           }).format(new Date(payment.createdAt))}
                         </p>
                       </div>
-                      <Badge
-                        variant={
-                          payment.status === "PENDING"
-                            ? "secondary"
-                            : payment.status === "VALIDATED"
-                              ? "default"
-                              : "destructive"
-                        }
-                      >
-                        {payment.status === "PENDING"
-                          ? "Pendiente"
-                          : payment.status === "VALIDATED"
-                            ? "Validado"
-                            : "Rechazado"}
-                      </Badge>
+                      <PaymentStatusBadge status={payment.status} />
                     </div>
                     {payment.operationNumber ? (
                       <p className="mt-1 text-xs text-muted-foreground">
@@ -208,7 +233,7 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
                         ))}
                       </div>
                     ) : null}
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}

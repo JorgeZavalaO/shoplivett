@@ -10,7 +10,7 @@ import { MovementTypeBadge } from "@/components/dashboard/movement-type-badge";
 
 export type MovementRow = {
   id: string;
-  type: "IN" | "RESERVE" | "RELEASE" | "SALE" | "CANCEL" | "ADJUSTMENT";
+  type: "IN" | "RESERVE" | "RELEASE" | "SALE" | "CANCEL" | "ADJUSTMENT" | "EXPIRE";
   quantity: number;
   reason: string | null;
   createdAt: Date;

@@ -203,6 +203,63 @@ Páginas:
 - `/pedidos` — Listado con búsqueda, filtro por estado y paginación.
 - `/pedidos/[id]` — Detalle completo del pedido.
 
+### Pagos y capturas (Sprint 8)
+
+- **Pagos manuales** con múltiples capturas (Vercel Blob), método configurable desde
+  `BusinessSettings` (Yape, Plin, Efectivo, Otro) y número de operación opcional.
+- **Aplicación a uno o varios pedidos** de la misma clienta vía `PaymentApplication`.
+- **Validación transaccional** (`Serializable`): al validar se recalculan `validatedPaid`,
+  `balance` y `Order.status` (`RESERVED` / `PARTIALLY_PAID` / `PAID`), y el stock reservado
+  se mueve a vendido cuando el pedido queda `PAID`.
+- **Rechazo** con motivo obligatorio; no afecta saldos ni stock.
+- Permisos de validación leídos desde `BusinessSettings.paymentValidatorRoles`.
+
+Páginas:
+
+- `/pagos` — Listado con búsqueda y filtros por estado.
+- `/pagos/nuevo` — Alta manual con buscador de clienta y pedidos.
+- `/pagos/[id]` — Detalle con aplicaciones, capturas, auditoría y acciones de validar / rechazar (con elección de tratamiento del excedente).
+
+### Créditos y reservas vencidas (Sprint 9)
+
+- **Créditos por sobrepago** generados al validar un pago cuyo monto supera los saldos aplicados. Se crean con estado `AVAILABLE` y se descuentan al aplicarlos.
+- **Créditos manuales** para registrar ajustes administrativos desde la ficha de la clienta.
+- **Devoluciones** registradas como `CustomerCredit` con `status = REFUNDED` y motivo obligatorio.
+- **Aplicación manual** de crédito a un pedido de la misma clienta, con recálculo de saldos y movimiento de stock si el pedido queda `PAID`.
+- **Reservas vencidas** listadas en `/pedidos/vencidos`; cancelación transaccional que libera stock (`InventoryMovement` `EXPIRE`), rechaza pagos pendientes y deja el pedido en `EXPIRED` con saldo `0`.
+- Permisos de devolución y sobrepago gobernados por `BusinessSettings.allowOverpaymentCredit` y `allowRefund`.
+- Aplicación nunca automática: cada movimiento de crédito se ejecuta desde una acción del usuario.
+
+Páginas:
+
+- `/pedidos/vencidos` — Panel con cancelación de reservas.
+- `/clientes/[id]` — Historial de créditos con aplicaciones y motivos de devolución.
+
+### Envíos agrupados (Sprint 10)
+
+- **Envíos** que agrupan uno o varios pedidos pagados de la misma clienta.
+- Reglas de integridad:
+  - todos los pedidos deben pertenecer a la misma clienta
+  - todos los pedidos deben estar en `PAID`
+  - un pedido sólo puede estar en un envío activo a la vez
+- Cálculo de **envío gratis** automático al crear:
+  - se evalúa contra `BusinessSettings.freeShippingEnabled` y `freeShippingThreshold`
+  - se persiste la regla aplicada en `Shipment.freeShippingRule`
+  - permite override manual con `forceFreeShipping`
+- Estados con flujo estricto:
+  - `PENDING` → `PREPARING` → `READY` → `SHIPPED` → `DELIVERED`
+  - `CANCELLED` permitido hasta antes de `DELIVERED`
+- Tracking y agencia persistidos; snapshots de dirección/distrito/referencia tomados de la clienta al crear.
+- Botón "Crear envío con este pedido" desde el detalle de pedido pagado (sólo `ADMIN`/`DISPATCH`).
+- Detalle de envío con timeline de cambios de estado.
+- Detalle de cliente muestra el historial de envíos con pedidos incluidos.
+
+Páginas:
+
+- `/envios` — Listado con búsqueda y filtros por estado.
+- `/envios/nuevo` — Alta con buscador de clienta y pedidos elegibles.
+- `/envios/[id]` — Detalle, pedidos incluidos, snapshots, tracking y acciones de estado.
+
 ## Estado de sprints
 
 - ✅ Sprint 0 — Base técnica
@@ -213,7 +270,10 @@ Páginas:
 - ✅ Sprint 5 — Inventario por variante
 - ✅ Sprint 6 — Sesiones de Live
 - ✅ Sprint 7 — Pedidos, reservas y venta rápida
-- ⏳ Sprints 8–15 — ver `docs/PLAN_DESARROLLO_SPRINTS.md`
+- ✅ Sprint 8 — Pagos, capturas y aplicación a pedidos
+- ✅ Sprint 9 — Créditos, sobrepagos y reservas vencidas
+- ✅ Sprint 10 — Envíos agrupados
+- ⏳ Sprints 11–15 — ver `docs/PLAN_DESARROLLO_SPRINTS.md`
 
 ## Versión
 

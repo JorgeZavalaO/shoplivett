@@ -100,14 +100,57 @@ export async function listLiveSessions(args?: {
   };
 }
 
-export async function getLiveMetrics(_liveId: string) {
-  void _liveId;
+export async function getLiveMetrics(liveId: string) {
+  const prisma = getPrisma();
+  const orders = await prisma.order.findMany({
+    where: { liveSessionId: liveId },
+    select: {
+      total: true,
+      validatedPaid: true,
+      balance: true,
+      status: true,
+    },
+  });
+
+  let soldCents = 0;
+  let collectedCents = 0;
+  let pendingCents = 0;
+
+  for (const o of orders) {
+    const totalCents = toCents(o.total.toString());
+    const validatedCents = toCents(o.validatedPaid.toString());
+    const balanceCents = toCents(o.balance.toString());
+    soldCents += totalCents;
+    if (o.status === "PAID" || o.status === "PARTIALLY_PAID" || o.status === "RESERVED") {
+      collectedCents += validatedCents;
+      pendingCents += balanceCents;
+    } else if (o.status === "PAYMENT_VALIDATION_PENDING") {
+      pendingCents += totalCents;
+    }
+  }
+
   return {
-    ordersCount: 0,
-    soldAmount: "0.00",
-    collectedAmount: "0.00",
-    pendingAmount: "0.00",
+    ordersCount: orders.length,
+    soldAmount: centsToDecimalString(soldCents),
+    collectedAmount: centsToDecimalString(collectedCents),
+    pendingAmount: centsToDecimalString(pendingCents),
   };
+}
+
+function toCents(value: string): number {
+  const [whole, fraction = ""] = value.trim().split(".");
+  const safeWhole = (whole || "0").replace(/[^0-9]/g, "") || "0";
+  const safeFraction = (fraction || "").replace(/[^0-9]/g, "").padEnd(2, "0").slice(0, 2);
+  return Number(safeWhole) * 100 + Number(safeFraction);
+}
+
+function centsToDecimalString(cents: number): string {
+  const negative = cents < 0;
+  const abs = negative ? -cents : cents;
+  const whole = Math.trunc(abs / 100);
+  const fraction = Math.trunc(abs % 100);
+  const fracStr = String(fraction).padStart(2, "0");
+  return `${negative ? "-" : ""}${whole}.${fracStr}`;
 }
 
 export async function getLiveDetail(liveId: string) {

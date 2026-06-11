@@ -45,6 +45,7 @@ const MODULES = [
 export default async function DashboardPage() {
   const user = await requireUser();
   const displayName = user.name?.trim() || user.email || "usuario";
+  const canValidate = await canValidatePayments(user.role);
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -66,7 +67,7 @@ export default async function DashboardPage() {
           <CardHeader>
             <CardDescription>Permisos del rol</CardDescription>
             <CardTitle className="text-base">
-              {canValidatePayments(user.role)
+              {canValidate
                 ? "Puede validar pagos"
                 : "No valida pagos"}
             </CardTitle>

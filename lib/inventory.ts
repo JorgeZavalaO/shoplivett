@@ -31,7 +31,7 @@ export type StockSummary = {
 
 export type Movement = {
   id: string;
-  type: "IN" | "RESERVE" | "RELEASE" | "SALE" | "CANCEL" | "ADJUSTMENT";
+  type: "IN" | "RESERVE" | "RELEASE" | "SALE" | "CANCEL" | "ADJUSTMENT" | "EXPIRE";
   quantity: number;
   reason: string | null;
   createdAt: Date;
@@ -199,8 +199,7 @@ export async function releaseStock(
       "INVALID_QUANTITY",
     );
   }
-  const prisma = getPrisma();
-  return prisma.$transaction(async (tx) => {
+  const doRelease = async (tx: Tx) => {
     const v = await findVariantOrThrow(tx, variantId);
     if (v.reservedStock < quantity) {
       throw new InventoryError(
@@ -215,6 +214,14 @@ export async function releaseStock(
     });
     await recordMovement(tx, variantId, "RELEASE", quantity, opts.reason ?? null);
     return toStockSummary(updated);
+  };
+  if (opts.tx) {
+    return doRelease(opts.tx);
+  }
+  return getPrisma().$transaction(doRelease, {
+    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    maxWait: 5000,
+    timeout: 10000,
   });
 }
 
@@ -230,30 +237,34 @@ export async function confirmSaleStock(
       "INVALID_QUANTITY",
     );
   }
-  const prisma = getPrisma();
-  try {
-    return await prisma.$transaction(
-      async (tx) => {
-        const v = await findVariantOrThrow(tx, variantId);
-        if (v.reservedStock < quantity) {
-          throw new InventoryError(
-            `Stock reservado insuficiente para confirmar la venta (${v.reservedStock} < ${quantity}).`,
-            "INSUFFICIENT_RESERVED",
-          );
-        }
-        const updated = await tx.productVariant.update({
-          where: { id: variantId },
-          data: {
-            reservedStock: { decrement: quantity },
-            soldStock: { increment: quantity },
-          },
-          select: { stock: true, reservedStock: true, soldStock: true },
-        });
-        await recordMovement(tx, variantId, "SALE", quantity, opts.reason ?? null);
-        return toStockSummary(updated);
+  const doConfirm = async (tx: Tx) => {
+    const v = await findVariantOrThrow(tx, variantId);
+    if (v.reservedStock < quantity) {
+      throw new InventoryError(
+        `Stock reservado insuficiente para confirmar la venta (${v.reservedStock} < ${quantity}).`,
+        "INSUFFICIENT_RESERVED",
+      );
+    }
+    const updated = await tx.productVariant.update({
+      where: { id: variantId },
+      data: {
+        reservedStock: { decrement: quantity },
+        soldStock: { increment: quantity },
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 10000 },
-    );
+      select: { stock: true, reservedStock: true, soldStock: true },
+    });
+    await recordMovement(tx, variantId, "SALE", quantity, opts.reason ?? null);
+    return toStockSummary(updated);
+  };
+  if (opts.tx) {
+    return doConfirm(opts.tx);
+  }
+  try {
+    return await getPrisma().$transaction(doConfirm, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      maxWait: 5000,
+      timeout: 10000,
+    });
   } catch (error) {
     if (error instanceof InventoryError) throw error;
     if (

@@ -16,6 +16,7 @@ import {
   BarChart3,
   Settings,
   Sparkles,
+  AlertTriangle,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -37,6 +38,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/lives", label: "Lives", icon: Radio, module: "Sprint 6", roles: ["ADMIN", "SELLER"] },
   { href: "/ventas", label: "Venta rápida", icon: ShoppingCart, module: "Sprint 7", roles: ["ADMIN", "SELLER"] },
   { href: "/pedidos", label: "Pedidos", icon: ReceiptText, module: "Sprint 7", roles: ["ADMIN", "SELLER"] },
+  { href: "/pedidos/vencidos", label: "Reservas vencidas", icon: AlertTriangle, module: "Sprint 9", roles: ["ADMIN", "SELLER"] },
   { href: "/pagos", label: "Pagos", icon: CreditCard, module: "Sprint 8", roles: ["ADMIN", "SELLER"] },
   { href: "/envios", label: "Envíos", icon: Truck, module: "Sprint 10", roles: ["ADMIN", "DISPATCH"] },
   { href: "/reportes", label: "Reportes", icon: BarChart3, module: "Sprint 13", roles: ["ADMIN"] },

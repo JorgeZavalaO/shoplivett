@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { ArrowDown, ArrowUp, Plus, RefreshCcw, Repeat, X } from "lucide-react";
 
-type Type = "IN" | "RESERVE" | "RELEASE" | "SALE" | "CANCEL" | "ADJUSTMENT";
+type Type = "IN" | "RESERVE" | "RELEASE" | "SALE" | "CANCEL" | "ADJUSTMENT" | "EXPIRE";
 
 const LABEL: Record<Type, string> = {
   IN: "Ingreso",
@@ -10,6 +10,7 @@ const LABEL: Record<Type, string> = {
   SALE: "Venta",
   CANCEL: "Cancelación",
   ADJUSTMENT: "Ajuste",
+  EXPIRE: "Vencimiento",
 };
 
 const VARIANT: Record<
@@ -22,6 +23,7 @@ const VARIANT: Record<
   SALE: "default",
   CANCEL: "destructive",
   ADJUSTMENT: "outline",
+  EXPIRE: "destructive",
 };
 
 const CLASS: Record<Type, string> = {
@@ -31,6 +33,7 @@ const CLASS: Record<Type, string> = {
   SALE: "bg-blue-600 text-white",
   CANCEL: "bg-red-600 text-white",
   ADJUSTMENT: "bg-zinc-600 text-white",
+  EXPIRE: "bg-orange-600 text-white",
 };
 
 const ICON: Record<Type, React.ComponentType<{ className?: string }>> = {
@@ -40,6 +43,7 @@ const ICON: Record<Type, React.ComponentType<{ className?: string }>> = {
   SALE: ArrowDown,
   CANCEL: X,
   ADJUSTMENT: ArrowUp,
+  EXPIRE: X,
 };
 
 // Stub para evitar import circular

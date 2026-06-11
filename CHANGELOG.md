@@ -5,6 +5,154 @@ Todos los cambios notables de Shoplivett se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - Sprint 10 - Envíos agrupados
+
+### Añadido
+- Módulo de **Envíos** con listado, alta, detalle y cambio de estado.
+- Modelos Prisma:
+  - `Shipment` con método de envío, costo, `isFreeShipping`, agencia, tracking, snapshots de dirección y auditoría (`createdById` / `updatedById`).
+  - `ShipmentOrder` con `@@unique([orderId])` para que un pedido sólo pertenezca a un envío activo a la vez.
+  - Enums `ShipmentStatus` (`PENDING`, `PREPARING`, `READY`, `SHIPPED`, `DELIVERED`, `CANCELLED`).
+  - Campos `preparedAt`, `shippedAt`, `deliveredAt`, `cancelledAt` en `Shipment`.
+  - `freeShippingRule` en `Shipment` (JSON) para guardar la regla aplicada al crear.
+- `lib/shipments.ts` con motor transaccional:
+  - `createShipment` valida:
+    - pedidos pertenecen a la misma clienta
+    - pedidos están en `PAID`
+    - pedidos no están en otro envío activo
+    - el método está habilitado en `BusinessSettings`
+    - aplica automáticamente `isFreeShipping` cuando `freeShippingEnabled = true` y el total supera `freeShippingThreshold`
+    - permite `forceFreeShipping`
+  - `updateShipment` con transaccionalidad y respeto del estado final (`DELIVERED`/`CANCELLED`).
+  - `changeShipmentStatus` con flujo de transiciones estricto (`PENDING → PREPARING → READY → SHIPPED → DELIVERED`, con `CANCELLED` permitido hasta antes de `DELIVERED`).
+  - `cancelShipment` con motivo opcional.
+  - `listShipments`, `getShipmentDetail`, `getEligibleOrdersForShipment`, `getOrderShipmentLink`, `listCustomerShipments`.
+- Server actions (`actions/shipments.ts`):
+  - `createShipmentAction`, `updateShipmentAction`, `changeShipmentStatusAction`, `cancelShipmentAction`.
+  - `listShipmentsAction`, `getShipmentDetailAction`.
+  - `searchCustomersForShipmentAction`, `getEligibleOrdersForShipmentAction`.
+  - `getOrderShipmentLinkAction`, `listCustomerShipmentsAction`.
+  - Validadores Zod para `CreateSchema` y `UpdateSchema`.
+- UI:
+  - Página `/envios` con TanStack Table, búsqueda, filtros por estado y paginación server-side.
+  - Página `/envios/nuevo` con buscador asíncrono de clienta, listado de pedidos pagados elegibles, método, costo, override de envío gratis, agencia, tracking, dirección/distrito/referencia, notas y creación transaccional.
+  - Página `/envios/[id]` con detalle de pedidos incluidos, dirección snapshot, agencia/tracking, costo, estado, timeline y acciones de cambio de estado y cancelación.
+  - Componentes: `ShipmentStatusBadge`, `ShipmentsTable`, `CreateShipmentForm`, `ShipmentStatusActions`.
+  - Botón "Crear envío con este pedido" en `app/(dashboard)/pedidos/[id]/page.tsx` (sólo para `ADMIN`/`DISPATCH` y pedidos `PAID` sin envío activo).
+  - Link al envío desde el detalle de pedido cuando pertenece a uno activo.
+  - `CustomerShipmentsHistory` en el detalle de clienta con todos los envíos y sus pedidos incluidos.
+
+### Cambiado
+- `app/(dashboard)/pedidos/[id]/page.tsx` ahora exige sesión de usuario y muestra el rol para condicionar el botón de envío.
+- `actions/orders.ts`: `getOrderDetailAction` incluye `shipmentOrder.shipment` para mostrar el envío en la UI.
+
+### Seguridad
+- `ShipmentOrder.orderId` con `@@unique` evita que un pedido pertenezca a dos envíos activos.
+- `createShipment` exige que los pedidos estén en `PAID` y que no estén ya en un envío activo.
+- `changeShipmentStatus` bloquea transiciones inválidas (por ejemplo, no se puede volver de `DELIVERED` o `CANCELLED`).
+- Cancelación persiste motivo en `notes` para auditoría.
+- Doble creación concurrente protegida con transacción `Serializable`.
+
+## [0.10.0] - Sprint 9 - Créditos, sobrepagos y reservas vencidas
+
+### Añadido
+- Módulo de **Créditos** con historial por clienta, aplicación manual a pedidos y registro de devoluciones.
+- Módulo de **Reservas vencidas** con panel de cancelación y liberación de stock.
+- Modelos Prisma:
+  - `CustomerCredit` con `origin` (`OVERPAYMENT`, `MANUAL`, `REFUND`), `status` (`AVAILABLE`, `PARTIALLY_USED`, `USED`, `REFUNDED`, `VOIDED`), `amount`, `availableAmount` y auditoría (`createdById`, `refundedById`, `refundedAt`, `refundReason`).
+  - `CustomerCreditApplication` para trazabilidad de aplicaciones de crédito a pedidos.
+  - Auditoría en `Order` para vencimientos: `expiredAt`, `expiredById`.
+  - Nueva variante de inventario `EXPIRE` en `InventoryMovementType`.
+- `lib/credits.ts` con motor transaccional:
+  - `createOverpaymentCredit` (gateado por `allowOverpaymentCredit`).
+  - `createManualCredit` para registrar créditos administrativos.
+  - `applyCreditToOrder` aplica manualmente a un pedido de la misma clienta, recalcula `validatedPaid`, `balance` y `status`; si el pedido queda `PAID` mueve stock de `reserved` a `sold` con movimiento `SALE`.
+  - `refundCredit` exige motivo, gateado por `allowRefund`.
+  - `getCustomerAvailableCredit` y `listCustomerCredits` para vistas.
+- `lib/order-expiry.ts` con:
+  - `listExpiredReservations` (filtra por `expiresAt < now` y estados elegibles).
+  - `listReservationsNearExpiry` (panel opcional Sprint 11).
+  - `expireReservation` en transacción `Serializable`: libera stock reservado (`InventoryMovement` con tipo `EXPIRE`), rechaza pagos `PENDING` del pedido y deja el pedido en `EXPIRED` con `balance = 0`.
+- `lib/payments.ts` endurecido:
+  - Valida que cada aplicación no supere el `balance` del pedido.
+  - Detecta excedente sobre los saldos aplicados.
+  - `validatePayment` acepta `excessTreatment` (`CREDIT` / `REFUND` / `REJECT`). Si hay excedente y la política lo permite, crea el `CustomerCredit` o el registro de devolución dentro de la misma transacción.
+- `lib/customer-helpers.ts`: `getCustomerCredit` ahora suma `availableAmount` real de créditos disponibles y parcialmente usados.
+- Server actions:
+  - `actions/credits.ts`: `createManualCreditAction`, `applyCreditToOrderAction`, `refundCreditAction`, `getCustomerCreditsAction`, `getCustomerAvailableCreditAction`, `getCreditDetailAction`, `searchOrdersForCreditAction`.
+  - `actions/order-expiry.ts`: `listExpiredReservationsAction`, `listReservationsNearExpiryAction`, `expireReservationAction`.
+  - `actions/payments.ts`: `validatePaymentAction` admite `excessTreatment` y `excessNotes`.
+- UI:
+  - Página `/pedidos/vencidos` con listado paginado y formulario para cancelar reservas vencidas (libera stock y rechaza pagos pendientes).
+  - Aviso en `/pedidos` cuando hay reservas vencidas.
+  - Entrada en `sidebar.tsx` para "Reservas vencidas" (módulo Sprint 9, roles `ADMIN`/`SELLER`).
+  - `app/(dashboard)/clientes/[id]/page.tsx` ahora muestra `CustomerCreditsHistory` con todos los créditos de la clienta, sus aplicaciones y motivos de devolución.
+  - `app/(dashboard)/pagos/[id]/page.tsx` permite elegir tratamiento del excedente (no permitir / crédito / devolución) según `BusinessSettings`.
+  - Componentes: `ExpireReservationForm`, `CustomerCreditsHistory`.
+
+### Cambiado
+- `Movement` y `MovementRow` aceptan el nuevo tipo `EXPIRE`.
+- `lib/inventory.ts`: `Movement` exporta la unión con `EXPIRE`.
+- `lib/order-expiry.ts` libera stock sin tocar `released` cuando `reservedStock` ya era 0 (defensa frente a doble cancelación).
+- `lib/orders.ts` se mantiene sin cambios (la fecha de expiración se sigue calculando con `reservationDays`).
+- `PaymentError` añade códigos `ORDER_OVERPAYMENT`, `OVERPAYMENT_NOT_ALLOWED`, `REFUND_NOT_ALLOWED`.
+
+### Seguridad
+- Aplicación manual de crédito a pedido cancelado o vencido queda bloqueada.
+- Doble cancelación concurrente protegida con transacción `Serializable`.
+- Sobrepago no permitido si `allowOverpaymentCredit = false`; devolución no permitida si `allowRefund = false`.
+- Aplicación de crédito a pedido de otra clienta bloqueada con `CUSTOMER_MISMATCH`.
+
+## [0.9.0] - Sprint 8 - Pagos, capturas y aplicación a pedidos
+
+### Añadido
+- Módulo de **Pagos** con listado, búsqueda, filtros por estado y paginación server-side.
+- Modelos Prisma:
+  - `PaymentApplication` (relación N:N entre `Payment` y `Order` con `amount`).
+  - Auditoría en `Payment`: `validatedAt`, `validatedById`, `rejectedAt`, `rejectedById`, `rejectionReason`.
+  - Nuevas relaciones inversas en `User` (`validatedPayments`, `rejectedPayments`).
+- `lib/payments.ts` con motor transaccional:
+  - `createPayment` con aplicaciones a uno o varios pedidos de la misma clienta.
+  - `setPaymentApplications` para editar aplicaciones antes de validar.
+  - `validatePayment` ejecuta en transacción `Serializable`: actualiza `validatedPaid`, recalcula `balance` y `status` (`RESERVED` / `PARTIALLY_PAID` / `PAID`), y mueve stock de `reserved` a `sold` cuando el pedido queda `PAID`.
+  - `rejectPayment` exige motivo (mínimo 5 caracteres) y no altera saldos ni stock.
+  - Validación de suma aplicada = monto del pago antes de validar (sin sobrepagos automáticos en MVP).
+  - Validación de que todos los pedidos aplicados pertenecen a la misma clienta.
+- `lib/inventory.ts`: `confirmSaleStock` y `releaseStock` aceptan `tx` externo para integrarse en la transacción de validación.
+- `lib/permissions.ts`: `canValidatePayments` y `requirePaymentValidator` leen desde `BusinessSettings.paymentValidatorRoles`. Endurecimiento por configuración.
+- Server actions de pagos:
+  - `listPaymentsAction`, `getPaymentDetailAction`, `searchCustomersForPaymentAction`, `searchOrdersForPaymentAction`.
+  - `createPaymentAction` con validaciones Zod y subida de múltiples capturas a Vercel Blob.
+  - `validatePaymentAction`, `rejectPaymentAction`, `updatePaymentApplicationsAction`.
+- Validadores Zod para pagos y aplicaciones.
+- UI de pagos:
+  - Página `/pagos` con tabla TanStack Table, búsqueda y filtros.
+  - Página `/pagos/nuevo` con buscador asíncrono de clienta, selección de pedidos abiertos, monto, método, número de operación, notas y carga de capturas múltiples.
+  - Página `/pagos/[id]` con detalle completo: cliente, monto, aplicaciones, capturas, auditoría y acciones de validar / rechazar (sólo si el rol del usuario está en `paymentValidatorRoles`).
+- Componentes:
+  - `PaymentStatusBadge` con etiquetas PENDIENTE / VALIDADO / RECHAZADO.
+  - `PaymentsTable` (TanStack Table, paginación manual, búsqueda server-side).
+  - `CreatePaymentForm` (cliente) con autoservicio de aplicaciones y suma visible.
+  - `PaymentActions` (cliente) con `useActionState` y flujo de rechazo con motivo.
+- `app/(dashboard)/pedidos/[id]/page.tsx` ahora enlaza al detalle de pago y muestra el `PaymentStatusBadge` correspondiente. Los pagos se enlazan al detalle.
+- `getCustomerDebt` ahora suma saldos pendientes reales de pedidos activos.
+- `getLiveMetrics` ahora calcula `soldAmount`, `collectedAmount` y `pendingAmount` desde pedidos y pagos.
+- Venta rápida:
+  - `QuickSaleForm` usa métodos de pago habilitados en `BusinessSettings`.
+  - Capturas múltiples (`<input type="file" multiple>`).
+  - `lib/sales.ts` ahora crea el `Payment` y `PaymentApplication` a través del motor compartido en `lib/payments.ts`.
+
+### Cambiado
+- `app/(dashboard)/pagos/page.tsx` deja de ser placeholder y usa datos reales.
+- `app/(dashboard)/dashboard/page.tsx` consume la nueva versión asíncrona de `canValidatePayments`.
+- `actions/orders.ts`: el detalle de pedido ahora incluye `applications` y `receipts` por pago.
+- `components/dashboard/customer-summary.tsx` ya muestra la deuda acumulada real.
+
+### Seguridad
+- Validación de pagos limitada a roles configurados (RNF-S08-04).
+- Capturas no validan automáticamente el pago (RNF-S08-02).
+- Validación, recálculo de saldos y movimiento de stock en una sola transacción `Serializable` (RNF-S08-03).
+
 ## [0.8.0] - Sprint 7 - Pedidos, reservas y venta rápida
 
 ### Añadido

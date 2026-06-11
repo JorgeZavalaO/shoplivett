@@ -1,5 +1,10 @@
+import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
+
 import { listOrdersAction } from "@/actions/orders";
+import { listExpiredReservationsAction } from "@/actions/order-expiry";
 import { OrdersTable } from "@/components/tables/orders-table";
+import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +32,7 @@ export default async function PedidosPage({
     page,
     perPage: 20,
   });
+  const expired = await listExpiredReservationsAction({ page: 1, perPage: 1 });
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -37,6 +43,24 @@ export default async function PedidosPage({
           número o clienta.
         </p>
       </div>
+      {expired.total > 0 ? (
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="size-4" />
+            <span>
+              Hay {expired.total} reserva(s) vencida(s) que requieren cancelación
+              para liberar stock.
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            render={
+              <Link href="/pedidos/vencidos">Ir a reservas vencidas</Link>
+            }
+          />
+        </div>
+      ) : null}
       <OrdersTable
         items={result.items}
         total={result.total}

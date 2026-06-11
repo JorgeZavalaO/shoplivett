@@ -8,6 +8,15 @@ import type { ZodIssue } from "zod";
 import { requireUser } from "@/lib/permissions";
 import { getPrisma } from "@/lib/prisma";
 import { normalizeForSearch, normalizeWhatsApp } from "@/lib/phone";
+
+export async function getCustomerAction(customerId: string) {
+  await requireUser();
+  if (!customerId) return null;
+  return getPrisma().customer.findUnique({
+    where: { id: customerId },
+    select: { id: true, name: true, whatsapp: true },
+  });
+}
 import {
   CustomerCreateSchema,
   CustomerUpdateSchema,
