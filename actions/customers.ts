@@ -5,12 +5,13 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import type { ZodIssue } from "zod";
 
-import { requireUser } from "@/lib/permissions";
+import { requireRole, getCurrentUser } from "@/lib/permissions";
+import { auditAfter, auditInTx } from "@/lib/audit";
 import { getPrisma } from "@/lib/prisma";
 import { normalizeForSearch, normalizeWhatsApp } from "@/lib/phone";
 
 export async function getCustomerAction(customerId: string) {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   if (!customerId) return null;
   return getPrisma().customer.findUnique({
     where: { id: customerId },
@@ -58,7 +59,7 @@ export async function createCustomerAction(
   _prev: CustomerActionResult | undefined,
   formData: FormData,
 ): Promise<CustomerActionResult> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
 
   const parsed = CustomerCreateSchema.safeParse(readForm(formData));
   if (!parsed.success) {
@@ -89,19 +90,35 @@ export async function createCustomerAction(
     };
   }
 
-  const customer = await prisma.customer.create({
-    data: {
-      name: parsed.data.name,
-      searchName: normalizeForSearch(parsed.data.name),
-      whatsapp,
-      document: parsed.data.document ?? null,
-      address: parsed.data.address ?? null,
-      district: parsed.data.district ?? null,
-      reference: parsed.data.reference ?? null,
-      channel: parsed.data.channel ?? null,
-      notes: parsed.data.notes ?? null,
-    },
-  });
+  let customer: { id: string };
+  try {
+    customer = await prisma.customer.create({
+      data: {
+        name: parsed.data.name,
+        searchName: normalizeForSearch(parsed.data.name),
+        whatsapp,
+        document: parsed.data.document ?? null,
+        address: parsed.data.address ?? null,
+        district: parsed.data.district ?? null,
+        reference: parsed.data.reference ?? null,
+        channel: parsed.data.channel ?? null,
+        notes: parsed.data.notes ?? null,
+      },
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return {
+        ok: false,
+        message: "Ya existe una clienta con ese WhatsApp.",
+        fieldErrors: { whatsapp: "Este WhatsApp ya está registrado." },
+        whatsappNormalized: whatsapp,
+      };
+    }
+    throw error;
+  }
 
   revalidatePath("/clientes");
   redirect(`/clientes/${customer.id}`);
@@ -112,7 +129,7 @@ export async function updateCustomerAction(
   _prev: CustomerActionResult | undefined,
   formData: FormData,
 ): Promise<CustomerActionResult> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   if (!customerId) {
     return { ok: false, message: "Falta el identificador de la clienta." };
   }
@@ -153,21 +170,36 @@ export async function updateCustomerAction(
     }
   }
 
-  await prisma.customer.update({
-    where: { id: customerId },
-    data: {
-      name: parsed.data.name,
-      searchName: normalizeForSearch(parsed.data.name),
-      whatsapp,
-      document: parsed.data.document ?? null,
-      address: parsed.data.address ?? null,
-      district: parsed.data.district ?? null,
-      reference: parsed.data.reference ?? null,
-      channel: parsed.data.channel ?? null,
-      notes: parsed.data.notes ?? null,
-      ...(parsed.data.status ? { status: parsed.data.status } : {}),
-    },
-  });
+  try {
+    await prisma.customer.update({
+      where: { id: customerId },
+      data: {
+        name: parsed.data.name,
+        searchName: normalizeForSearch(parsed.data.name),
+        whatsapp,
+        document: parsed.data.document ?? null,
+        address: parsed.data.address ?? null,
+        district: parsed.data.district ?? null,
+        reference: parsed.data.reference ?? null,
+        channel: parsed.data.channel ?? null,
+        notes: parsed.data.notes ?? null,
+        ...(parsed.data.status ? { status: parsed.data.status } : {}),
+      },
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return {
+        ok: false,
+        message: "Ya existe otra clienta con ese WhatsApp.",
+        fieldErrors: { whatsapp: "Este WhatsApp ya está registrado." },
+        whatsappNormalized: whatsapp,
+      };
+    }
+    throw error;
+  }
 
   revalidatePath("/clientes");
   revalidatePath(`/clientes/${customerId}`);
@@ -178,13 +210,31 @@ export async function setCustomerStatusAction(
   customerId: string,
   status: "ACTIVE" | "FREQUENT" | "RISKY" | "BLOCKED",
 ): Promise<void> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   if (!customerId) return;
 
   const prisma = getPrisma();
-  await prisma.customer.update({
-    where: { id: customerId },
-    data: { status },
+  const user = await getCurrentUser();
+  await prisma.$transaction(async (tx) => {
+    const previous = await tx.customer.findUnique({
+      where: { id: customerId },
+      select: { status: true },
+    });
+    if (!previous) return;
+    if (previous.status === status) return;
+    await tx.customer.update({
+      where: { id: customerId },
+      data: { status },
+    });
+    await auditInTx(tx, user?.id ?? null, {
+      action: "CUSTOMER_STATUS_CHANGED",
+      entity: "Customer",
+      entityId: customerId,
+      metadata: {
+        previousStatus: previous.status,
+        nextStatus: status,
+      },
+    });
   });
   revalidatePath(`/clientes/${customerId}`);
   revalidatePath("/clientes");
@@ -193,12 +243,19 @@ export async function setCustomerStatusAction(
 export async function deactivateCustomerAction(
   customerId: string,
 ): Promise<void> {
-  await requireUser();
+  await requireRole("ADMIN");
   if (!customerId) return;
   const prisma = getPrisma();
   await prisma.customer.update({
     where: { id: customerId },
     data: { isActive: false },
+  });
+  const user = await getCurrentUser();
+  auditAfter(user?.id ?? null, {
+    action: "CUSTOMER_DEACTIVATED",
+    entity: "Customer",
+    entityId: customerId,
+    metadata: { kind: "soft_delete" },
   });
   revalidatePath("/clientes");
   revalidatePath(`/clientes/${customerId}`);
@@ -210,7 +267,7 @@ export async function searchCustomersAction(
   page = 1,
   perPage = 20,
 ): Promise<CustomerListResult> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   const safePage = Math.max(1, Math.floor(page));
   const safePerPage = Math.min(100, Math.max(1, Math.floor(perPage)));
   const trimmed = query.trim();

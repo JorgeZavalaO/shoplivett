@@ -4,12 +4,13 @@ import { useActionState, useCallback, useMemo, useState, useTransition } from "r
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, Search, X } from "lucide-react";
+import { Loader2, Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { AsyncSearchList } from "@/components/ui/async-search-list";
 import { formatWhatsAppDisplay } from "@/lib/phone";
 import { PAYMENT_METHOD_LABELS } from "@/lib/settings-defaults";
 import { cn } from "@/lib/utils";
@@ -61,17 +62,30 @@ export function CreatePaymentForm({ enabledMethods }: Props) {
   const [customerId, setCustomerId] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerResults, setCustomerResults] = useState<Customer[]>([]);
+  const [customerLoading, setCustomerLoading] = useState(false);
+  const [customerError, setCustomerError] = useState<string | null>(null);
   const [, searchCustomer] = useTransition();
   const searchCust = useCallback(
-    (q: string) => {
+    async (q: string) => {
       setCustomerQuery(q);
       if (q.length < 2) {
         setCustomerResults([]);
+        setCustomerError(null);
         return;
       }
+      setCustomerLoading(true);
+      setCustomerError(null);
       searchCustomer(async () => {
-        const res = await searchCustomersForPaymentAction(q);
-        setCustomerResults(res);
+        try {
+          const res = await searchCustomersForPaymentAction(q);
+          setCustomerResults(res);
+        } catch (err) {
+          console.error(err);
+          setCustomerError("No pudimos buscar clientas. Intenta nuevamente.");
+          setCustomerResults([]);
+        } finally {
+          setCustomerLoading(false);
+        }
       });
     },
     [searchCustomer],
@@ -79,17 +93,30 @@ export function CreatePaymentForm({ enabledMethods }: Props) {
 
   const [orderQuery, setOrderQuery] = useState("");
   const [orderResults, setOrderResults] = useState<OrderOption[]>([]);
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
   const [, searchOrders] = useTransition();
   const searchOrd = useCallback(
-    (q: string) => {
+    async (q: string) => {
       setOrderQuery(q);
       if (!customerId) {
         setOrderResults([]);
+        setOrderError(null);
         return;
       }
+      setOrderLoading(true);
+      setOrderError(null);
       searchOrders(async () => {
-        const res = await searchOrdersForPaymentAction(q, customerId);
-        setOrderResults(res);
+        try {
+          const res = await searchOrdersForPaymentAction(q, customerId);
+          setOrderResults(res);
+        } catch (err) {
+          console.error(err);
+          setOrderError("No pudimos buscar pedidos. Intenta nuevamente.");
+          setOrderResults([]);
+        } finally {
+          setOrderLoading(false);
+        }
       });
     },
     [customerId, searchOrders],
@@ -177,39 +204,33 @@ export function CreatePaymentForm({ enabledMethods }: Props) {
                 </button>
               </div>
             ) : (
-              <>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar clienta por nombre o WhatsApp…"
-                    className="pl-9"
-                    value={customerQuery}
-                    onChange={(e) => searchCust(e.target.value)}
-                  />
-                </div>
-                {customerResults.length > 0 ? (
-                  <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-card">
-                    {customerResults.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                        onClick={() => {
-                          setCustomerId(c.id);
-                          setCustomerName(c.name);
-                          setCustomerQuery("");
-                          setCustomerResults([]);
-                        }}
-                      >
-                        <span className="font-medium">{c.name}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          {formatWhatsAppDisplay(c.whatsapp)}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </>
+              <AsyncSearchList
+                value={customerQuery}
+                onValueChange={setCustomerQuery}
+                onSearch={(q) => void searchCust(q)}
+                isLoading={customerLoading}
+                isQueryTooShort={customerQuery.length > 0 && customerQuery.length < 2}
+                results={customerResults}
+                errorMessage={customerError}
+                placeholder="Buscar clienta por nombre o WhatsApp…"
+                emptyMessage="Empieza a escribir (2 letras) para buscar."
+                noResultsMessage="No encontramos clientas con ese criterio."
+                getKey={(c) => c.id}
+                onSelectItem={(c) => {
+                  setCustomerId(c.id);
+                  setCustomerName(c.name);
+                  setCustomerQuery("");
+                  setCustomerResults([]);
+                }}
+                renderItem={(c) => (
+                  <>
+                    <span className="font-medium">{c.name}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {formatWhatsAppDisplay(c.whatsapp)}
+                    </span>
+                  </>
+                )}
+              />
             )}
             {state.fieldErrors?.customerId ? (
               <p className="text-xs text-destructive">{state.fieldErrors.customerId}</p>
@@ -227,39 +248,33 @@ export function CreatePaymentForm({ enabledMethods }: Props) {
                 Selecciona una clienta para ver sus pedidos con saldo pendiente.
               </p>
             ) : (
-              <>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar pedido por número…"
-                    className="pl-9"
-                    value={orderQuery}
-                    onChange={(e) => searchOrd(e.target.value)}
-                  />
-                </div>
-                {orderResults.length > 0 ? (
-                  <div className="max-h-60 overflow-y-auto rounded-lg border border-border bg-card">
-                    {orderResults
-                      .filter((o) => !applications.some((a) => a.orderId === o.id))
-                      .map((o) => (
-                        <button
-                          key={o.id}
-                          type="button"
-                          className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-muted"
-                          onClick={() => addOrder(o)}
-                        >
-                          <div>
-                            <p className="font-mono text-xs font-medium">{o.orderNumber}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Saldo: S/ {o.balance}
-                            </p>
-                          </div>
-                          <Plus className="size-4 text-muted-foreground" />
-                        </button>
-                      ))}
+              <AsyncSearchList
+                value={orderQuery}
+                onValueChange={setOrderQuery}
+                onSearch={(q) => void searchOrd(q)}
+                isLoading={orderLoading}
+                isQueryTooShort={orderQuery.length > 0 && orderQuery.length < 2}
+                results={orderResults.filter(
+                  (o) => !applications.some((a) => a.orderId === o.id),
+                )}
+                errorMessage={orderError}
+                placeholder="Buscar pedido por número…"
+                emptyMessage="Empieza a escribir (2 letras) para buscar pedidos."
+                noResultsMessage="No hay pedidos con saldo para esta clienta."
+                getKey={(o) => o.id}
+                onSelectItem={(o) => addOrder(o)}
+                renderItem={(o) => (
+                  <div className="flex w-full items-center justify-between">
+                    <div>
+                      <p className="font-mono text-xs font-medium">{o.orderNumber}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Saldo: S/ {o.balance}
+                      </p>
+                    </div>
+                    <Plus className="size-4 text-muted-foreground" />
                   </div>
-                ) : null}
-              </>
+                )}
+              />
             )}
 
             {applications.length > 0 ? (

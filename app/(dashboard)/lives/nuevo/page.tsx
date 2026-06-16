@@ -2,7 +2,6 @@ import { createLiveAction } from "@/actions/lives";
 import { LiveForm } from "@/components/forms/live-form";
 import { getPrisma } from "@/lib/prisma";
 
-export const dynamic = "force-dynamic";
 
 export default async function NuevoLivePage() {
   const responsibles = await getPrisma().user.findMany({

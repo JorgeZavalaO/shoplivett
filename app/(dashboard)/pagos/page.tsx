@@ -1,12 +1,14 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Plus } from "lucide-react";
 
 import { listPaymentsAction } from "@/actions/payments";
 import { PaymentsTable } from "@/components/tables/payments-table";
+
+export const metadata: Metadata = { title: "Pagos" };
 import { Button } from "@/components/ui/button";
 import { requireRole } from "@/lib/permissions";
 
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{
   q?: string | string[];
@@ -57,7 +59,7 @@ export default async function PagosPage({
         <Button render={<Link href="/pagos/nuevo"><Plus className="size-4" /> Registrar pago</Link>} />
       </div>
       <PaymentsTable
-        items={result.items as never}
+        items={result.items}
         total={result.total}
         page={result.page}
         perPage={result.perPage}

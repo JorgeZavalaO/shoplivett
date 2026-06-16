@@ -1,17 +1,28 @@
 {
   "name": "shoplivett",
-  "version": "0.11.0",
+  "version": "0.16.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e/tsconfig.json",
+    "verify": "pnpm typecheck && pnpm lint && pnpm build",
+    "test:e2e": "playwright test",
+    "test:e2e:dev": "cross-env E2E_START_MODE=dev playwright test",
+    "test:e2e:env": "cross-env E2E_ENV_FILE=.env.e2e playwright test",
+    "test:e2e:install": "playwright install --with-deps chromium",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts"
+  },
+  "packageManager": "pnpm@10.0.0",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -45,11 +56,13 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^3.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv-cli": "^11.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",

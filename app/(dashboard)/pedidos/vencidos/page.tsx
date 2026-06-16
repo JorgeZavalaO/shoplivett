@@ -15,8 +15,8 @@ import { listExpiredReservationsAction } from "@/actions/order-expiry";
 import { requireRole } from "@/lib/permissions";
 import { formatWhatsAppDisplay } from "@/lib/phone";
 import { ExpireReservationForm } from "@/components/forms/expire-reservation-form";
+import { WhatsAppActions } from "@/components/whatsapp/whatsapp-actions";
 
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{
   q?: string | string[];
@@ -122,8 +122,30 @@ export default async function PedidosVencidosPage({
                     </span>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <ExpireReservationForm orderId={o.id} />
+                <CardContent className="flex flex-col gap-4">
+                  <ExpireReservationForm orderId={o.id} orderNumber={o.orderNumber} />
+                  <div className="rounded-md border border-dashed border-border p-3">
+                    <WhatsAppActions
+                      customer={{
+                        name: o.customer.name,
+                        whatsapp: o.customer.whatsapp,
+                      }}
+                      context={{
+                        hasOrder: true,
+                        hasPayment: false,
+                        hasShipment: false,
+                        hasCredit: false,
+                      }}
+                      order={{
+                        orderNumber: o.orderNumber,
+                        total: o.total,
+                        balance: o.balance,
+                        expiresAt: o.expiresAt,
+                        status: "EXPIRED",
+                      }}
+                      defaultTemplate="RESERVATION_EXPIRED"
+                    />
+                  </div>
                 </CardContent>
               </Card>
             );

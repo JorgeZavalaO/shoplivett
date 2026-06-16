@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { type ShipmentStatus } from "@prisma/client";
 
-import { getCurrentUser, requireRole, requireUser } from "@/lib/permissions";
+import { getCurrentUser, requireRole } from "@/lib/permissions";
 import {
   cancelShipment,
   changeShipmentStatus,
@@ -123,6 +123,7 @@ export async function createShipmentAction(
       referenceSnapshot: parsed.data.referenceSnapshot || null,
       notes: parsed.data.notes || null,
       createdById: user?.id ?? null,
+      actorId: user?.id ?? null,
     });
     revalidatePath("/envios");
     revalidatePath(`/envios/${result.shipmentId}`);
@@ -198,6 +199,7 @@ export async function updateShipmentAction(
       referenceSnapshot: parsed.data.referenceSnapshot,
       notes: parsed.data.notes,
       updatedById: user?.id ?? null,
+      actorId: user?.id ?? null,
     });
     revalidatePath("/envios");
     revalidatePath(`/envios/${parsed.data.shipmentId}`);
@@ -232,9 +234,11 @@ export async function changeShipmentStatusAction(
     };
   }
   try {
+    const user = await getCurrentUser();
     await changeShipmentStatus({
       shipmentId: parsed.data.shipmentId,
       to: parsed.data.to as ShipmentStatus,
+      actorId: user?.id ?? null,
     });
     revalidatePath("/envios");
     revalidatePath(`/envios/${parsed.data.shipmentId}`);
@@ -269,9 +273,11 @@ export async function cancelShipmentAction(
     };
   }
   try {
+    const user = await getCurrentUser();
     await cancelShipment({
       shipmentId: parsed.data.shipmentId,
       reason: parsed.data.reason || null,
+      actorId: user?.id ?? null,
     });
     revalidatePath("/envios");
     revalidatePath(`/envios/${parsed.data.shipmentId}`);
@@ -329,13 +335,13 @@ export async function getEligibleOrdersForShipmentAction(
 }
 
 export async function getOrderShipmentLinkAction(orderId: string) {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER", "DISPATCH"]);
   if (!orderId) return null;
   return getOrderShipmentLink(orderId);
 }
 
 export async function listCustomerShipmentsAction(customerId: string) {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER", "DISPATCH"]);
   if (!customerId) return [];
   return listCustomerShipments(customerId);
 }

@@ -1,14 +1,13 @@
 "use client";
 
 import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
-import Link from "next/link";
-import { Loader2, Save } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { FieldError } from "@/components/ui/field-error";
+import { FormMessage } from "@/components/ui/form-message";
+import { CancelLink } from "@/components/ui/cancel-link";
 import type { ProductActionResult } from "@/actions/products";
 
 type CategoryOption = {
@@ -34,29 +33,6 @@ type ProductFormProps = {
 };
 
 const initialState: ProductActionResult = { ok: false };
-
-function SubmitButton({ label }: { label: string }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" disabled={pending} className="min-w-40">
-      {pending ? (
-        <>
-          <Loader2 className="size-4 animate-spin" /> Guardando…
-        </>
-      ) : (
-        <>
-          <Save className="size-4" /> {label}
-        </>
-      )}
-    </Button>
-  );
-}
-
-function CancelLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Button variant="ghost" render={<Link href={href}>{children}</Link>} />
-  );
-}
 
 export function ProductForm({
   mode,
@@ -92,9 +68,7 @@ export function ProductForm({
               placeholder="Cartera Valentina"
               aria-invalid={Boolean(state.fieldErrors?.name)}
             />
-            {state.fieldErrors?.name ? (
-              <p className="text-xs text-destructive">{state.fieldErrors.name}</p>
-            ) : null}
+            <FieldError message={state.fieldErrors?.name} />
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -116,9 +90,7 @@ export function ProductForm({
                 </option>
               ))}
             </select>
-            {state.fieldErrors?.categoryId ? (
-              <p className="text-xs text-destructive">{state.fieldErrors.categoryId}</p>
-            ) : null}
+            <FieldError message={state.fieldErrors?.categoryId} />
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -149,17 +121,9 @@ export function ProductForm({
       </Card>
 
       <div className="flex items-center justify-between gap-3">
-        <p
-          className={cn(
-            "text-sm",
-            state.ok ? "text-emerald-600" : "text-destructive",
-            !state.message && "text-transparent",
-          )}
-        >
-          {state.message ?? "·"}
-        </p>
+        <FormMessage ok={state.ok} message={state.message} />
         <div className="flex items-center gap-2">
-          <CancelLink href={cancelHref}>Cancelar</CancelLink>
+          <CancelLink href={cancelHref} />
           <SubmitButton label={mode === "create" ? "Crear producto" : "Guardar cambios"} />
         </div>
       </div>

@@ -1,10 +1,11 @@
 import { CategoryForm } from "@/components/forms/category-form";
 import { createCategoryAction } from "@/actions/categories";
 import type { CategoryActionResult } from "@/actions/categories";
+import { requireRole } from "@/lib/permissions";
 
-export const dynamic = "force-dynamic";
 
-export default function NuevaCategoriaPage() {
+export default async function NuevaCategoriaPage() {
+  await requireRole(["ADMIN", "SELLER"]);
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       <div>

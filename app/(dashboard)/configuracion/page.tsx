@@ -1,10 +1,12 @@
+import type { Metadata } from "next";
 import { Sparkles } from "lucide-react";
 
 import { requireRole } from "@/lib/permissions";
 import { getSettings } from "@/lib/settings";
 import { SettingsForm } from "@/components/forms/settings-form";
 
-export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Configuración" };
+
 
 function formatDecimal(value: unknown): string {
   const n = Number(value?.toString?.() ?? value);

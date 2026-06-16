@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 
-import { requireUser } from "@/lib/permissions";
+import { requireRole } from "@/lib/permissions";
 import { getPrisma } from "@/lib/prisma";
 import { ensureUniqueSlug, slugify } from "@/lib/category-helpers";
 import {
@@ -40,7 +40,7 @@ export async function createCategoryAction(
   _prev: CategoryActionResult | undefined,
   formData: FormData,
 ): Promise<CategoryActionResult> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   const parsed = CategoryCreateSchema.safeParse(readForm(formData));
   if (!parsed.success) {
     return {
@@ -80,7 +80,7 @@ export async function updateCategoryAction(
   _prev: CategoryActionResult | undefined,
   formData: FormData,
 ): Promise<CategoryActionResult> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   if (!categoryId) return { ok: false, message: "Falta el identificador." };
 
   const raw = {
@@ -134,7 +134,7 @@ export async function setCategoryActiveAction(
   categoryId: string,
   isActive: boolean,
 ): Promise<void> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   if (!categoryId) return;
   const prisma = getPrisma();
   await prisma.category.update({
@@ -145,7 +145,7 @@ export async function setCategoryActiveAction(
 }
 
 export async function listCategoriesAction() {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   const prisma = getPrisma();
   return prisma.category.findMany({
     orderBy: { name: "asc" },

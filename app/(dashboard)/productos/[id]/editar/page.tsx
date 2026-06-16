@@ -5,12 +5,13 @@ import { ImageUpload } from "@/components/forms/image-upload";
 import { updateProductAction } from "@/actions/products";
 import { getPrisma } from "@/lib/prisma";
 import type { ProductActionResult } from "@/actions/products";
+import { requireRole } from "@/lib/permissions";
 
-export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string }>;
 
 export default async function EditarProductoPage({ params }: { params: Params }) {
+  await requireRole(["ADMIN", "SELLER"]);
   const { id } = await params;
   const prisma = getPrisma();
   const product = await prisma.product.findUnique({ where: { id } });

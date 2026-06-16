@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { requireUser } from "@/lib/permissions";
+import { requireRole, getCurrentUser } from "@/lib/permissions";
 import { adjustStock, InventoryError } from "@/lib/inventory";
 import { InventoryAdjustSchema } from "@/lib/validations";
+import { auditAfter } from "@/lib/audit";
 
 export type InventoryAdjustActionResult = {
   ok: boolean;
@@ -37,7 +38,7 @@ export async function adjustStockAction(
   _prev: InventoryAdjustActionResult | undefined,
   formData: FormData,
 ): Promise<InventoryAdjustActionResult> {
-  await requireUser();
+  await requireRole("ADMIN");
   if (!variantId) return { ok: false, message: "Falta la variante." };
 
   const parsed = InventoryAdjustSchema.safeParse(readForm(formData));
@@ -50,11 +51,22 @@ export async function adjustStockAction(
   }
 
   try {
+    const user = await getCurrentUser();
     await adjustStock(
       variantId,
       parsed.data.signedQuantity,
       parsed.data.reason,
     );
+    auditAfter(user?.id ?? null, {
+      action: "INVENTORY_ADJUSTED",
+      entity: "ProductVariant",
+      entityId: variantId,
+      metadata: {
+        type: parsed.data.type,
+        signedQuantity: parsed.data.signedQuantity,
+        reason: parsed.data.reason,
+      },
+    });
     revalidatePath("/inventario");
     revalidatePath(`/inventario/${variantId}`);
     return { ok: true, message: "Stock ajustado correctamente." };
@@ -78,7 +90,7 @@ export async function getInventorySummaryAction(
   page = 1,
   perPage = 20,
 ) {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   const safePage = Math.max(1, Math.floor(page));
   const safePerPage = Math.min(100, Math.max(1, Math.floor(perPage)));
   const trimmed = query.trim();

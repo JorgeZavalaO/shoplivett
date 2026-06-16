@@ -4,12 +4,13 @@ import { CategoryForm } from "@/components/forms/category-form";
 import { updateCategoryAction } from "@/actions/categories";
 import { getPrisma } from "@/lib/prisma";
 import type { CategoryActionResult } from "@/actions/categories";
+import { requireRole } from "@/lib/permissions";
 
-export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string }>;
 
 export default async function EditarCategoriaPage({ params }: { params: Params }) {
+  await requireRole(["ADMIN", "SELLER"]);
   const { id } = await params;
   const category = await getPrisma().category.findUnique({ where: { id } });
   if (!category) notFound();

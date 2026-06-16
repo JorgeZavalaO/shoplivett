@@ -1,10 +1,11 @@
 import { CustomerForm } from "@/components/forms/customer-form";
 import { createCustomerAction } from "@/actions/customers";
 import type { CustomerActionResult } from "@/lib/customers-types";
+import { requireRole } from "@/lib/permissions";
 
-export const dynamic = "force-dynamic";
 
-export default function NuevaClientaPage() {
+export default async function NuevaClientaPage() {
+  await requireRole(["ADMIN", "SELLER"]);
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       <div>

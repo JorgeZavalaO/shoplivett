@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { requireRole } from "@/lib/permissions";
 import { getSettings } from "@/lib/settings";
 
-export const dynamic = "force-dynamic";
 
 export default async function NuevoPagoPage() {
   await requireRole(["ADMIN", "SELLER"]);

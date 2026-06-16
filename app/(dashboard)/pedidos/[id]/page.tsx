@@ -17,8 +17,12 @@ import { Separator } from "@/components/ui/separator";
 import { requireRole, requireUser } from "@/lib/permissions";
 import { formatWhatsAppDisplay } from "@/lib/phone";
 import { PAYMENT_METHOD_LABELS } from "@/lib/settings-defaults";
+import {
+  WhatsAppActions,
+} from "@/components/whatsapp/whatsapp-actions";
+import { buildWhatsappLink, buildWhatsappMessage } from "@/lib/whatsapp";
+import { MessageCircle } from "lucide-react";
 
-export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string }>;
 
@@ -33,6 +37,52 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
     (user.role === "ADMIN" || user.role === "DISPATCH") &&
     order.status === "PAID" &&
     (!order.shipmentOrder || order.shipmentOrder.shipment.status === "CANCELLED");
+
+  const latestPayment = order.payments[0] ?? null;
+  const whatsappLink = buildWhatsappLink(
+    order.customer.whatsapp,
+    order.status === "PAID"
+      ? buildWhatsappMessage({
+          key: "PAYMENT_VALIDATED",
+          customer: { name: order.customer.name, whatsapp: order.customer.whatsapp },
+          order: {
+            orderNumber: order.orderNumber,
+            total: order.total.toString(),
+            validatedPaid: order.validatedPaid.toString(),
+            balance: order.balance.toString(),
+            expiresAt: order.expiresAt,
+            status: order.status,
+          },
+          payment: latestPayment
+            ? {
+                amount: latestPayment.amount.toString(),
+                method: latestPayment.method,
+                operationNumber: latestPayment.operationNumber,
+              }
+            : { amount: order.total.toString(), method: "OTHER" },
+        })
+      : buildWhatsappMessage({
+          key:
+            order.status === "PAYMENT_VALIDATION_PENDING"
+              ? "SEPARATION_PENDING_VALIDATION"
+              : order.status === "RESERVED" || order.status === "PARTIALLY_PAID"
+                ? "BALANCE_REMINDER"
+                : order.status === "EXPIRED"
+                  ? "RESERVATION_EXPIRED"
+                  : "BALANCE_REMINDER",
+          customer: { name: order.customer.name, whatsapp: order.customer.whatsapp },
+          order: {
+            orderNumber: order.orderNumber,
+            total: order.total.toString(),
+            validatedPaid: order.validatedPaid.toString(),
+            balance: order.balance.toString(),
+            expiresAt: order.expiresAt,
+            status: order.status,
+          },
+        }),
+  );
+  const hasContext =
+    whatsappLink !== null;
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -55,7 +105,7 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
           </Link>
           {" · "}
           <a
-            href={`https://wa.me/${order.customer.whatsapp.replace(/[^\d]/g, "")}`}
+            href={whatsappLink ?? `https://wa.me/${order.customer.whatsapp.replace(/[^\d]/g, "")}`}
             target="_blank"
             rel="noopener noreferrer"
             className="hover:underline"
@@ -95,6 +145,26 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
                 </Link>
               }
             />
+          </div>
+        ) : null}
+        {hasContext ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              render={
+                <a
+                  href={whatsappLink ?? "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <MessageCircle className="size-4" /> Abrir chat
+                </a>
+              }
+            />
+            <span className="text-xs text-muted-foreground">
+              Usa el panel de WhatsApp para enviar plantillas con variables.
+            </span>
           </div>
         ) : null}
       </div>
@@ -248,6 +318,60 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
           </CardContent>
         </Card>
       </div>
+
+      {hasContext ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Mensajes para WhatsApp</CardTitle>
+            <CardDescription>
+              Copia el mensaje o ábrelo directamente en WhatsApp Web. No se
+              envía automáticamente.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <WhatsAppActions
+              customer={{
+                name: order.customer.name,
+                whatsapp: order.customer.whatsapp,
+              }}
+              context={{
+                hasOrder: true,
+                hasPayment: Boolean(latestPayment),
+                hasShipment: Boolean(order.shipmentOrder && order.shipmentOrder.shipment.status !== "CANCELLED"),
+                hasCredit: false,
+              }}
+              order={{
+                orderNumber: order.orderNumber,
+                total: order.total.toString(),
+                validatedPaid: order.validatedPaid.toString(),
+                balance: order.balance.toString(),
+                expiresAt: order.expiresAt,
+                status: order.status,
+              }}
+              payment={
+                latestPayment
+                  ? {
+                      amount: latestPayment.amount.toString(),
+                      method: latestPayment.method,
+                      operationNumber: latestPayment.operationNumber,
+                    }
+                  : undefined
+              }
+              defaultTemplate={
+                order.status === "PAID"
+                  ? "PAYMENT_VALIDATED"
+                  : order.status === "PAYMENT_VALIDATION_PENDING"
+                    ? "SEPARATION_PENDING_VALIDATION"
+                    : order.status === "RESERVED" || order.status === "PARTIALLY_PAID"
+                      ? "BALANCE_REMINDER"
+                      : order.status === "EXPIRED"
+                        ? "RESERVATION_EXPIRED"
+                        : "BALANCE_REMINDER"
+              }
+            />
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

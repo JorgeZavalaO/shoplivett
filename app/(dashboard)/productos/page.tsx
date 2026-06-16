@@ -1,12 +1,15 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Plus, Tag } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ProductsTable } from "@/components/tables/products-table";
+
+export const metadata: Metadata = { title: "Productos" };
 import { searchProductsAction } from "@/actions/products";
 import { getPrisma } from "@/lib/prisma";
+import { requireRole } from "@/lib/permissions";
 
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{
   q?: string | string[];
@@ -19,6 +22,7 @@ export default async function ProductosPage({
 }: {
   searchParams: SearchParams;
 }) {
+  await requireRole(["ADMIN", "SELLER"]);
   const sp = await searchParams;
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q;
   const pageRaw = Array.isArray(sp.page) ? sp.page[0] : sp.page;

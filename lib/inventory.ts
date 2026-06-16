@@ -98,6 +98,7 @@ export async function getStockSummaries(
 type MovementOptions = {
   reason?: string;
   tx?: Tx;
+  movementType?: Movement["type"];
 };
 
 async function findVariantOrThrow(tx: Tx, variantId: string) {
@@ -199,6 +200,7 @@ export async function releaseStock(
       "INVALID_QUANTITY",
     );
   }
+  const movementType: Movement["type"] = opts.movementType ?? "RELEASE";
   const doRelease = async (tx: Tx) => {
     const v = await findVariantOrThrow(tx, variantId);
     if (v.reservedStock < quantity) {
@@ -212,7 +214,7 @@ export async function releaseStock(
       data: { reservedStock: { decrement: quantity } },
       select: { stock: true, reservedStock: true, soldStock: true },
     });
-    await recordMovement(tx, variantId, "RELEASE", quantity, opts.reason ?? null);
+    await recordMovement(tx, variantId, movementType, quantity, opts.reason ?? null);
     return toStockSummary(updated);
   };
   if (opts.tx) {

@@ -1,10 +1,14 @@
+import type { Metadata } from "next";
+
 import { QuickSaleForm } from "@/components/forms/quick-sale-form";
 import { getOpenLive } from "@/lib/live";
 import { getSettings } from "@/lib/settings";
+import { requireRole } from "@/lib/permissions";
 
-export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Venta rápida" };
 
 export default async function VentasPage() {
+  await requireRole(["ADMIN", "SELLER"]);
   const [openLive, settings] = await Promise.all([getOpenLive(), getSettings()]);
 
   return (

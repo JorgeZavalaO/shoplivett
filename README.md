@@ -6,19 +6,21 @@ Administrador interno de ventas para una tienda de carteras que vende principalm
 
 - Next.js 16 (App Router) + React 19
 - TypeScript estricto
-- Tailwind CSS 4 + shadcn/ui (base-nova)
+- Tailwind CSS 4 + `@base-ui/react`
 - Prisma 7 + Neon PostgreSQL
 - Auth.js v5 (Credentials) con sesión JWT en cookie httpOnly
 - React Hook Form + Zod
 - TanStack Table (Sprint 3+)
 - Vercel Blob (Sprint 4+)
 - Sonner, Lucide React
+- Playwright (Sprint 15, E2E)
 
 ## Requisitos
 
 - Node.js 20+
 - pnpm 10+
 - Una base de datos PostgreSQL en Neon (o local)
+- Una Vercel Blob store (Sprint 4+)
 
 ## Configuración local
 
@@ -36,8 +38,10 @@ Administrador interno de ventas para una tienda de carteras que vende principalm
 
    Variables mínimas a completar:
 
-   - `DATABASE_URL` y `DIRECT_URL` (Neon)
+   - `DATABASE_URL` (Neon con `pgbouncer=true`) y `DIRECT_URL` (Neon directo)
    - `AUTH_SECRET` (genera con `openssl rand -base64 32`)
+   - `AUTH_URL` con la URL canónica (en local, `http://localhost:3000`)
+   - `BLOB_READ_WRITE_TOKEN` desde Vercel → Storage → Blob
    - `SEED_ADMIN_PASSWORD`, `SEED_SELLER_PASSWORD`, `SEED_DISPATCH_PASSWORD`
 
 3. Aplica el schema y crea los usuarios seed:
@@ -74,12 +78,61 @@ Por defecto, el seed crea tres usuarios (solo para desarrollo):
 | `pnpm dev` | Servidor de desarrollo (Turbopack). |
 | `pnpm build` | Build de producción. |
 | `pnpm start` | Inicia el build de producción. |
+| `pnpm typecheck` | TypeScript sobre `app` y `e2e`. |
 | `pnpm lint` | ESLint sobre el proyecto. |
+| `pnpm verify` | `typecheck` + `lint` + `build`. |
+| `pnpm test:e2e:install` | Descarga Chromium para Playwright. |
+| `pnpm test:e2e` | Ejecuta la suite Playwright (smoke + 8 flujos Sprint 15). |
 | `pnpm db:generate` | Genera el cliente Prisma. |
 | `pnpm db:push` | Aplica el schema a la base de datos. |
 | `pnpm db:migrate` | Crea/aplica migraciones con historial. |
 | `pnpm db:studio` | Abre Prisma Studio. |
 | `pnpm db:seed` | Crea los usuarios seed (idempotente). |
+
+## Deploy en Vercel
+
+1. Crea un proyecto nuevo en Vercel y enlázalo a este repositorio.
+2. Crea la base de datos en [Neon](https://neon.tech) y copia dos cadenas:
+   - `DATABASE_URL` con `?sslmode=require&pgbouncer=true&connect_timeout=10` (cadena pooled, la que usa el runtime).
+   - `DIRECT_URL` sin pooler (cadena directa, la que usa `prisma migrate`).
+3. Configura las variables de entorno en Vercel (Project Settings → Environment Variables):
+   - `DATABASE_URL`, `DIRECT_URL`
+   - `AUTH_SECRET` (32 bytes base64) y `AUTH_URL` con la URL canónica (ej. `https://shoplivett.vercel.app`).
+   - `BLOB_READ_WRITE_TOKEN` desde Vercel → Storage → Create Database → Blob.
+   - `SEED_ADMIN_PASSWORD`, `SEED_SELLER_PASSWORD`, `SEED_DISPATCH_PASSWORD` (sólo se usan en el seed inicial).
+4. Crea el store de Vercel Blob (mismo Storage → Create Database) y copia su `BLOB_READ_WRITE_TOKEN`.
+5. Define el comando de build en Vercel como `pnpm verify` para que typecheck y lint fallen rápido en CI.
+6. Tras el primer deploy, ejecuta `pnpm db:push && pnpm db:seed` desde la consola one-shot de Vercel CLI (o un workflow puntual) para crear las tablas y los usuarios iniciales.
+
+> La aplicación está pensada para correr en multi-instancia serverless. Toda la caché compartida se apoya en la cache de Next.js con tags (`lib/settings.ts`); no uses `globalThis`.
+
+## Pruebas E2E
+
+La suite oficial es Playwright y vive en `e2e/`. Hay cuatro specs:
+
+- `e2e/smoke.spec.ts`: smoke E2E (login + alta de cliente).
+- `e2e/flows.spec.ts`: los 8 flujos obligatorios de Sprint 15 (venta con adelanto, venta pagada, pago a varios pedidos, sobrepago, reserva vencida, envío agrupado, rechazo de pago, ajuste de stock) ejecutados contra el motor de dominio y la base de datos real.
+- `e2e/concurrency.spec.ts`: escenarios de concurrencia obligatoria de la Fase 3A (doble validación, edición+rechazo paralelo, cancelación atómica de envío, transición de estado única).
+- `e2e/ui-flows.spec.ts`: flujos de UI real de Fase 4 (validación de pago y cancelación de envío con motivo desde la página).
+
+### Prerrequisitos
+
+- Base de datos **aislada** distinta a la de desarrollo. Se recomienda:
+  - copiar `.env.e2e.example` a `.env.e2e`
+  - apuntar `E2E_DATABASE_URL` y `E2E_DIRECT_URL` a una base dedicada
+- Node 20+ y pnpm 10+ (declarados en `engines` y `packageManager`).
+
+### Comandos
+
+```bash
+pnpm test:e2e:install                                # una sola vez
+pnpm db:push && pnpm db:seed                        # sobre la base E2E
+pnpm test:e2e                                       # build + start, contra .env local
+pnpm test:e2e:env                                   # usa .env.e2e (recomendado)
+pnpm test:e2e:dev                                   # levanta next dev en lugar de build+start
+```
+
+`E2E_BASE_URL` permite apuntar a un servidor ya levantado. En CI (`.github/workflows/ci.yml`) el flujo es `pnpm db:push && pnpm db:seed && pnpm test:e2e` con Playwright levantando el build.
 
 ## Estructura
 
@@ -260,6 +313,76 @@ Páginas:
 - `/envios/nuevo` — Alta con buscador de clienta y pedidos elegibles.
 - `/envios/[id]` — Detalle, pedidos incluidos, snapshots, tracking y acciones de estado.
 
+### Dashboard operativo (Sprint 11)
+
+- Vista `/dashboard` con datos reales y diferenciación por rol.
+- Métricas principales:
+  - **ADMIN**: ventas del día, pagos validados del día, pagos pendientes, reservas vencidas, reservas por vencer, deuda acumulada, créditos disponibles, pedidos listos para despacho.
+  - **SELLER**: ventas del día, pagos pendientes, reservas por vencer/vencidas, deuda, créditos, pedidos del día, pagos validados del día.
+  - **DISPATCH**: pedidos listos para despacho, envíos en proceso, pagos validados del día, reservas vencidas, accesos rápidos a envíos por estado.
+- Definición funcional:
+  - `Ventas del día` = suma de pedidos **creados** hoy.
+  - `Pagos validados del día` = suma de pagos **validados** hoy.
+- Cards enlazan a vistas filtradas existentes (`/pagos?status=PENDING`, `/pedidos?status=...`, `/envios?status=...`).
+- Listas rápidas (top 5) para pagos pendientes, reservas por vencer, pedidos listos para envío y envíos en proceso, con badge de estado y link al detalle.
+- Carga eficiente con `Promise.all` server-side, sólo agregados y listas cortas.
+
+### Mensajes para WhatsApp (Sprint 12)
+
+- Capa reusable en `lib/whatsapp.ts` con:
+  - `buildWhatsappLink(phone, text)` que normaliza el número a E.164 antes de armar el enlace `wa.me`.
+  - `buildWhatsappMessage(input)` con 8 plantillas tipadas para los casos del MVP.
+  - Sanitización de variables opcionales (no quedan huecos en el mensaje).
+- `components/whatsapp/whatsapp-actions.tsx` con dos componentes:
+  - `WhatsAppActions`: selector de plantilla, vista previa y botones **Abrir WhatsApp** / **Copiar mensaje** (con feedback vía Sonner).
+  - `WhatsAppQuickButton`: botón compacto para abrir el chat directo desde una fila o quick list.
+- Integraciones:
+  - Detalle de pedido, pago, envío, reservas vencidas y cliente con panel de plantillas contextual.
+  - Botón rápido en cada fila de clientes, pedidos, pagos y envíos.
+  - Botón rápido en quick lists del dashboard (pagos pendientes, reservas por vencer, pedidos listos, envíos en proceso).
+- Cumplimiento de RNF del Sprint 12:
+  - `RNF-S12-01` plantillas constantes listas para una futura edición desde configuración.
+  - `RNF-S12-02` sólo copia o abre WhatsApp Web; no envía mensajes.
+  - `RNF-S12-03` variables vacías se sustituyen sin romper el mensaje.
+  - `RNF-S12-04` números se normalizan a formato `wa.me` compatible.
+
+### Reportes (Sprint 13)
+
+- Vista `/reportes` (sólo `ADMIN`) con shell de secciones: Resumen, Pagos, Saldos pendientes, Créditos, Ventas por live, Stock actual, Productos más vendidos.
+- Capa dedicada `lib/reports.ts` con agregadores server-side y operaciones en centavos:
+  - `getReportSummary` resume ventas (pedidos creados), cobros validados, deuda activa, créditos disponibles y reservas vencidas.
+  - `getPaymentsReport` con desglose por método/estado, búsqueda y filtro de fecha.
+  - `getPendingBalancesReport` con top 10 clientas con mayor deuda.
+  - `getCreditsReport` con desglose por estado y origen.
+  - `getLivesReport` con pedidos, cobrado y pendiente por live.
+  - `getStockReport` con totales de stock/reservado/vendido/disponible por variante.
+  - `getTopProductsReport` por periodo (vía `OrderItem` + `groupBy`) o acumulado histórico (`soldStock`).
+- Cumple RNF del Sprint 13:
+  - `RNF-S13-01` "cobros validados" sólo cuenta pagos `VALIDATED` con `validatedAt` en el rango.
+  - `RNF-S13-02` todas las consultas usan índices existentes y `select` mínimos.
+  - `RNF-S13-03` los datos se devuelven como objetos tabulares; queda lista una futura exportación a Excel.
+  - `RNF-S13-04` se diferencia explícitamente "vendido" (pedidos), "cobrado" (pagos validados) y "pendiente" (saldos).
+
+### Auditoría y seguridad operativa (Sprint 14)
+
+- Vista `/auditoria` (sólo `ADMIN`) con listado paginado, filtros por rango de fecha, acción, entidad, actor y búsqueda libre.
+- Capa dedicada `lib/audit-report.ts` con `listAuditLog` (server-side, `select` mínimos) y `listAuditActors` para los filtros.
+- Capa `actions/audit-report.ts` con `requireRole("ADMIN")` que delega en `lib/audit-report.ts`.
+- Cubrimiento de acciones críticas:
+  - `PAYMENT_VALIDATED` y `PAYMENT_REJECTED` dentro de la transacción de `lib/payments.ts` con `auditInTx` (atomicidad con el cambio financiero).
+  - `ORDER_CREATED` dentro de la transacción de `lib/sales.ts` con `auditInTx`.
+  - `SHIPMENT_CREATED`, `SHIPMENT_STATUS_CHANGED`, `SHIPMENT_CANCELLED` dentro de la transacción de `lib/shipments.ts` con `auditInTx`.
+  - `PRODUCT_PRICE_CHANGED` y `CUSTOMER_DEACTIVATED` con `auditAfter` desde `actions/products.ts` y `actions/customers.ts`.
+  - `CREDIT_CREATED`, `CREDIT_APPLIED`, `CREDIT_REFUNDED`, `INVENTORY_ADJUSTED`, `RESERVATION_EXPIRED`, `SETTINGS_UPDATED`, `PAYMENT_APPLICATIONS_UPDATED` ya estaban cubiertas en sprints previos.
+- Endurecimiento de permisos en actions de dominio:
+  - `actions/customers.ts`, `actions/products.ts`, `actions/categories.ts` sustituyen `requireUser` por `requireRole(["ADMIN", "SELLER"])` (soft delete de clienta queda restringido a `ADMIN`).
+  - Pages internas críticas ahora validan rol en server component: clientes, productos, categorías, ventas, inventario detalle.
+- Cumple RNF del Sprint 14:
+  - `RNF-S14-01` la UI de auditoría es sólo lectura: no existe ninguna ruta de update/delete sobre `AuditLog`.
+  - `RNF-S14-02` cada evento incluye `actorId`, `action`, `entity`, `entityId`, `metadata` y `createdAt`.
+  - `RNF-S14-03` el módulo `/auditoria` y sus actions sólo son accesibles para `ADMIN`; el sidebar lo oculta para otros roles.
+  - `RNF-S14-04` las operaciones críticas (pagos, pedidos, envíos) registran la auditoría dentro de la misma transacción de Prisma, evitando inconsistencias entre el cambio de negocio y el log.
+
 ## Estado de sprints
 
 - ✅ Sprint 0 — Base técnica
@@ -273,7 +396,26 @@ Páginas:
 - ✅ Sprint 8 — Pagos, capturas y aplicación a pedidos
 - ✅ Sprint 9 — Créditos, sobrepagos y reservas vencidas
 - ✅ Sprint 10 — Envíos agrupados
-- ⏳ Sprints 11–15 — ver `docs/PLAN_DESARROLLO_SPRINTS.md`
+- ✅ Sprint 11 — Dashboard operativo
+- ✅ Sprint 12 — Mensajes para WhatsApp
+- ✅ Sprint 13 — Reportes
+- ✅ Sprint 14 — Auditoría y seguridad operativa
+- ✅ Sprint 15 — Pulido, pruebas y despliegue
+
+### Sprint 15 — Pulido, pruebas y despliegue
+
+Capa de cierre del proyecto. Entregables:
+
+- Componentes UI reutilizables: `ConfirmDialog` (AlertDialog) para acciones críticas, `AsyncSearchList` con loading + empty state + error local, `EmptyState` con CTA opcional.
+- Confirmaciones explícitas en acciones destructivas: baja de clienta, cerrar/cancelar live, activar/desactivar producto, borrado de imagen, validar pago, rechazar pago, cancelación de reserva/envío, transición a `DELIVERED`.
+- Búsquedas async con feedback de loading y mensajes de "sin resultados" en `quick-sale`, `create-payment`, `create-shipment`.
+- Manejo explícito de `pending`/`error` en server actions con `useActionState` y `useTransition`, sin efectos que seteen estado directamente.
+- Suite de pruebas E2E con **Playwright** (`@playwright/test`):
+  - `e2e/smoke.spec.ts` (login + alta de cliente).
+  - `e2e/flows.spec.ts` con los 8 flujos obligatorios del plan, ejecutados contra el motor de dominio (`lib/sales`, `lib/payments`, `lib/shipments`, `lib/order-expiry`, `lib/inventory`) y la base de datos real.
+- Scripts de verificación: `pnpm typecheck` (app + e2e), `pnpm lint`, `pnpm verify` (typecheck + lint + build), `pnpm test:e2e`.
+- Documentación de deploy a Vercel en `README.md` (variables, comandos, checklist) y `AGENTS.md` (reglas para multi-instancia).
+- `playwright.config.ts` con `webServer` que aplica el schema y el seed antes de correr.
 
 ## Versión
 

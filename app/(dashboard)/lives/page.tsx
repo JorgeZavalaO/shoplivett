@@ -1,11 +1,13 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Plus } from "lucide-react";
 
 import { getLiveSessionsAction } from "@/actions/lives";
 import { LivesTable } from "@/components/tables/lives-table";
+
+export const metadata: Metadata = { title: "Lives" };
 import { Button } from "@/components/ui/button";
 
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{
   q?: string | string[];

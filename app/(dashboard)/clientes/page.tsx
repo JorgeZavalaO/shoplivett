@@ -1,11 +1,14 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { CustomersTable } from "@/components/tables/customers-table";
-import { searchCustomersAction } from "@/actions/customers";
 
-export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Clientes" };
+import { searchCustomersAction } from "@/actions/customers";
+import { requireRole } from "@/lib/permissions";
+
 
 type SearchParams = Promise<{ q?: string | string[]; page?: string | string[] }>;
 
@@ -14,6 +17,7 @@ export default async function ClientesPage({
 }: {
   searchParams: SearchParams;
 }) {
+  await requireRole(["ADMIN", "SELLER"]);
   const sp = await searchParams;
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q;
   const pageRaw = Array.isArray(sp.page) ? sp.page[0] : sp.page;

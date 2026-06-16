@@ -11,8 +11,10 @@ import {
   calculateOrderExpiry,
 } from "@/lib/orders";
 import { assertLiveIsOpen, LiveError } from "@/lib/live";
-import { uploadImage, ImageUploadError } from "@/lib/blob";
+import { uploadImage, deleteImage, ImageUploadError } from "@/lib/blob";
 import { createPayment, PaymentError } from "@/lib/payments";
+import { auditInTx } from "@/lib/audit";
+import { toCents, centsToDecimalString } from "@/lib/money";
 
 export class OrderError extends Error {
   constructor(
@@ -43,6 +45,7 @@ export type QuickSaleInput = {
   operationNumber?: string;
   notes?: string;
   receiptFiles?: File[];
+  actorId?: string | null;
 };
 
 export type QuickSaleResult = {
@@ -107,19 +110,21 @@ export async function createQuickSale(
   }));
 
   const totals = calculateOrderTotals(lineItems, input.discount, input.shippingAmount);
-  const totalNum = Number(totals.total);
+  const totalCents = toCents(totals.total, { allowNegative: true });
   const settings = await getSettings();
-  const minimumAdvanceNum = Number(settings.minimumAdvance);
+  const minimumAdvanceCents = toCents(settings.minimumAdvance.toString(), {
+    allowNegative: true,
+  });
 
-  if (totalNum <= minimumAdvanceNum && advanceNum < totalNum) {
+  if (totalCents <= minimumAdvanceCents && toCents(input.advanceAmount) < totalCents) {
     throw new OrderError(
-      `El total (S/${totals.total}) es menor o igual al adelanto mínimo (S/${minimumAdvanceNum.toFixed(2)}). Se requiere pago completo.`,
+      `El total (S/${totals.total}) es menor o igual al adelanto mínimo (S/${centsToDecimalString(minimumAdvanceCents)}). Se requiere pago completo.`,
       "INVALID_ADVANCE",
     );
   }
-  if (totalNum > minimumAdvanceNum && advanceNum < minimumAdvanceNum) {
+  if (totalCents > minimumAdvanceCents && toCents(input.advanceAmount) < minimumAdvanceCents) {
     throw new OrderError(
-      `El adelanto mínimo es S/${minimumAdvanceNum.toFixed(2)}.`,
+      `El adelanto mínimo es S/${centsToDecimalString(minimumAdvanceCents)}.`,
       "INVALID_ADVANCE",
     );
   }
@@ -176,20 +181,25 @@ export async function createQuickSale(
               variantId: li.variantId,
               quantity: li.quantity,
               unitPrice: li.unitPrice,
-              lineTotal: (Number(li.unitPrice) * li.quantity).toFixed(2),
+              lineTotal: centsToDecimalString(
+                toCents(li.unitPrice, { allowNegative: true }) * li.quantity,
+              ),
             },
           });
         }
 
-        const created = await createPayment({
-          customerId: input.customerId,
-          method: input.paymentMethod as Parameters<typeof createPayment>[0]["method"],
-          amount: input.advanceAmount,
-          operationNumber: input.operationNumber ?? null,
-          notes: null,
-          sourceOrderId: order.id,
-          applications: [{ orderId: order.id, amount: input.advanceAmount }],
-        });
+        const created = await createPayment(
+          {
+            customerId: input.customerId,
+            method: input.paymentMethod as Parameters<typeof createPayment>[0]["method"],
+            amount: input.advanceAmount,
+            operationNumber: input.operationNumber ?? null,
+            notes: null,
+            sourceOrderId: order.id,
+            applications: [{ orderId: order.id, amount: input.advanceAmount }],
+          },
+          { tx },
+        );
 
         for (const r of uploadedReceipts) {
           await tx.paymentReceipt.create({
@@ -208,11 +218,40 @@ export async function createQuickSale(
           });
         }
 
+        await auditInTx(tx, input.actorId ?? null, {
+          action: "ORDER_CREATED",
+          entity: "Order",
+          entityId: order.id,
+          metadata: {
+            orderNumber,
+            customerId: input.customerId,
+            total: totals.total,
+            advance: input.advanceAmount,
+            paymentMethod: input.paymentMethod,
+            items: lineItems.map((li) => ({
+              variantId: li.variantId,
+              quantity: li.quantity,
+              unitPrice: li.unitPrice,
+            })),
+            liveSessionId: input.liveSessionId ?? null,
+          },
+        });
+
         return { orderId: order.id, orderNumber, paymentId: created.paymentId };
       },
       { isolationLevel: "Serializable", maxWait: 5000, timeout: 15000 },
     );
   } catch (error) {
+    // Compensar uploads huérfanos si la transacción falla.
+    if (uploadedReceipts.length > 0) {
+      await Promise.all(
+        uploadedReceipts.map((r) =>
+          deleteImage(r.pathname).catch(() => {
+            // El fallo de limpieza se ignora: el blob es preferible a fallar la acción.
+          }),
+        ),
+      );
+    }
     if (error instanceof PaymentError) {
       throw new OrderError(error.message, "PAYMENT_ERROR");
     }

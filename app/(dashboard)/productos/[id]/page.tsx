@@ -1,24 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Pencil, Power, PowerOff, Star, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  VariantStatusBadge,
-  VARIANT_STATUS_LABELS,
-} from "@/components/dashboard/variant-status-badge";
+import { ProductLifecycleActions } from "@/components/forms/product-lifecycle-actions";
 import { getPrisma } from "@/lib/prisma";
-import {
-  deleteImageAction,
-  setPrimaryImageAction,
-  setProductActiveAction,
-  setVariantStatusAction,
-} from "@/actions/products";
+import { requireRole } from "@/lib/permissions";
 
-export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string | string[] }>;
@@ -30,6 +20,7 @@ export default async function ProductoDetallePage({
   params: Params;
   searchParams: SearchParams;
 }) {
+  await requireRole(["ADMIN", "SELLER"]);
   const { id } = await params;
   const sp = await searchParams;
   const tabRaw = Array.isArray(sp.tab) ? sp.tab[0] : sp.tab;
@@ -41,38 +32,26 @@ export default async function ProductoDetallePage({
     where: { id },
     include: {
       category: true,
-      variants: { orderBy: { createdAt: "asc" } },
-      images: { orderBy: { createdAt: "asc" } },
+      variants: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          code: true,
+          color: true,
+          material: true,
+          size: true,
+          stock: true,
+          price: true,
+          status: true,
+        },
+      },
+      images: {
+        orderBy: { createdAt: "asc" },
+        select: { id: true, url: true, isPrimary: true },
+      },
     },
   });
   if (!product) notFound();
-
-  async function toggleActive() {
-    "use server";
-    await setProductActiveAction(id, !product!.isActive);
-  }
-
-  async function setVariantStatus(formData: FormData) {
-    "use server";
-    const variantId = String(formData.get("variantId"));
-    const status = String(formData.get("status")) as
-      | "ACTIVE"
-      | "HIDDEN"
-      | "ARCHIVED";
-    if (variantId) await setVariantStatusAction(variantId, status);
-  }
-
-  async function setPrimary(formData: FormData) {
-    "use server";
-    const imageId = String(formData.get("imageId"));
-    if (imageId) await setPrimaryImageAction(imageId);
-  }
-
-  async function deleteImage(formData: FormData) {
-    "use server";
-    const imageId = String(formData.get("imageId"));
-    if (imageId) await deleteImageAction(imageId);
-  }
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -109,23 +88,20 @@ export default async function ProductoDetallePage({
               </Link>
             }
           />
-          <form action={toggleActive}>
-            <Button
-              type="submit"
-              variant="outline"
-              className={product.isActive ? "text-amber-700" : "text-emerald-700"}
-            >
-              {product.isActive ? (
-                <>
-                  <PowerOff className="size-4" /> Desactivar
-                </>
-              ) : (
-                <>
-                  <Power className="size-4" /> Activar
-                </>
-              )}
-            </Button>
-          </form>
+          <ProductLifecycleActions
+            productId={product.id}
+            productName={product.name}
+            isActive={product.isActive}
+            images={product.images.map((i) => ({
+              id: i.id,
+              url: i.url,
+              isPrimary: i.isPrimary,
+            }))}
+            variants={product.variants.map((v) => ({
+              id: v.id,
+              status: v.status,
+            }))}
+          />
         </div>
       </div>
 
@@ -214,7 +190,6 @@ export default async function ProductoDetallePage({
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <VariantStatusBadge status={v.status} />
                       <Button
                         variant="ghost"
                         size="sm"
@@ -224,23 +199,6 @@ export default async function ProductoDetallePage({
                           </Link>
                         }
                       />
-                      <form action={setVariantStatus} className="flex items-center gap-1">
-                        <input type="hidden" name="variantId" value={v.id} />
-                        <select
-                          name="status"
-                          defaultValue={v.status}
-                          className="h-7 rounded-md border border-input bg-transparent px-1 text-xs"
-                        >
-                          {Object.entries(VARIANT_STATUS_LABELS).map(([k, label]) => (
-                            <option key={k} value={k}>
-                              {label}
-                            </option>
-                          ))}
-                        </select>
-                        <Button type="submit" size="sm" variant="ghost">
-                          Aplicar
-                        </Button>
-                      </form>
                     </div>
                   </div>
                 ))}
@@ -262,61 +220,7 @@ export default async function ProductoDetallePage({
             </p>
             {product.images.length === 0 ? (
               <p className="text-sm text-muted-foreground">Sin imágenes aún.</p>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {product.images.map((img) => (
-                  <div
-                    key={img.id}
-                    className="overflow-hidden rounded-lg border border-border bg-card"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={img.url}
-                      alt="Imagen del producto"
-                      className="aspect-square w-full object-cover"
-                    />
-                    <div className="flex items-center justify-between gap-2 p-2">
-                      <div className="flex items-center gap-2">
-                        {img.isPrimary ? (
-                          <Badge className="bg-emerald-600 text-white">
-                            <Star className="mr-1 size-3" /> Principal
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline">Secundaria</Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {!img.isPrimary ? (
-                          <form action={setPrimary}>
-                            <input type="hidden" name="imageId" value={img.id} />
-                            <Button
-                              type="submit"
-                              size="sm"
-                              variant="ghost"
-                              aria-label="Marcar como principal"
-                            >
-                              <Star className="size-3" />
-                            </Button>
-                          </form>
-                        ) : null}
-                        <form action={deleteImage}>
-                          <input type="hidden" name="imageId" value={img.id} />
-                          <Button
-                            type="submit"
-                            size="sm"
-                            variant="ghost"
-                            aria-label="Eliminar"
-                            className="text-destructive"
-                          >
-                            <Trash2 className="size-3" />
-                          </Button>
-                        </form>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            ) : null}
           </CardContent>
         </Card>
       ) : null}

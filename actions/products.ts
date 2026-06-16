@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 
-import { requireUser } from "@/lib/permissions";
+import { requireRole, getCurrentUser } from "@/lib/permissions";
+import { auditAfter } from "@/lib/audit";
 import { getPrisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { uploadImage, deleteImage, ImageUploadError } from "@/lib/blob";
@@ -62,7 +63,7 @@ export async function createProductAction(
   _prev: ProductActionResult | undefined,
   formData: FormData,
 ): Promise<ProductActionResult> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   const parsed = ProductCreateSchema.safeParse(readForm(formData));
   if (!parsed.success) {
     return {
@@ -100,7 +101,7 @@ export async function updateProductAction(
   _prev: ProductActionResult | undefined,
   formData: FormData,
 ): Promise<ProductActionResult> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   if (!productId) return { ok: false, message: "Falta el identificador." };
 
   const parsed = ProductUpdateSchema.safeParse(readForm(formData));
@@ -134,7 +135,7 @@ export async function setProductActiveAction(
   productId: string,
   isActive: boolean,
 ): Promise<void> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   if (!productId) return;
   const prisma = getPrisma();
   await prisma.product.update({
@@ -151,7 +152,7 @@ export async function searchProductsAction(
   perPage = 20,
   categoryId?: string,
 ) {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   const safePage = Math.max(1, Math.floor(page));
   const safePerPage = Math.min(100, Math.max(1, Math.floor(perPage)));
   const trimmed = query.trim();
@@ -217,7 +218,7 @@ export async function createVariantAction(
   _prev: VariantActionResult | undefined,
   formData: FormData,
 ): Promise<VariantActionResult> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   if (!productId) return { ok: false, message: "Falta el producto." };
 
   const raw = {
@@ -332,7 +333,7 @@ export async function updateVariantAction(
   _prev: VariantActionResult | undefined,
   formData: FormData,
 ): Promise<VariantActionResult> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   if (!variantId) return { ok: false, message: "Falta la variante." };
 
   const raw = {
@@ -371,6 +372,25 @@ export async function updateVariantAction(
       ...(parsed.data.status ? { status: parsed.data.status } : {}),
     },
   });
+
+  const user = await getCurrentUser();
+  if (
+    existing.price.toString() !== parsed.data.price ||
+    (existing.cost?.toString() ?? null) !== (parsed.data.cost ?? null)
+  ) {
+    auditAfter(user?.id ?? null, {
+      action: "PRODUCT_PRICE_CHANGED",
+      entity: "ProductVariant",
+      entityId: variantId,
+      metadata: {
+        previousPrice: existing.price.toString(),
+        nextPrice: parsed.data.price,
+        previousCost: existing.cost?.toString() ?? null,
+        nextCost: parsed.data.cost === undefined ? null : parsed.data.cost,
+        productId: existing.productId,
+      },
+    });
+  }
   revalidatePath(`/productos/${existing.productId}`);
   redirect(`/productos/${existing.productId}`);
 }
@@ -379,7 +399,7 @@ export async function setVariantStatusAction(
   variantId: string,
   status: "ACTIVE" | "HIDDEN" | "ARCHIVED",
 ): Promise<void> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   if (!variantId) return;
   const prisma = getPrisma();
   await prisma.productVariant.update({
@@ -398,7 +418,7 @@ export async function uploadProductImageAction(
   variantId: string | null,
   formData: FormData,
 ): Promise<{ ok: boolean; message?: string; url?: string }> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   if (!productId) return { ok: false, message: "Falta el producto." };
 
   const file = formData.get("file");
@@ -440,7 +460,7 @@ export async function uploadProductImageAction(
 }
 
 export async function setPrimaryImageAction(imageId: string): Promise<void> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   if (!imageId) return;
   const prisma = getPrisma();
   const image = await prisma.productImage.findUnique({ where: { id: imageId } });
@@ -459,7 +479,7 @@ export async function setPrimaryImageAction(imageId: string): Promise<void> {
 }
 
 export async function deleteImageAction(imageId: string): Promise<void> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   if (!imageId) return;
   const prisma = getPrisma();
   const image = await prisma.productImage.findUnique({ where: { id: imageId } });

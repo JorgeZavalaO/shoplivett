@@ -14,6 +14,7 @@ import {
   CreditCard,
   Truck,
   BarChart3,
+  ShieldCheck,
   Settings,
   Sparkles,
   AlertTriangle,
@@ -42,6 +43,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/pagos", label: "Pagos", icon: CreditCard, module: "Sprint 8", roles: ["ADMIN", "SELLER"] },
   { href: "/envios", label: "Envíos", icon: Truck, module: "Sprint 10", roles: ["ADMIN", "DISPATCH"] },
   { href: "/reportes", label: "Reportes", icon: BarChart3, module: "Sprint 13", roles: ["ADMIN"] },
+  { href: "/auditoria", label: "Auditoría", icon: ShieldCheck, module: "Sprint 14", roles: ["ADMIN"] },
   { href: "/configuracion", label: "Configuración", icon: Settings, module: "Sprint 2", roles: ["ADMIN"] },
 ];
 

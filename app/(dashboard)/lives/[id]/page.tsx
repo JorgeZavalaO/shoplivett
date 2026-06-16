@@ -1,14 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Pencil, Power, XCircle } from "lucide-react";
+import { ArrowLeft, Pencil } from "lucide-react";
 
-import {
-  cancelLiveAction,
-  getLiveDetailAction,
-  closeLiveAction,
-} from "@/actions/lives";
+import { getLiveDetailAction } from "@/actions/lives";
 import { LiveStatusBadge } from "@/components/dashboard/live-status-badge";
 import { LiveSummaryCards } from "@/components/dashboard/live-summary-cards";
+import { LiveLifecycleActions } from "@/components/forms/live-lifecycle-actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -18,7 +15,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string }>;
 
@@ -82,16 +78,7 @@ export default async function LiveDetailPage({ params }: { params: Params }) {
                   </Link>
                 }
               />
-              <form action={closeLiveAction.bind(null, live.id)}>
-                <Button type="submit" variant="outline">
-                  <Power className="size-4" /> Cerrar live
-                </Button>
-              </form>
-              <form action={cancelLiveAction.bind(null, live.id)}>
-                <Button type="submit" variant="outline" className="text-destructive">
-                  <XCircle className="size-4" /> Cancelar
-                </Button>
-              </form>
+              <LiveLifecycleActions liveId={live.id} liveName={live.name} />
             </>
           ) : null}
         </div>

@@ -18,8 +18,10 @@ import { PAYMENT_METHOD_LABELS } from "@/lib/settings-defaults";
 import { canValidatePayments, requireUser } from "@/lib/permissions";
 import { getSettings } from "@/lib/settings";
 import { formatWhatsAppDisplay } from "@/lib/phone";
+import { WhatsAppActions } from "@/components/whatsapp/whatsapp-actions";
+import { buildWhatsappLink, buildWhatsappMessage } from "@/lib/whatsapp";
+import { MessageCircle } from "lucide-react";
 
-export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string }>;
 
@@ -48,6 +50,40 @@ export default async function PagoDetallePage({ params }: { params: Params }) {
   const amountNum = Number(payment.amount.toString());
   const remaining = amountNum - appliedSum;
 
+  const firstApp = payment.applications[0]?.order ?? null;
+  const whatsappLink = buildWhatsappLink(
+    payment.customer.whatsapp,
+    buildWhatsappMessage({
+      key: payment.status === "VALIDATED" ? "PAYMENT_VALIDATED" : "SEPARATION_PENDING_VALIDATION",
+      customer: {
+        name: payment.customer.name,
+        whatsapp: payment.customer.whatsapp,
+      },
+      order: firstApp
+        ? {
+            orderNumber: firstApp.orderNumber,
+            total: firstApp.total.toString(),
+            validatedPaid: firstApp.validatedPaid.toString(),
+            balance: firstApp.balance.toString(),
+            expiresAt: new Date(),
+            status: firstApp.status,
+          }
+        : {
+            orderNumber: payment.order?.orderNumber ?? payment.id.slice(-6).toUpperCase(),
+            total: payment.amount.toString(),
+            validatedPaid: "0",
+            balance: payment.amount.toString(),
+            expiresAt: new Date(),
+          },
+      payment: {
+        amount: payment.amount.toString(),
+        method: payment.method,
+        operationNumber: payment.operationNumber,
+      },
+    }),
+  );
+  const hasContext = whatsappLink !== null;
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       <div>
@@ -75,6 +111,26 @@ export default async function PagoDetallePage({ params }: { params: Params }) {
           }).format(new Date(payment.createdAt))}
           {payment.operationNumber ? ` · N° op. ${payment.operationNumber}` : null}
         </p>
+        {hasContext ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              render={
+                <a
+                  href={whatsappLink ?? "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <MessageCircle className="size-4" /> Abrir chat
+                </a>
+              }
+            />
+            <span className="text-xs text-muted-foreground">
+              Genera plantillas de pago y validación desde la sección de WhatsApp.
+            </span>
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -265,6 +321,60 @@ export default async function PagoDetallePage({ params }: { params: Params }) {
           </CardContent>
         </Card>
       </div>
+
+      {hasContext ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Mensajes para WhatsApp</CardTitle>
+            <CardDescription>
+              Copia el mensaje o ábrelo en WhatsApp Web para confirmar el pago.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <WhatsAppActions
+              customer={{
+                name: payment.customer.name,
+                whatsapp: payment.customer.whatsapp,
+              }}
+              context={{
+                hasOrder: Boolean(firstApp),
+                hasPayment: true,
+                hasShipment: false,
+                hasCredit: false,
+              }}
+              order={
+                firstApp
+                  ? {
+                      orderNumber: firstApp.orderNumber,
+                      total: firstApp.total.toString(),
+                      validatedPaid: firstApp.validatedPaid.toString(),
+                      balance: firstApp.balance.toString(),
+                      expiresAt: new Date(),
+                      status: firstApp.status,
+                    }
+                  : {
+                      orderNumber:
+                        payment.order?.orderNumber ?? payment.id.slice(-6).toUpperCase(),
+                      total: payment.amount.toString(),
+                      validatedPaid: "0",
+                      balance: payment.amount.toString(),
+                      expiresAt: new Date(),
+                    }
+              }
+              payment={{
+                amount: payment.amount.toString(),
+                method: payment.method,
+                operationNumber: payment.operationNumber,
+              }}
+              defaultTemplate={
+                payment.status === "VALIDATED"
+                  ? "PAYMENT_VALIDATED"
+                  : "SEPARATION_PENDING_VALIDATION"
+              }
+            />
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

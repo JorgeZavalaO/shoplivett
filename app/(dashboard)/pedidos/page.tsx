@@ -1,12 +1,14 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { AlertTriangle } from "lucide-react";
 
 import { listOrdersAction } from "@/actions/orders";
 import { listExpiredReservationsAction } from "@/actions/order-expiry";
+
+export const metadata: Metadata = { title: "Pedidos" };
 import { OrdersTable } from "@/components/tables/orders-table";
 import { Button } from "@/components/ui/button";
 
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{
   q?: string | string[];

@@ -86,24 +86,79 @@ export async function listOrdersAction(args?: {
 
 export async function getOrderDetailAction(orderId: string) {
   await requireRole(["ADMIN", "SELLER"]);
+  if (!orderId) return null;
   const prisma = getPrisma();
   return prisma.order.findUnique({
     where: { id: orderId },
-    include: {
-      customer: true,
-      liveSession: true,
+    select: {
+      id: true,
+      orderNumber: true,
+      status: true,
+      subtotal: true,
+      discount: true,
+      shippingAmount: true,
+      total: true,
+      validatedPaid: true,
+      balance: true,
+      expiresAt: true,
+      notes: true,
+      createdAt: true,
+      updatedAt: true,
+      customer: {
+        select: {
+          id: true,
+          name: true,
+          whatsapp: true,
+          address: true,
+          district: true,
+          reference: true,
+          status: true,
+        },
+      },
+      liveSession: {
+        select: { id: true, name: true, channel: true, status: true },
+      },
       items: {
-        include: {
+        select: {
+          id: true,
+          quantity: true,
+          unitPrice: true,
+          lineTotal: true,
           variant: {
-            include: { product: { include: { category: true } } },
+            select: {
+              id: true,
+              code: true,
+              color: true,
+              size: true,
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: { select: { id: true, name: true } },
+                },
+              },
+            },
           },
         },
       },
       payments: {
-        include: {
-          receipts: true,
+        select: {
+          id: true,
+          method: true,
+          status: true,
+          amount: true,
+          operationNumber: true,
+          notes: true,
+          validatedAt: true,
+          createdAt: true,
+          receipts: {
+            select: { id: true, url: true, pathname: true, createdAt: true },
+          },
           applications: {
-            include: {
+            select: {
+              id: true,
+              amount: true,
+              createdAt: true,
               order: { select: { id: true, orderNumber: true } },
             },
           },
@@ -111,7 +166,8 @@ export async function getOrderDetailAction(orderId: string) {
         orderBy: { createdAt: "desc" },
       },
       shipmentOrder: {
-        include: {
+        select: {
+          id: true,
           shipment: { select: { id: true, status: true } },
         },
       },

@@ -1,13 +1,13 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { useFormStatus } from "react-dom";
-import Link from "next/link";
-import { Loader2, Save } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { FieldError } from "@/components/ui/field-error";
+import { FormMessage } from "@/components/ui/form-message";
+import { CancelLink } from "@/components/ui/cancel-link";
 import { cn } from "@/lib/utils";
 import { formatWhatsAppDisplay, normalizeWhatsApp } from "@/lib/phone";
 import {
@@ -39,34 +39,6 @@ type CustomerFormProps = {
 };
 
 const initialState: CustomerActionResult = { ok: false };
-
-function SubmitButton({ label }: { label: string }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" disabled={pending} className="min-w-40">
-      {pending ? (
-        <>
-          <Loader2 className="size-4 animate-spin" /> Guardando…
-        </>
-      ) : (
-        <>
-          <Save className="size-4" /> {label}
-        </>
-      )}
-    </Button>
-  );
-}
-
-function FieldError({ message }: { message?: string }) {
-  if (!message) return null;
-  return <p className="text-xs text-destructive">{message}</p>;
-}
-
-function CancelLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Button variant="ghost" render={<Link href={href}>{children}</Link>} />
-  );
-}
 
 export function CustomerForm({
   mode,
@@ -246,17 +218,9 @@ export function CustomerForm({
       </Card>
 
       <div className="flex items-center justify-between gap-3">
-        <p
-          className={cn(
-            "text-sm",
-            state.ok ? "text-emerald-600" : "text-destructive",
-            !state.message && "text-transparent",
-          )}
-        >
-          {state.message ?? "·"}
-        </p>
+        <FormMessage ok={state.ok} message={state.message} />
         <div className="flex items-center gap-2">
-          <CancelLink href={cancelHref}>Cancelar</CancelLink>
+          <CancelLink href={cancelHref} />
           <SubmitButton label={mode === "create" ? "Crear clienta" : "Guardar cambios"} />
         </div>
       </div>

@@ -2,10 +2,11 @@ import { ProductForm } from "@/components/forms/product-form";
 import { createProductAction } from "@/actions/products";
 import { getPrisma } from "@/lib/prisma";
 import type { ProductActionResult } from "@/actions/products";
+import { requireRole } from "@/lib/permissions";
 
-export const dynamic = "force-dynamic";
 
 export default async function NuevoProductoPage() {
+  await requireRole(["ADMIN", "SELLER"]);
   const categories = await getPrisma().category.findMany({
     orderBy: { name: "asc" },
     select: { id: true, name: true, isActive: true },

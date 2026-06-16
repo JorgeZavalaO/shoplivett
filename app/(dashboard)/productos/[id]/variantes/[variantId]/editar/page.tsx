@@ -4,12 +4,13 @@ import { VariantForm } from "@/components/forms/variant-form";
 import { updateVariantAction } from "@/actions/products";
 import { getPrisma } from "@/lib/prisma";
 import type { VariantActionResult } from "@/actions/products";
+import { requireRole } from "@/lib/permissions";
 
-export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string; variantId: string }>;
 
 export default async function EditarVariantePage({ params }: { params: Params }) {
+  await requireRole(["ADMIN", "SELLER"]);
   const { id, variantId } = await params;
   const variant = await getPrisma().productVariant.findUnique({
     where: { id: variantId },

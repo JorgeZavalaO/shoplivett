@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { requireRole, requireUser, getCurrentUser } from "@/lib/permissions";
+import { requireRole, getCurrentUser } from "@/lib/permissions";
 import {
   applyCreditToOrder,
   createManualCredit,
@@ -173,7 +173,7 @@ export async function refundCreditAction(
 }
 
 export async function getCustomerCreditsAction(customerId: string) {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER", "DISPATCH"]);
   if (!customerId) return [];
   return listCustomerCredits(customerId);
 }
@@ -181,14 +181,14 @@ export async function getCustomerCreditsAction(customerId: string) {
 export async function getCustomerAvailableCreditAction(
   customerId: string,
 ): Promise<{ available: string }> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER", "DISPATCH"]);
   if (!customerId) return { available: "0.00" };
   const available = await getCustomerAvailableCredit(customerId);
   return { available };
 }
 
 export async function getCreditDetailAction(creditId: string) {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER", "DISPATCH"]);
   if (!creditId) return null;
   const { getPrisma } = await import("@/lib/prisma");
   const credit = await getPrisma().customerCredit.findUnique({
@@ -212,7 +212,7 @@ export async function getCreditDetailAction(creditId: string) {
 }
 
 export async function searchOrdersForCreditAction(query: string, customerId: string) {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER", "DISPATCH"]);
   if (!customerId) return [];
   const trimmed = query.trim();
   const { getPrisma } = await import("@/lib/prisma");

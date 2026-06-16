@@ -3,10 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { requireRole } from "@/lib/permissions";
+import { requireRole, getCurrentUser } from "@/lib/permissions";
 import { getPrisma } from "@/lib/prisma";
 import { invalidateSettingsCache, getSettings } from "@/lib/settings";
 import { BusinessSettingsSchema } from "@/lib/validations";
+import { auditAfter } from "@/lib/audit";
 
 export type SettingsActionState = {
   ok: boolean;
@@ -26,6 +27,42 @@ function readBoolean(formData: FormData, key: string): boolean {
 
 function readString(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
+}
+
+type SettingsForAudit = z.infer<typeof BusinessSettingsSchema>;
+
+function serializeSettings(s: SettingsForAudit) {
+  return {
+    reservationDays: s.reservationDays,
+    minimumAdvance: String(s.minimumAdvance),
+    currency: s.currency,
+    freeShippingEnabled: s.freeShippingEnabled,
+    freeShippingThreshold: String(s.freeShippingThreshold),
+    productCodePrefix: s.productCodePrefix,
+    allowOverpaymentCredit: s.allowOverpaymentCredit,
+    allowRefund: s.allowRefund,
+    enabledPaymentMethods: [...s.enabledPaymentMethods],
+    enabledShippingMethods: [...s.enabledShippingMethods],
+    paymentValidatorRoles: [...s.paymentValidatorRoles],
+  };
+}
+
+type SettingsRow = Awaited<ReturnType<typeof getSettings>>;
+
+function serializeSettingsRow(s: SettingsRow) {
+  return {
+    reservationDays: s.reservationDays,
+    minimumAdvance: s.minimumAdvance.toString(),
+    currency: s.currency,
+    freeShippingEnabled: s.freeShippingEnabled,
+    freeShippingThreshold: s.freeShippingThreshold.toString(),
+    productCodePrefix: s.productCodePrefix,
+    allowOverpaymentCredit: s.allowOverpaymentCredit,
+    allowRefund: s.allowRefund,
+    enabledPaymentMethods: [...s.enabledPaymentMethods],
+    enabledShippingMethods: [...s.enabledShippingMethods],
+    paymentValidatorRoles: [...s.paymentValidatorRoles],
+  };
 }
 
 function parseInput(formData: FormData) {
@@ -66,8 +103,7 @@ export async function updateSettingsAction(
 
   const previous = await getSettings();
   const data = parsed.data;
-
-  // TODO(Sprint 14): registrar auditoría con { previous, next } aquí.
+  const user = await getCurrentUser();
   void previous;
 
   const prisma = getPrisma();
@@ -104,6 +140,15 @@ export async function updateSettingsAction(
 
   invalidateSettingsCache();
   revalidatePath("/configuracion");
+  auditAfter(user?.id ?? null, {
+    action: "SETTINGS_UPDATED",
+    entity: "BusinessSettings",
+    entityId: "default",
+    metadata: {
+      previous: serializeSettingsRow(previous),
+      next: serializeSettings(data),
+    },
+  });
 
   return { ok: true, message: "Configuración guardada." };
 }

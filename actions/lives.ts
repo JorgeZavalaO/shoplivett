@@ -2,14 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import type { LiveStatus } from "@prisma/client";
+import { Prisma, type LiveStatus } from "@prisma/client";
 import type { ZodIssue } from "zod";
 
 import { requireRole } from "@/lib/permissions";
 import { getPrisma } from "@/lib/prisma";
 import {
   LiveError,
-  assertCanOpenLive,
   getLiveDetail,
   listLiveSessions,
 } from "@/lib/live";
@@ -59,28 +58,49 @@ export async function createLiveAction(
     };
   }
 
+  const prisma = getPrisma();
+  let liveId: string;
   try {
-    await assertCanOpenLive();
+    liveId = await prisma.$transaction(
+      async (tx) => {
+        const open = await tx.liveSession.findFirst({ where: { status: "OPEN" } });
+        if (open) {
+          throw new LiveError(
+            "Ya existe un live abierto. Ciérralo o cancélalo antes de abrir otro.",
+            "LIVE_ALREADY_OPEN",
+          );
+        }
+        const live = await tx.liveSession.create({
+          data: {
+            name: parsed.data.name,
+            channel: parsed.data.channel,
+            responsibleId: parsed.data.responsibleId ?? null,
+            notes: parsed.data.notes ?? null,
+            status: "OPEN",
+          },
+        });
+        return live.id;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 10000 },
+    );
   } catch (error) {
     if (error instanceof LiveError) {
       return { ok: false, message: error.message };
     }
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === "P2034" || error.message.includes("serialization"))
+    ) {
+      return {
+        ok: false,
+        message: "Conflicto al abrir el live. Intenta nuevamente.",
+      };
+    }
     throw error;
   }
 
-  const prisma = getPrisma();
-  const live = await prisma.liveSession.create({
-    data: {
-      name: parsed.data.name,
-      channel: parsed.data.channel,
-      responsibleId: parsed.data.responsibleId ?? null,
-      notes: parsed.data.notes ?? null,
-      status: "OPEN",
-    },
-  });
-
   revalidatePath("/lives");
-  redirect(`/lives/${live.id}`);
+  redirect(`/lives/${liveId}`);
 }
 
 export async function updateLiveAction(

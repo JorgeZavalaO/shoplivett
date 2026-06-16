@@ -1,6 +1,7 @@
 import { LiveStatus, Prisma } from "@prisma/client";
 
 import { getPrisma } from "@/lib/prisma";
+import { toCents, centsToDecimalString } from "@/lib/money";
 
 export class LiveError extends Error {
   constructor(
@@ -102,55 +103,30 @@ export async function listLiveSessions(args?: {
 
 export async function getLiveMetrics(liveId: string) {
   const prisma = getPrisma();
-  const orders = await prisma.order.findMany({
-    where: { liveSessionId: liveId },
-    select: {
-      total: true,
-      validatedPaid: true,
-      balance: true,
-      status: true,
-    },
-  });
+  const where = { liveSessionId: liveId };
+  const paidStatuses: Array<"PAID" | "PARTIALLY_PAID" | "RESERVED"> = ["PAID", "PARTIALLY_PAID", "RESERVED"];
+  const paidLikeWhere = { liveSessionId: liveId, status: { in: paidStatuses } };
+  const pendingValidationWhere = { liveSessionId: liveId, status: "PAYMENT_VALIDATION_PENDING" as const };
 
-  let soldCents = 0;
-  let collectedCents = 0;
-  let pendingCents = 0;
+  const [ordersCount, soldAgg, collectedAgg, pendingBalanceAgg, pendingValidationAgg] =
+    await Promise.all([
+      prisma.order.count({ where }),
+      prisma.order.aggregate({ where, _sum: { total: true } }),
+      prisma.order.aggregate({ where: paidLikeWhere, _sum: { validatedPaid: true } }),
+      prisma.order.aggregate({ where: paidLikeWhere, _sum: { balance: true } }),
+      prisma.order.aggregate({ where: pendingValidationWhere, _sum: { total: true } }),
+    ]);
 
-  for (const o of orders) {
-    const totalCents = toCents(o.total.toString());
-    const validatedCents = toCents(o.validatedPaid.toString());
-    const balanceCents = toCents(o.balance.toString());
-    soldCents += totalCents;
-    if (o.status === "PAID" || o.status === "PARTIALLY_PAID" || o.status === "RESERVED") {
-      collectedCents += validatedCents;
-      pendingCents += balanceCents;
-    } else if (o.status === "PAYMENT_VALIDATION_PENDING") {
-      pendingCents += totalCents;
-    }
-  }
+  const soldCents = toCents(soldAgg._sum.total);
+  const collectedCents = toCents(collectedAgg._sum?.validatedPaid);
+  const pendingCents = toCents(pendingBalanceAgg._sum?.balance) + toCents(pendingValidationAgg._sum?.total);
 
   return {
-    ordersCount: orders.length,
+    ordersCount,
     soldAmount: centsToDecimalString(soldCents),
     collectedAmount: centsToDecimalString(collectedCents),
     pendingAmount: centsToDecimalString(pendingCents),
   };
-}
-
-function toCents(value: string): number {
-  const [whole, fraction = ""] = value.trim().split(".");
-  const safeWhole = (whole || "0").replace(/[^0-9]/g, "") || "0";
-  const safeFraction = (fraction || "").replace(/[^0-9]/g, "").padEnd(2, "0").slice(0, 2);
-  return Number(safeWhole) * 100 + Number(safeFraction);
-}
-
-function centsToDecimalString(cents: number): string {
-  const negative = cents < 0;
-  const abs = negative ? -cents : cents;
-  const whole = Math.trunc(abs / 100);
-  const fraction = Math.trunc(abs % 100);
-  const fracStr = String(fraction).padStart(2, "0");
-  return `${negative ? "-" : ""}${whole}.${fracStr}`;
 }
 
 export async function getLiveDetail(liveId: string) {

@@ -8,7 +8,6 @@ import { Prisma, type PaymentMethod, type PaymentStatus } from "@prisma/client";
 import {
   requirePaymentValidator,
   requireRole,
-  requireUser,
   getCurrentUser,
 } from "@/lib/permissions";
 import { getPrisma } from "@/lib/prisma";
@@ -172,6 +171,7 @@ export async function rejectPaymentAction(
   formData: FormData,
 ): Promise<PaymentActionResult> {
   await requirePaymentValidator();
+  const user = await getCurrentUser();
   const parsed = RejectSchema.safeParse({
     paymentId: String(formData.get("paymentId") ?? ""),
     reason: String(formData.get("reason") ?? ""),
@@ -188,6 +188,7 @@ export async function rejectPaymentAction(
     await rejectPayment({
       paymentId: parsed.data.paymentId,
       reason: parsed.data.reason,
+      actorId: user?.id ?? null,
     });
     revalidatePath("/pagos");
     revalidatePath(`/pagos/${parsed.data.paymentId}`);
@@ -200,25 +201,38 @@ export async function rejectPaymentAction(
   }
 }
 
+const ValidatePaymentInputSchema = z.object({
+  paymentId: z.string().min(1, "Falta el identificador del pago."),
+  excessTreatment: z.enum(["CREDIT", "REFUND", "REJECT"]).optional(),
+  excessNotes: z.string().trim().max(500).optional(),
+});
+
+export type ValidatePaymentInput = z.infer<typeof ValidatePaymentInputSchema>;
+
 export async function validatePaymentAction(
-  paymentId: string,
-  excessTreatment?: "CREDIT" | "REFUND" | "REJECT",
-  excessNotes?: string,
+  input: ValidatePaymentInput,
 ): Promise<PaymentActionResult> {
   await requirePaymentValidator();
-  if (!paymentId) {
-    return { ok: false, message: "Falta el identificador del pago." };
+  const parsed = ValidatePaymentInputSchema.safeParse(input);
+  if (!parsed.success) {
+    const firstIssue = parsed.error.issues[0];
+    return {
+      ok: false,
+      message: firstIssue?.message ?? "Datos inválidos.",
+      fieldErrors: fieldErrorsFromZod(parsed.error.issues),
+    };
   }
   const user = await getCurrentUser();
   try {
     const result = await validatePayment({
-      paymentId,
-      excessTreatment: excessTreatment ?? "REJECT",
-      excessNotes: excessNotes ?? null,
+      paymentId: parsed.data.paymentId,
+      excessTreatment: parsed.data.excessTreatment ?? "REJECT",
+      excessNotes: parsed.data.excessNotes ?? null,
       validatedById: user?.id ?? null,
+      actorId: user?.id ?? null,
     });
     revalidatePath("/pagos");
-    revalidatePath(`/pagos/${paymentId}`);
+    revalidatePath(`/pagos/${parsed.data.paymentId}`);
     revalidatePath("/pedidos");
     revalidatePath("/lives");
     if (result.excessTreatment === "CREDIT") {
@@ -278,7 +292,10 @@ export async function updatePaymentApplicationsAction(
     };
   }
   try {
-    await setPaymentApplications(parsed.data.paymentId, parsed.data.applications);
+    const user = await getCurrentUser();
+    await setPaymentApplications(parsed.data.paymentId, parsed.data.applications, {
+      actorId: user?.id ?? null,
+    });
     revalidatePath("/pagos");
     revalidatePath(`/pagos/${parsed.data.paymentId}`);
     return { ok: true, message: "Aplicación actualizada." };
@@ -316,7 +333,7 @@ export async function listPaymentsAction(args?: {
   status: PaymentStatus | "ALL";
   query: string;
 }> {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   const safePage = Math.max(1, args?.page ?? 1);
   const safePerPage = Math.min(100, Math.max(1, args?.perPage ?? 20));
   const query = args?.query?.trim() ?? "";
@@ -379,13 +396,31 @@ export async function listPaymentsAction(args?: {
 }
 
 export async function getPaymentDetailAction(paymentId: string) {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   if (!paymentId) return null;
   const prisma = getPrisma();
   const payment = await prisma.payment.findUnique({
     where: { id: paymentId },
-    include: {
-      customer: true,
+    select: {
+      id: true,
+      method: true,
+      status: true,
+      amount: true,
+      operationNumber: true,
+      notes: true,
+      validatedAt: true,
+      rejectedAt: true,
+      rejectionReason: true,
+      createdAt: true,
+      updatedAt: true,
+      customer: {
+        select: {
+          id: true,
+          name: true,
+          whatsapp: true,
+          status: true,
+        },
+      },
       order: {
         select: {
           id: true,
@@ -393,9 +428,17 @@ export async function getPaymentDetailAction(paymentId: string) {
           customerId: true,
         },
       },
-      receipts: { orderBy: { createdAt: "asc" } },
+      validatedBy: { select: { id: true, name: true } },
+      rejectedBy: { select: { id: true, name: true } },
+      receipts: {
+        select: { id: true, url: true, pathname: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+      },
       applications: {
-        include: {
+        select: {
+          id: true,
+          amount: true,
+          createdAt: true,
           order: {
             select: {
               id: true,
@@ -418,7 +461,7 @@ export async function searchOrdersForPaymentAction(
   query: string,
   customerId: string,
 ) {
-  await requireUser();
+  await requireRole(["ADMIN", "SELLER"]);
   if (!customerId) return [];
   const trimmed = query.trim();
   const prisma = getPrisma();

@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, Lint, Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci?sslmode=disable"
+      DIRECT_URL: "postgresql://ci:ci@localhost:5432/ci?sslmode=disable"
+      AUTH_SECRET: "ci-secret-do-not-use-in-prod-32bytes!!"
+      AUTH_TRUST_HOST: "true"
+      AUTH_URL: "http://localhost:3100"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm build
+
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci_e2e?sslmode=disable&schema=public"
+      DIRECT_URL: "postgresql://ci:ci@localhost:5432/ci_e2e?sslmode=disable"
+      AUTH_SECRET: "ci-secret-do-not-use-in-prod-32bytes!!"
+      AUTH_TRUST_HOST: "true"
+      AUTH_URL: "http://localhost:3100"
+      SEED_ADMIN_PASSWORD: "ci-admin-pass"
+      SEED_SELLER_PASSWORD: "ci-seller-pass"
+      SEED_DISPATCH_PASSWORD: "ci-dispatch-pass"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm test:e2e:install --with-deps
+      - run: pnpm db:push
+      - run: pnpm db:seed
+      - run: pnpm test:e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { PaymentMethod } from "@prisma/client";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -10,6 +11,11 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatWhatsAppDisplay } from "@/lib/phone";
+import {
+  buildWhatsappLink,
+  buildWhatsappMessage,
+} from "@/lib/whatsapp";
+import { MessageCircle } from "lucide-react";
 
 type CreditApplication = {
   id: string;
@@ -31,7 +37,7 @@ type CreditItem = {
   refundReason: string | null;
   payment: {
     id: string;
-    method: string;
+    method: PaymentMethod;
     amount: string;
     createdAt: Date;
   } | null;
@@ -40,7 +46,7 @@ type CreditItem = {
 
 type Props = {
   credits: CreditItem[];
-  customer: { name: string; whatsapp: string };
+  customer: { id: string; name: string; whatsapp: string };
 };
 
 const ORIGIN_LABELS: Record<CreditItem["origin"], string> = {
@@ -70,6 +76,18 @@ export function CustomerCreditsHistory({ credits, customer }: Props) {
     .filter((c) => c.status === "AVAILABLE" || c.status === "PARTIALLY_USED")
     .reduce((acc, c) => acc + Number(c.availableAmount), 0);
 
+  const creditMessageLink = buildWhatsappLink(
+    customer.whatsapp,
+    buildWhatsappMessage({
+      key: "CREDIT_AVAILABLE",
+      customer: { name: customer.name, whatsapp: customer.whatsapp },
+      credit: {
+        totalAmount: totalAvailable.toFixed(2),
+        availableAmount: totalAvailable.toFixed(2),
+      },
+    }),
+  );
+
   return (
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -91,6 +109,22 @@ export function CustomerCreditsHistory({ credits, customer }: Props) {
           >
             {formatWhatsAppDisplay(customer.whatsapp)}
           </Link>
+          {creditMessageLink ? (
+            <Button
+              size="xs"
+              variant="ghost"
+              className="ml-2"
+              render={
+                <a
+                  href={creditMessageLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <MessageCircle className="size-3" /> Avisar crédito
+                </a>
+              }
+            />
+          ) : null}
         </div>
       </CardHeader>
       <CardContent>
@@ -103,7 +137,7 @@ export function CustomerCreditsHistory({ credits, customer }: Props) {
               <Button
                 size="sm"
                 variant="outline"
-                render={<Link href={`/clientes/${encodeURIComponent("")}`}>Ver módulo de pagos</Link>}
+                render={<Link href={`/pagos?customerId=${customer.id}`}>Ver módulo de pagos</Link>}
               />
             </div>
           </div>

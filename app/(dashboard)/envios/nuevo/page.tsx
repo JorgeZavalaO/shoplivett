@@ -8,7 +8,6 @@ import { getOrderDetailAction } from "@/actions/orders";
 import { requireRole } from "@/lib/permissions";
 import { getSettings } from "@/lib/settings";
 
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{
   customerId?: string | string[];
@@ -67,8 +66,8 @@ export default async function NuevoEnvioPage({
         enabledShippingMethods={settings.enabledShippingMethods}
         freeShippingEnabled={settings.freeShippingEnabled}
         freeShippingThreshold={settings.freeShippingThreshold.toString()}
-        defaultCustomer={defaultCustomer as never}
-        preselectOrder={preselect as never}
+        defaultCustomer={defaultCustomer}
+        preselectOrder={preselect}
       />
     </div>
   );

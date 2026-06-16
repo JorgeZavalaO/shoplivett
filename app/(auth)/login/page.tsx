@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { LoginForm } from "@/components/forms/login-form";
+
+export const metadata: Metadata = { title: "Iniciar sesión" };
 
 type SearchParams = Promise<{ from?: string | string[] }>;
 

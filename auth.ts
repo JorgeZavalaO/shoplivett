@@ -25,8 +25,13 @@ type AppJWT = JWT & {
   role?: Role;
 };
 
+// Cualquier valor distinto de "false" se considera confiable. Por defecto
+// (variable ausente) se confía en el host. Esto cubre Vercel, Neon y otros
+// proxies sin requerir configuración explícita.
+const trustHost = process.env.AUTH_TRUST_HOST !== "false";
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  trustHost: true,
+  trustHost,
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
@@ -60,37 +65,39 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       const t = token as AppJWT;
       if (user) {
         t.id = (user as { id: string }).id;
         t.role = (user as { role: Role }).role;
+        return t;
+      }
+      // Refresca rol y estado activo en cada refresh/update de sesión.
+      // Limita el costo a una sola consulta cuando el JWT ya tiene un id.
+      if (t.id && (trigger === "update" || !t.role)) {
+        const fresh = await prisma.user.findUnique({
+          where: { id: t.id },
+          select: { role: true, isActive: true },
+        });
+        if (!fresh || !fresh.isActive) {
+          // Forzamos un JWT vacío para que la sesión quede inválida.
+          return { ...t, id: "", role: undefined } as AppJWT;
+        }
+        t.role = fresh.role;
       }
       return t;
     },
     async session({ session, token }) {
       const t = token as AppJWT;
+      if (!t.id || !t.role) {
+        // Devuelve una sesión vacía cuando el JWT fue invalidado.
+        return { ...session, user: undefined as unknown as typeof session.user };
+      }
       if (t && session.user) {
-        session.user.id = t.id ?? session.user.id;
-        session.user.role = t.role ?? session.user.role;
+        session.user.id = t.id;
+        session.user.role = t.role;
       }
       return session;
-    },
-    authorized({ auth: session, request }) {
-      const isOnDashboard = request.nextUrl.pathname.startsWith("/dashboard")
-        || request.nextUrl.pathname.startsWith("/clientes")
-        || request.nextUrl.pathname.startsWith("/productos")
-        || request.nextUrl.pathname.startsWith("/inventario")
-        || request.nextUrl.pathname.startsWith("/lives")
-        || request.nextUrl.pathname.startsWith("/ventas")
-        || request.nextUrl.pathname.startsWith("/pedidos")
-        || request.nextUrl.pathname.startsWith("/pagos")
-        || request.nextUrl.pathname.startsWith("/envios")
-        || request.nextUrl.pathname.startsWith("/reportes")
-        || request.nextUrl.pathname.startsWith("/configuracion");
-
-      if (isOnDashboard) return !!session?.user;
-      return true;
     },
   },
 });

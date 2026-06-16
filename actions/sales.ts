@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { requireRole } from "@/lib/permissions";
+import { requireRole, getCurrentUser } from "@/lib/permissions";
 import { getPrisma } from "@/lib/prisma";
 import { CreateOrderSchema, type CreateOrderInput } from "@/lib/validations";
 import { createQuickSale, OrderError } from "@/lib/sales";
@@ -65,6 +65,7 @@ export async function createQuickSaleAction(
   }
 
   try {
+    const user = await getCurrentUser();
     const result = await createQuickSale({
       customerId: parsed.data.customerId,
       liveSessionId: parsed.data.liveSessionId,
@@ -76,6 +77,7 @@ export async function createQuickSaleAction(
       operationNumber: parsed.data.operationNumber,
       notes: parsed.data.notes,
       receiptFiles: receiptFiles.length > 0 ? receiptFiles : undefined,
+      actorId: user?.id ?? null,
     });
 
     revalidatePath("/ventas");
@@ -90,6 +92,7 @@ export async function createQuickSaleAction(
 }
 
 export async function getActiveLivesAction() {
+  await requireRole(["ADMIN", "SELLER"]);
   const open = await getOpenLive();
   return open ? [open] : [];
 }

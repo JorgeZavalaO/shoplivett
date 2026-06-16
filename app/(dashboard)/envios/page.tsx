@@ -1,12 +1,14 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Plus } from "lucide-react";
 
 import { listShipmentsAction } from "@/actions/shipments";
 import { ShipmentsTable } from "@/components/tables/shipments-table";
+
+export const metadata: Metadata = { title: "Envíos" };
 import { Button } from "@/components/ui/button";
 import { requireRole } from "@/lib/permissions";
 
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{
   q?: string | string[];
@@ -65,7 +67,7 @@ export default async function EnviosPage({
         <Button render={<Link href="/envios/nuevo"><Plus className="size-4" /> Nuevo envío</Link>} />
       </div>
       <ShipmentsTable
-        items={result.items as never}
+        items={result.items}
         total={result.total}
         page={result.page}
         perPage={result.perPage}

@@ -1,7 +1,9 @@
+import type { Metadata } from "next";
+
 import { InventoryTable } from "@/components/tables/inventory-table";
 import { getInventorySummaryAction } from "@/actions/inventory";
 
-export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Inventario" };
 
 type SearchParams = Promise<{
   q?: string | string[];

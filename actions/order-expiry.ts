@@ -10,6 +10,7 @@ import {
   listReservationsNearExpiry,
   OrderExpiryError,
 } from "@/lib/order-expiry";
+import { auditAfter } from "@/lib/audit";
 
 export type ExpireOrderResult = {
   ok: boolean;
@@ -54,6 +55,15 @@ export async function expireReservationAction(
       orderId: parsed.data.orderId,
       expiredById: user?.id ?? null,
       reason: parsed.data.reason || null,
+    });
+    auditAfter(user?.id ?? null, {
+      action: "RESERVATION_EXPIRED",
+      entity: "Order",
+      entityId: parsed.data.orderId,
+      metadata: {
+        releasedUnits: result.releasedUnits,
+        reason: parsed.data.reason ?? null,
+      },
     });
     revalidatePath("/pedidos/vencidos");
     revalidatePath(`/pedidos/${parsed.data.orderId}`);

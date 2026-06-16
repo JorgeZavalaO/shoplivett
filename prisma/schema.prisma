@@ -104,6 +104,28 @@ enum ShipmentStatus {
   CANCELLED
 }
 
+enum AuditAction {
+  PAYMENT_VALIDATED
+  PAYMENT_REJECTED
+  PAYMENT_APPLICATIONS_UPDATED
+  ORDER_CREATED
+  ORDER_CANCELLED
+  ORDER_EXPIRED
+  ORDER_STATUS_CHANGED
+  INVENTORY_ADJUSTED
+  RESERVATION_EXPIRED
+  SHIPMENT_CREATED
+  SHIPMENT_STATUS_CHANGED
+  SHIPMENT_CANCELLED
+  PRODUCT_PRICE_CHANGED
+  CUSTOMER_DEACTIVATED
+  CUSTOMER_STATUS_CHANGED
+  CREDIT_CREATED
+  CREDIT_REFUNDED
+  CREDIT_APPLIED
+  SETTINGS_UPDATED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -123,6 +145,7 @@ model User {
   cancelledReservations   Order[]            @relation("OrderExpirer")
   createdShipments        Shipment[]         @relation("ShipmentCreator")
   updatedShipments        Shipment[]         @relation("ShipmentUpdater")
+  auditLogs               AuditLog[]         @relation("AuditActor")
 
   @@index([email])
   @@index([role])
@@ -208,6 +231,7 @@ model Product {
   @@index([categoryId])
   @@index([isActive])
   @@index([name])
+  @@index([categoryId, isActive, createdAt])
 }
 
 model ProductVariant {
@@ -281,6 +305,7 @@ model LiveSession {
   @@index([status])
   @@index([startedAt])
   @@index([responsibleId])
+  @@index([status, startedAt])
 }
 
 model Order {
@@ -315,6 +340,10 @@ model Order {
   @@index([liveSessionId])
   @@index([status])
   @@index([expiresAt])
+  @@index([status, createdAt])
+  @@index([status, expiresAt])
+  @@index([customerId, status, createdAt])
+  @@index([status, expiresAt, customerId])
 }
 
 model OrderItem {
@@ -362,6 +391,8 @@ model Payment {
   @@index([status])
   @@index([validatedById])
   @@index([rejectedById])
+  @@index([status, createdAt])
+  @@index([customerId, status, createdAt])
 }
 
 model PaymentReceipt {
@@ -415,6 +446,7 @@ model CustomerCredit {
   @@index([paymentId])
   @@index([status])
   @@index([origin])
+  @@index([customerId, status, createdAt])
 }
 
 model CustomerCreditApplication {
@@ -464,6 +496,8 @@ model Shipment {
   @@index([status])
   @@index([shippingMethod])
   @@index([createdAt])
+  @@index([status, updatedAt])
+  @@index([customerId, status, createdAt])
 }
 
 model ShipmentOrder {
@@ -476,4 +510,20 @@ model ShipmentOrder {
 
   @@index([shipmentId])
   @@index([orderId])
+}
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  action    AuditAction
+  entity    String
+  entityId  String
+  actorId   String?
+  actor     User?       @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  metadata  Json?
+  createdAt DateTime    @default(now())
+
+  @@index([action, createdAt])
+  @@index([entity, entityId])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
 }

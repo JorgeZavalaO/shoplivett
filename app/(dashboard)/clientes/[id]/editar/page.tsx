@@ -4,12 +4,13 @@ import { CustomerForm } from "@/components/forms/customer-form";
 import { updateCustomerAction } from "@/actions/customers";
 import type { CustomerActionResult } from "@/lib/customers-types";
 import { getCustomerSummary } from "@/lib/customer-helpers";
+import { requireRole } from "@/lib/permissions";
 
-export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string }>;
 
 export default async function EditarClientaPage({ params }: { params: Params }) {
+  await requireRole(["ADMIN", "SELLER"]);
   const { id } = await params;
   const summary = await getCustomerSummary(id);
   if (!summary) notFound();

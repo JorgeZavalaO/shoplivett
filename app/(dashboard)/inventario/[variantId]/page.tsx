@@ -13,8 +13,8 @@ import {
   getStockSummary,
 } from "@/lib/inventory";
 import { formatWhatsAppDisplay } from "@/lib/phone";
+import { requireRole } from "@/lib/permissions";
 
-export const dynamic = "force-dynamic";
 
 type Params = Promise<{ variantId: string }>;
 
@@ -23,6 +23,7 @@ export default async function VarianteInventarioPage({
 }: {
   params: Params;
 }) {
+  await requireRole(["ADMIN", "SELLER", "DISPATCH"]);
   const { variantId } = await params;
   const prisma = getPrisma();
   const variant = await prisma.productVariant.findUnique({

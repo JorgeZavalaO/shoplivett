@@ -1,4 +1,5 @@
 // Helpers de permisos y guards por rol.
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
@@ -29,9 +30,27 @@ export async function getCurrentUser() {
   return session?.user ?? null;
 }
 
+/**
+ * Devuelve la URL actual para preservarla en el parámetro `from` cuando
+ * se redirige al login. Si no hay contexto, devuelve "/dashboard".
+ */
+async function currentPathOrDashboard(): Promise<string> {
+  try {
+    const h = await headers();
+    const url = h.get("x-pathname") ?? h.get("referer") ?? "/dashboard";
+    if (url.startsWith("/") && !url.startsWith("//")) return url;
+  } catch {
+    // headers() puede no estar disponible en algunos contextos.
+  }
+  return "/dashboard";
+}
+
 export async function requireUser() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) {
+    const from = await currentPathOrDashboard();
+    redirect(`/login?from=${encodeURIComponent(from)}`);
+  }
   return user;
 }
 

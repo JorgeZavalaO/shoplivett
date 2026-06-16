@@ -1,13 +1,17 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { CategoriesTable } from "@/components/tables/categories-table";
-import { listCategoriesAction } from "@/actions/categories";
 
-export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Categorías" };
+import { listCategoriesAction } from "@/actions/categories";
+import { requireRole } from "@/lib/permissions";
+
 
 export default async function CategoriasPage() {
+  await requireRole(["ADMIN", "SELLER"]);
   const items = await listCategoriesAction();
   const rows = items.map((c) => ({
     id: c.id,

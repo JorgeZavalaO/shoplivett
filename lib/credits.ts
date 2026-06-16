@@ -4,6 +4,9 @@ import { Prisma, CreditOrigin, CreditStatus } from "@prisma/client";
 
 import { getPrisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
+import { confirmSaleStock } from "@/lib/inventory";
+import { toCents, centsToDecimalString, type Cents } from "@/lib/money";
+import { auditInTx } from "@/lib/audit";
 
 export class CreditError extends Error {
   constructor(
@@ -24,26 +27,12 @@ export class CreditError extends Error {
   }
 }
 
-type Cents = number;
-
-function toCents(value: string): Cents {
-  const num = Number(value);
-  if (!Number.isFinite(num) || num < 0) {
+function creditToCents(value: string): Cents {
+  try {
+    return toCents(value, { allowNegative: true });
+  } catch {
     throw new CreditError("Monto inválido.", "INVALID_AMOUNT");
   }
-  const [whole, fraction = ""] = value.trim().split(".");
-  const safeWhole = (whole || "0").replace(/[^0-9]/g, "") || "0";
-  const safeFraction = (fraction || "").replace(/[^0-9]/g, "").padEnd(2, "0").slice(0, 2);
-  return Number(safeWhole) * 100 + Number(safeFraction);
-}
-
-function centsToDecimalString(cents: Cents): string {
-  const negative = cents < 0;
-  const abs = negative ? -cents : cents;
-  const whole = Math.trunc(abs / 100);
-  const fraction = Math.trunc(abs % 100);
-  const fracStr = String(fraction).padStart(2, "0");
-  return `${negative ? "-" : ""}${whole}.${fracStr}`;
 }
 
 export type CreateOverpaymentCreditInput = {
@@ -57,7 +46,7 @@ export type CreateOverpaymentCreditInput = {
 export async function createOverpaymentCredit(
   input: CreateOverpaymentCreditInput,
 ): Promise<{ creditId: string }> {
-  const cents = toCents(input.amount);
+  const cents = creditToCents(input.amount);
   if (cents <= 0) {
     throw new CreditError("El monto del crédito debe ser mayor a 0.", "INVALID_AMOUNT");
   }
@@ -93,6 +82,13 @@ export async function createOverpaymentCredit(
       },
     });
 
+    await auditInTx(tx, input.createdById ?? null, {
+      action: "CREDIT_CREATED",
+      entity: "CustomerCredit",
+      entityId: credit.id,
+      metadata: { origin: "OVERPAYMENT", customerId: input.customerId },
+    });
+
     return { creditId: credit.id };
   });
 }
@@ -107,7 +103,7 @@ export type CreateManualCreditInput = {
 export async function createManualCredit(
   input: CreateManualCreditInput,
 ): Promise<{ creditId: string }> {
-  const cents = toCents(input.amount);
+  const cents = creditToCents(input.amount);
   if (cents <= 0) {
     throw new CreditError("El monto del crédito debe ser mayor a 0.", "INVALID_AMOUNT");
   }
@@ -125,6 +121,12 @@ export async function createManualCredit(
         notes: input.notes ?? null,
         createdById: input.createdById ?? null,
       },
+    });
+    await auditInTx(tx, input.createdById ?? null, {
+      action: "CREDIT_CREATED",
+      entity: "CustomerCredit",
+      entityId: credit.id,
+      metadata: { origin: "MANUAL", customerId: input.customerId },
     });
     return { creditId: credit.id };
   });
@@ -165,7 +167,7 @@ export async function refundCredit(
         if (credit.status === CreditStatus.VOIDED) {
           throw new CreditError("El crédito está anulado.", "CREDIT_NOT_AVAILABLE");
         }
-        const available = toCents(credit.availableAmount.toString());
+        const available = creditToCents(credit.availableAmount.toString());
         if (available > 0) {
           throw new CreditError(
             "Solo puedes devolver créditos que ya se usaron por completo.",
@@ -180,6 +182,12 @@ export async function refundCredit(
             refundedById: input.refundedById ?? null,
             refundReason: reason,
           },
+        });
+        await auditInTx(tx, input.refundedById ?? null, {
+          action: "CREDIT_REFUNDED",
+          entity: "CustomerCredit",
+          entityId: input.creditId,
+          metadata: { reason },
         });
         return { creditId: input.creditId };
       },
@@ -220,7 +228,7 @@ export type ApplyCreditResult = {
 export async function applyCreditToOrder(
   input: ApplyCreditToOrderInput,
 ): Promise<ApplyCreditResult> {
-  const cents = toCents(input.amount);
+  const cents = creditToCents(input.amount);
   if (cents <= 0) {
     throw new CreditError("El monto a aplicar debe ser mayor a 0.", "INVALID_AMOUNT");
   }
@@ -241,7 +249,7 @@ export async function applyCreditToOrder(
         if (credit.status === CreditStatus.USED) {
           throw new CreditError("El crédito ya se usó por completo.", "CREDIT_NOT_AVAILABLE");
         }
-        const available = toCents(credit.availableAmount.toString());
+        const available = creditToCents(credit.availableAmount.toString());
         if (cents > available) {
           throw new CreditError(
             `El crédito solo tiene S/${centsToDecimalString(available)} disponible.`,
@@ -273,7 +281,7 @@ export async function applyCreditToOrder(
             "CREDIT_NOT_AVAILABLE",
           );
         }
-        const orderBalance = toCents(order.balance.toString());
+        const orderBalance = creditToCents(order.balance.toString());
         if (orderBalance <= 0) {
           throw new CreditError(
             "El pedido ya está pagado y no admite más aplicaciones.",
@@ -282,14 +290,14 @@ export async function applyCreditToOrder(
         }
         const effective = Math.min(cents, orderBalance);
 
-        const newValidated = toCents(order.validatedPaid.toString()) + effective;
-        const newBalance = toCents(order.total.toString()) - newValidated;
+        const newValidated = creditToCents(order.validatedPaid.toString()) + effective;
+        const newBalance = creditToCents(order.total.toString()) - newValidated;
         const balance = newBalance < 0 ? 0 : newBalance;
-        const validated = newValidated > toCents(order.total.toString())
-          ? toCents(order.total.toString())
+        const validated = newValidated > creditToCents(order.total.toString())
+          ? creditToCents(order.total.toString())
           : newValidated;
         let newStatus: "PAID" | "PARTIALLY_PAID" | "RESERVED";
-        if (validated >= toCents(order.total.toString())) {
+        if (validated >= creditToCents(order.total.toString())) {
           newStatus = "PAID";
         } else if (validated > 0) {
           newStatus = "PARTIALLY_PAID";
@@ -326,6 +334,17 @@ export async function applyCreditToOrder(
           },
         });
 
+        await auditInTx(tx, input.createdById ?? null, {
+          action: "CREDIT_APPLIED",
+          entity: "CustomerCredit",
+          entityId: credit.id,
+          metadata: {
+            orderId: order.id,
+            amount: centsToDecimalString(effective),
+            applicationId: application.id,
+          },
+        });
+
         // Si con el crédito el pedido quedó pagado, mover stock reservado → vendido.
         if (newStatus === "PAID") {
           const items = await tx.orderItem.findMany({
@@ -333,20 +352,9 @@ export async function applyCreditToOrder(
             select: { variantId: true, quantity: true },
           });
           for (const item of items) {
-            await tx.productVariant.update({
-              where: { id: item.variantId },
-              data: {
-                reservedStock: { decrement: item.quantity },
-                soldStock: { increment: item.quantity },
-              },
-            });
-            await tx.inventoryMovement.create({
-              data: {
-                variantId: item.variantId,
-                type: "SALE",
-                quantity: item.quantity,
-                reason: `Crédito ${credit.id} aplicado a pedido`,
-              },
+            await confirmSaleStock(item.variantId, item.quantity, {
+              reason: `Crédito ${credit.id} aplicado a pedido`,
+              tx,
             });
           }
         }
@@ -382,7 +390,7 @@ export async function getCustomerAvailableCredit(customerId: string): Promise<st
   });
   const sum = result._sum.availableAmount;
   if (!sum) return "0.00";
-  return centsToDecimalString(toCents(sum.toString()));
+  return centsToDecimalString(creditToCents(sum.toString()));
 }
 
 export async function listCustomerCredits(customerId: string) {
@@ -431,3 +439,4 @@ export async function listCustomerCredits(customerId: string) {
 }
 
 export type CreditListItem = Awaited<ReturnType<typeof listCustomerCredits>>[number];
+

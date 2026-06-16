@@ -19,8 +19,10 @@ import { canTransition, SHIPMENT_STATUS_LABELS } from "@/lib/shipments";
 import { SHIPPING_METHOD_LABELS } from "@/lib/settings-defaults";
 import { requireRole } from "@/lib/permissions";
 import { formatWhatsAppDisplay } from "@/lib/phone";
+import { WhatsAppActions } from "@/components/whatsapp/whatsapp-actions";
+import { buildWhatsappLink, buildWhatsappMessage } from "@/lib/whatsapp";
+import { MessageCircle } from "lucide-react";
 
-export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string }>;
 
@@ -51,6 +53,38 @@ export default async function EnvioDetallePage({ params }: { params: Params }) {
   );
 
   const whatsappLink = `https://wa.me/${shipment.customer.whatsapp.replace(/[^\d]/g, "")}`;
+
+  const firstOrder = shipment.orders[0]?.order ?? null;
+  const shipmentMessageLink = buildWhatsappLink(
+    shipment.customer.whatsapp,
+    buildWhatsappMessage({
+      key: "SHIPMENT_SENT",
+      customer: {
+        name: shipment.customer.name,
+        whatsapp: shipment.customer.whatsapp,
+      },
+      order: firstOrder
+        ? {
+            orderNumber: firstOrder.orderNumber,
+            total: firstOrder.total.toString(),
+            balance: firstOrder.balance.toString(),
+            expiresAt: new Date(),
+            status: firstOrder.status,
+          }
+        : {
+            orderNumber: shipment.id.slice(-6).toUpperCase(),
+            total: "0",
+            balance: "0",
+            expiresAt: new Date(),
+          },
+      shipment: {
+        shippingMethod: shipment.shippingMethod,
+        agencyName: shipment.agencyName,
+        trackingCode: shipment.trackingCode,
+      },
+    }),
+  );
+  const hasContext = shipmentMessageLink !== null;
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -89,6 +123,26 @@ export default async function EnvioDetallePage({ params }: { params: Params }) {
             {formatWhatsAppDisplay(shipment.customer.whatsapp)}
           </a>
         </p>
+        {hasContext ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              render={
+                <a
+                  href={shipmentMessageLink ?? "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <MessageCircle className="size-4" /> Avisar envío
+                </a>
+              }
+            />
+            <span className="text-xs text-muted-foreground">
+              Genera el mensaje con agencia y tracking desde la sección de WhatsApp.
+            </span>
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -237,6 +291,54 @@ export default async function EnvioDetallePage({ params }: { params: Params }) {
           </CardContent>
         </Card>
       </div>
+
+      {hasContext ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Mensajes para WhatsApp</CardTitle>
+            <CardDescription>
+              Comparte el estado del envío con la clienta. Solo se abre el chat
+              o se copia el texto.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <WhatsAppActions
+              customer={{
+                name: shipment.customer.name,
+                whatsapp: shipment.customer.whatsapp,
+              }}
+              context={{
+                hasOrder: Boolean(firstOrder),
+                hasPayment: false,
+                hasShipment: true,
+                hasCredit: false,
+              }}
+              order={
+                firstOrder
+                  ? {
+                      orderNumber: firstOrder.orderNumber,
+                      total: firstOrder.total.toString(),
+                      balance: firstOrder.balance.toString(),
+                      expiresAt: new Date(),
+                      status: firstOrder.status,
+                    }
+                  : {
+                      orderNumber: shipment.id.slice(-6).toUpperCase(),
+                      total: "0",
+                      balance: "0",
+                      expiresAt: new Date(),
+                    }
+              }
+              shipment={{
+                shippingMethod: shipment.shippingMethod,
+                agencyName: shipment.agencyName,
+                trackingCode: shipment.trackingCode,
+              }}
+              defaultTemplate="SHIPMENT_SENT"
+            />
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

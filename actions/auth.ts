@@ -33,7 +33,12 @@ export async function loginAction(
 
   const fromValue = formData.get("from");
   const redirectTo =
-    typeof fromValue === "string" && fromValue.startsWith("/") ? fromValue : "/dashboard";
+    typeof fromValue === "string" &&
+    fromValue.startsWith("/") &&
+    !fromValue.startsWith("//") &&
+    !fromValue.startsWith("/\\")
+      ? fromValue
+      : "/dashboard";
 
   try {
     await signIn("credentials", {

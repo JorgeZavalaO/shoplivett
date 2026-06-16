@@ -21,28 +21,13 @@ export class OrderExpiryError extends Error {
   }
 }
 
-type Cents = number;
-
-function toCents(value: string): Cents {
-  const [whole, fraction = ""] = value.trim().split(".");
-  const safeWhole = (whole || "0").replace(/[^0-9]/g, "") || "0";
-  const safeFraction = (fraction || "").replace(/[^0-9]/g, "").padEnd(2, "0").slice(0, 2);
-  return Number(safeWhole) * 100 + Number(safeFraction);
-}
-
-function centsToDecimalString(cents: Cents): string {
-  const negative = cents < 0;
-  const abs = negative ? -cents : cents;
-  const whole = Math.trunc(abs / 100);
-  const fraction = Math.trunc(abs % 100);
-  const fracStr = String(fraction).padStart(2, "0");
-  return `${negative ? "-" : ""}${whole}.${fracStr}`;
-}
-
+// Solo se pueden vencer pedidos que aún no han recibido dinero validado.
+// Un pedido PARTIALLY_PAID tiene pagos validados y/o créditos aplicados; para
+// cerrarlo se requiere intervención manual (devolución/anulación de pagos o
+// nueva venta) en lugar de una expiración automática.
 const EXPIRABLE_STATUSES: OrderStatus[] = [
   "PAYMENT_VALIDATION_PENDING",
   "RESERVED",
-  "PARTIALLY_PAID",
 ];
 
 export async function listExpiredReservations(args?: {
@@ -153,6 +138,12 @@ export async function expireReservation(input: {
             "ORDER_NOT_CANCELLABLE",
           );
         }
+        if (order.status === "PARTIALLY_PAID") {
+          throw new OrderExpiryError(
+            "El pedido tiene pagos validados. Cancela los pagos o gestiona la devolución manualmente antes de vencerlo.",
+            "ORDER_NOT_CANCELLABLE",
+          );
+        }
         if (order.expiresAt.getTime() > Date.now()) {
           throw new OrderExpiryError(
             "La reserva aún no ha vencido.",
@@ -163,24 +154,10 @@ export async function expireReservation(input: {
         // Liberar stock reservado por cada item.
         for (const item of order.items) {
           if (item.quantity <= 0) continue;
-          const v = await tx.productVariant.findUnique({
-            where: { id: item.variantId },
-            select: { reservedStock: true },
-          });
-          if (!v) continue;
-          const qty = Math.min(item.quantity, v.reservedStock);
-          if (qty <= 0) continue;
-          await tx.productVariant.update({
-            where: { id: item.variantId },
-            data: { reservedStock: { decrement: qty } },
-          });
-          await tx.inventoryMovement.create({
-            data: {
-              variantId: item.variantId,
-              type: "EXPIRE",
-              quantity: qty,
-              reason: input.reason ?? `Reserva vencida ${order.orderNumber}`,
-            },
+          await releaseStock(item.variantId, item.quantity, {
+            reason: input.reason ?? `Reserva vencida ${order.orderNumber}`,
+            movementType: "EXPIRE",
+            tx,
           });
         }
 
@@ -228,7 +205,3 @@ export async function expireReservation(input: {
     throw error;
   }
 }
-
-void centsToDecimalString;
-void toCents;
-void releaseStock;

@@ -1,12 +1,11 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
-import { useFormStatus } from "react-dom";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   cancelShipmentAction,
   changeShipmentStatusAction,
@@ -21,30 +20,6 @@ const NEXT_LABELS: Record<string, string> = {
   SHIPPED: "Marcar como enviado",
   DELIVERED: "Marcar como entregado",
 };
-
-function StatusSubmit({ label }: { label: string }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" disabled={pending} className="w-full">
-      {pending ? (
-        <>
-          <Loader2 className="size-4 animate-spin" /> Actualizando…
-        </>
-      ) : (
-        label
-      )}
-    </Button>
-  );
-}
-
-function CancelSubmit() {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" variant="destructive" disabled={pending} className="w-full">
-      {pending ? "Cancelando…" : "Confirmar cancelación"}
-    </Button>
-  );
-}
 
 type Status =
   | "PENDING"
@@ -83,7 +58,24 @@ export function ShipmentStatusActions({
     initial,
   );
   const [showCancel, setShowCancel] = useState(false);
-  const [, startTransition] = useTransition();
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmTransition, setConfirmTransition] = useState<Status | null>(null);
+  const [reason, setReason] = useState("");
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [transitionError, setTransitionError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (cancelState.ok) {
+      startTransition(() => router.refresh());
+    }
+  }, [cancelState.ok, router]);
+
+  useEffect(() => {
+    if (state.ok) {
+      startTransition(() => router.refresh());
+    }
+  }, [state.ok, router]);
 
   if (status === "DELIVERED" || status === "CANCELLED") {
     return (
@@ -98,16 +90,17 @@ export function ShipmentStatusActions({
       {ALL_TRANSITIONS.filter(
         (t) => t !== "CANCELLED" && availableTransitions.includes(t),
       ).map((t) => (
-        <form
+        <Button
           key={t}
-          action={(fd) => {
-            startTransition(() => formAction(fd));
+          type="button"
+          variant="outline"
+          onClick={() => {
+            setTransitionError(null);
+            setConfirmTransition(t);
           }}
         >
-          <input type="hidden" name="shipmentId" value={shipmentId} />
-          <input type="hidden" name="to" value={t} />
-          <StatusSubmit label={NEXT_LABELS[t] ?? `Pasar a ${t}`} />
-        </form>
+          {NEXT_LABELS[t] ?? `Pasar a ${t}`}
+        </Button>
       ))}
 
       {state.message ? (
@@ -139,32 +132,133 @@ export function ShipmentStatusActions({
             rows={2}
             maxLength={500}
             placeholder="Motivo de cancelación (opcional)"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
           />
-          {cancelState.message ? (
+          {cancelState.message && !cancelState.ok ? (
             <p className="text-xs text-destructive">{cancelState.message}</p>
           ) : null}
           <div className="flex gap-2">
             <Button
               type="button"
               variant="ghost"
-              onClick={() => setShowCancel(false)}
+              onClick={() => {
+                setShowCancel(false);
+                setReason("");
+              }}
               className="flex-1"
             >
               Volver
             </Button>
-            <CancelSubmit />
+            <Button
+              type="button"
+              variant="destructive"
+              className="flex-1"
+              onClick={() => {
+                setCancelError(null);
+                setConfirmCancel(true);
+              }}
+            >
+              Confirmar cancelación
+            </Button>
           </div>
         </form>
       )}
-      {state.ok || cancelState.ok ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => startTransition(() => router.refresh())}
+
+      <ConfirmDialog
+        open={confirmCancel}
+        onOpenChange={(next) => {
+          if (!pending) {
+            setConfirmCancel(next);
+            if (!next) setCancelError(null);
+          }
+        }}
+        title="Cancelar envío"
+        description="El envío volverá a estado Cancelado y los pedidos asociados quedarán disponibles para un nuevo envío. Esta acción queda registrada en auditoría."
+        confirmLabel="Sí, cancelar envío"
+        cancelLabel="Volver"
+        tone="destructive"
+        pending={pending}
+        onConfirm={() => {
+          const fd = new FormData();
+          fd.set("shipmentId", shipmentId);
+          fd.set("reason", reason);
+          startTransition(async () => {
+            try {
+              await cancelFormAction(fd);
+              setConfirmCancel(false);
+              setShowCancel(false);
+              setReason("");
+            } catch (err) {
+              console.error(err);
+              setCancelError(
+                err instanceof Error
+                  ? err.message
+                  : "No se pudo cancelar el envío.",
+              );
+            }
+          });
+        }}
+      />
+      {cancelError ? (
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs text-destructive"
         >
-          Refrescar
-        </Button>
+          {cancelError}
+        </p>
+      ) : null}
+
+      <ConfirmDialog
+        open={confirmTransition !== null}
+        onOpenChange={(next) => {
+          if (!pending) {
+            setConfirmTransition(next ? confirmTransition : null);
+            if (!next) setTransitionError(null);
+          }
+        }}
+        title={
+          confirmTransition
+            ? `Marcar envío como ${NEXT_LABELS[confirmTransition]?.replace("Marcar como ", "") ?? confirmTransition}`
+            : "Cambiar estado"
+        }
+        description={
+          confirmTransition === "DELIVERED"
+            ? "Esta acción marca el envío como entregado y no puede deshacerse. Confirma que la clienta recibió sus pedidos."
+            : "Confirma el cambio de estado. La acción queda registrada en auditoría."
+        }
+        confirmLabel="Confirmar"
+        cancelLabel="Cancelar"
+        tone={confirmTransition === "DELIVERED" ? "destructive" : "default"}
+        pending={pending}
+        onConfirm={() => {
+          if (!confirmTransition) return;
+          const target = confirmTransition;
+          const fd = new FormData();
+          fd.set("shipmentId", shipmentId);
+          fd.set("to", target);
+          startTransition(async () => {
+            try {
+              await formAction(fd);
+              setConfirmTransition(null);
+            } catch (err) {
+              console.error(err);
+              setTransitionError(
+                err instanceof Error
+                  ? err.message
+                  : "No se pudo cambiar el estado.",
+              );
+            }
+          });
+        }}
+      />
+      {transitionError ? (
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs text-destructive"
+        >
+          {transitionError}
+        </p>
       ) : null}
     </div>
   );

@@ -1,13 +1,14 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { useFormStatus } from "react-dom";
-import { Loader2, Save, Tag } from "lucide-react";
+import { Tag } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { FieldError } from "@/components/ui/field-error";
+import { FormMessage } from "@/components/ui/form-message";
+import { CancelLink } from "@/components/ui/cancel-link";
 import { slugify } from "@/lib/category-helpers";
 import type { CategoryActionResult } from "@/actions/categories";
 
@@ -22,29 +23,6 @@ type CategoryFormProps = {
 };
 
 const initialState: CategoryActionResult = { ok: false };
-
-function SubmitButton({ label }: { label: string }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" disabled={pending} className="min-w-40">
-      {pending ? (
-        <>
-          <Loader2 className="size-4 animate-spin" /> Guardando…
-        </>
-      ) : (
-        <>
-          <Save className="size-4" /> {label}
-        </>
-      )}
-    </Button>
-  );
-}
-
-function CancelLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Button variant="ghost" render={<a href={href}>{children}</a>} />
-  );
-}
 
 export function CategoryForm({
   mode,
@@ -87,9 +65,7 @@ export function CategoryForm({
                 <Tag className="size-3" /> Slug: <code>{slugPreview}</code>
               </p>
             ) : null}
-            {state.fieldErrors?.name ? (
-              <p className="text-xs text-destructive">{state.fieldErrors.name}</p>
-            ) : null}
+            <FieldError message={state.fieldErrors?.name} />
           </div>
 
           {mode === "edit" ? (
@@ -107,17 +83,9 @@ export function CategoryForm({
       </Card>
 
       <div className="flex items-center justify-between gap-3">
-        <p
-          className={cn(
-            "text-sm",
-            state.ok ? "text-emerald-600" : "text-destructive",
-            !state.message && "text-transparent",
-          )}
-        >
-          {state.message ?? "·"}
-        </p>
+        <FormMessage ok={state.ok} message={state.message} />
         <div className="flex items-center gap-2">
-          <CancelLink href={cancelHref}>Cancelar</CancelLink>
+          <CancelLink href={cancelHref} />
           <SubmitButton label={mode === "create" ? "Crear categoría" : "Guardar cambios"} />
         </div>
       </div>

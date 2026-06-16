@@ -3,12 +3,13 @@
 import { useActionState, useCallback, useMemo, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
-import { Calculator, Loader2, Minus, Plus, Search, ShoppingCart, UserPlus, X } from "lucide-react";
+import { Calculator, Loader2, Minus, Plus, ShoppingCart, UserPlus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { AsyncSearchList } from "@/components/ui/async-search-list";
 import { cn } from "@/lib/utils";
 import { formatWhatsAppDisplay } from "@/lib/phone";
 import {
@@ -62,26 +63,50 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods }: Props) {
   const [customerId, setCustomerId] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerResults, setCustomerResults] = useState<{ id: string; name: string; whatsapp: string }[]>([]);
+  const [customerLoading, setCustomerLoading] = useState(false);
+  const [customerError, setCustomerError] = useState<string | null>(null);
   const [, searchCustomer] = useTransition();
-  const searchCust = useCallback((q: string) => {
+  const searchCust = useCallback(async (q: string) => {
     setCustomerQuery(q);
-    if (q.length < 2) { setCustomerResults([]); return; }
+    if (q.length < 2) { setCustomerResults([]); setCustomerError(null); return; }
+    setCustomerLoading(true);
+    setCustomerError(null);
     searchCustomer(async () => {
-      const res = await searchCustomersForSaleAction(q);
-      setCustomerResults(res);
+      try {
+        const res = await searchCustomersForSaleAction(q);
+        setCustomerResults(res);
+      } catch (err) {
+        console.error(err);
+        setCustomerError("No pudimos buscar clientas. Intenta nuevamente.");
+        setCustomerResults([]);
+      } finally {
+        setCustomerLoading(false);
+      }
     });
   }, []);
 
   // --- Variant search ---
   const [variantQuery, setVariantQuery] = useState("");
   const [variantResults, setVariantResults] = useState<VariantSearchResult[]>([]);
+  const [variantLoading, setVariantLoading] = useState(false);
+  const [variantError, setVariantError] = useState<string | null>(null);
   const [, searchVariant] = useTransition();
-  const searchVar = useCallback((q: string) => {
+  const searchVar = useCallback(async (q: string) => {
     setVariantQuery(q);
-    if (q.length < 2) { setVariantResults([]); return; }
+    if (q.length < 2) { setVariantResults([]); setVariantError(null); return; }
+    setVariantLoading(true);
+    setVariantError(null);
     searchVariant(async () => {
-      const res = await searchVariantsForSaleAction(q);
-      setVariantResults(res);
+      try {
+        const res = await searchVariantsForSaleAction(q);
+        setVariantResults(res);
+      } catch (err) {
+        console.error(err);
+        setVariantError("No pudimos buscar productos. Intenta nuevamente.");
+        setVariantResults([]);
+      } finally {
+        setVariantLoading(false);
+      }
     });
   }, []);
 
@@ -177,30 +202,33 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods }: Props) {
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar clienta por nombre o WhatsApp…"
-                  className="pl-9"
-                  value={customerQuery}
-                  onChange={(e) => searchCust(e.target.value)}
-                />
-              </div>
-              {customerResults.length > 0 ? (
-                <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-card">
-                  {customerResults.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                      onClick={() => { setCustomerId(c.id); setCustomerName(c.name); setCustomerQuery(""); setCustomerResults([]); }}
-                    >
-                      <span className="font-medium">{c.name}</span>
-                      <span className="ml-2 text-xs text-muted-foreground">{formatWhatsAppDisplay(c.whatsapp)}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+              <AsyncSearchList
+                value={customerQuery}
+                onValueChange={setCustomerQuery}
+                onSearch={(q) => void searchCust(q)}
+                isLoading={customerLoading}
+                isQueryTooShort={customerQuery.length > 0 && customerQuery.length < 2}
+                results={customerResults}
+                errorMessage={customerError}
+                placeholder="Buscar clienta por nombre o WhatsApp…"
+                emptyMessage="Empieza a escribir (2 letras) para buscar."
+                noResultsMessage="No encontramos clientas con ese criterio."
+                getKey={(c) => c.id}
+                onSelectItem={(c) => {
+                  setCustomerId(c.id);
+                  setCustomerName(c.name);
+                  setCustomerQuery("");
+                  setCustomerResults([]);
+                }}
+                renderItem={(c) => (
+                  <>
+                    <span className="font-medium">{c.name}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {formatWhatsAppDisplay(c.whatsapp)}
+                    </span>
+                  </>
+                )}
+              />
               <Button
                 variant="ghost"
                 size="sm"
@@ -217,37 +245,34 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods }: Props) {
         {/* Variant search */}
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium">Agregar productos</label>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por código, nombre o color…"
-              className="pl-9"
-              value={variantQuery}
-              onChange={(e) => searchVar(e.target.value)}
-            />
-          </div>
-          {variantResults.length > 0 ? (
-            <div className="max-h-60 overflow-y-auto rounded-lg border border-border bg-card">
-              {variantResults.map((v) => (
-                <button
-                  key={v.id}
-                  type="button"
-                  className="w-full px-3 py-2 text-left text-sm hover:bg-muted flex items-center justify-between"
-                  onClick={() => addToCart(v)}
-                >
-                  <div>
-                    <p className="font-medium">{v.productName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {v.code} · {v.color || "—"} · S/ {v.price} · Disponible: <span className={v.available > 0 ? "text-emerald-600" : "text-destructive"}>{v.available}</span>
-                    </p>
-                  </div>
-                  <Badge variant="secondary" className="shrink-0">{v.categoryName}</Badge>
-                </button>
-              ))}
-            </div>
-          ) : variantQuery.length >= 2 ? (
-            <p className="text-xs text-muted-foreground">Sin resultados.</p>
-          ) : null}
+          <AsyncSearchList
+            value={variantQuery}
+            onValueChange={setVariantQuery}
+            onSearch={(q) => void searchVar(q)}
+            isLoading={variantLoading}
+            isQueryTooShort={variantQuery.length > 0 && variantQuery.length < 2}
+            results={variantResults}
+            errorMessage={variantError}
+            placeholder="Buscar por código, nombre o color…"
+            emptyMessage="Empieza a escribir (2 letras) para buscar productos."
+            noResultsMessage="No encontramos productos disponibles con ese criterio."
+            getKey={(v) => v.id}
+            onSelectItem={(v) => addToCart(v)}
+            renderItem={(v) => (
+              <div className="flex w-full items-center justify-between gap-2">
+                <div>
+                  <p className="font-medium">{v.productName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {v.code} · {v.color || "—"} · S/ {v.price} · Disponible:{" "}
+                    <span className={v.available > 0 ? "text-emerald-600" : "text-destructive"}>
+                      {v.available}
+                    </span>
+                  </p>
+                </div>
+                <Badge variant="secondary" className="shrink-0">{v.categoryName}</Badge>
+              </div>
+            )}
+          />
           {state.fieldErrors?.items ? (
             <p className="text-xs text-destructive">{state.fieldErrors.items}</p>
           ) : null}

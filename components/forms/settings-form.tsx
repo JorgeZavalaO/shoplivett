@@ -1,15 +1,15 @@
 "use client";
 
 import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { Loader2, Save } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { FieldError } from "@/components/ui/field-error";
+import { FormMessage } from "@/components/ui/form-message";
 import {
   initialSettingsState,
   updateSettingsAction,
@@ -19,7 +19,6 @@ import {
   PAYMENT_METHOD_LABELS,
   SHIPPING_METHOD_LABELS,
 } from "@/lib/settings-defaults";
-import { cn } from "@/lib/utils";
 
 type SettingsFormProps = {
   initial: {
@@ -42,28 +41,6 @@ const ROLE_LABELS: Record<string, string> = {
   SELLER: "Vendedora",
   DISPATCH: "Despacho",
 };
-
-function SubmitButton() {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" disabled={pending} className="min-w-40">
-      {pending ? (
-        <>
-          <Loader2 className="size-4 animate-spin" /> Guardando…
-        </>
-      ) : (
-        <>
-          <Save className="size-4" /> Guardar cambios
-        </>
-      )}
-    </Button>
-  );
-}
-
-function FieldError({ message }: { message?: string }) {
-  if (!message) return null;
-  return <p className="text-xs text-destructive">{message}</p>;
-}
 
 function SectionCard({
   title,
@@ -117,11 +94,12 @@ export function SettingsForm({ initial }: SettingsFormProps) {
   );
 
   useEffect(() => {
-    if (state.ok) toast.success(state.message ?? "Configuración guardada.");
-    if (!state.ok && state.message && !state.fieldErrors) {
+    if (state.ok) {
+      toast.success(state.message ?? "Configuración guardada.");
+    } else if (state.message && !state.fieldErrors) {
       toast.error(state.message);
     }
-  }, [state]);
+  }, [state.ok, state.message, state.fieldErrors]);
 
   return (
     <form action={formAction} className="flex flex-col gap-6" noValidate>
@@ -321,16 +299,8 @@ export function SettingsForm({ initial }: SettingsFormProps) {
       </SectionCard>
 
       <div className="flex items-center justify-between gap-3">
-        <p
-          className={cn(
-            "text-sm",
-            state.ok ? "text-emerald-600" : "text-destructive",
-            !state.message && "text-transparent",
-          )}
-        >
-          {state.message ?? "·"}
-        </p>
-        <SubmitButton />
+        <FormMessage ok={state.ok} message={state.message} />
+        <SubmitButton label="Guardar cambios" />
       </div>
     </form>
   );

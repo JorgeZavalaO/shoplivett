@@ -9,6 +9,8 @@ import { getPrisma } from "@/lib/prisma";
 import { confirmSaleStock } from "@/lib/inventory";
 import { PAYMENT_METHOD_LABELS } from "@/lib/settings-defaults";
 import { CreditError } from "@/lib/credits";
+import { toCents, centsToDecimalString, type Cents } from "@/lib/money";
+import { auditInTx } from "@/lib/audit";
 
 export class PaymentError extends Error {
   constructor(
@@ -29,6 +31,14 @@ export class PaymentError extends Error {
   ) {
     super(message);
     this.name = "PaymentError";
+  }
+}
+
+function paymentToCents(value: string): Cents {
+  try {
+    return toCents(value);
+  } catch {
+    throw new PaymentError("Monto inválido.", "INVALID_AMOUNT");
   }
 }
 
@@ -54,11 +64,13 @@ export type ValidatePaymentInput = {
   /** Motivo opcional (devolución o nota). */
   excessNotes?: string | null;
   validatedById?: string | null;
+  actorId?: string | null;
 };
 
 export type RejectPaymentInput = {
   paymentId: string;
   reason: string;
+  actorId?: string | null;
 };
 
 export type PaymentCreateResult = {
@@ -72,36 +84,11 @@ export type ValidatePaymentResult = {
   creditId?: string;
 };
 
-type Cents = number;
-
-function toCents(value: string): Cents {
-  const num = Number(value);
-  if (!Number.isFinite(num)) {
-    throw new PaymentError("Monto inválido.", "INVALID_AMOUNT");
-  }
-  if (num < 0) {
-    throw new PaymentError("El monto no puede ser negativo.", "INVALID_AMOUNT");
-  }
-  const [whole, fraction = ""] = value.trim().split(".");
-  const safeWhole = (whole || "0").replace(/[^0-9]/g, "") || "0";
-  const safeFraction = (fraction || "").replace(/[^0-9]/g, "").padEnd(2, "0").slice(0, 2);
-  return Number(safeWhole) * 100 + Number(safeFraction);
-}
-
-function centsToDecimalString(cents: Cents): string {
-  const negative = cents < 0;
-  const abs = negative ? -cents : cents;
-  const whole = Math.trunc(abs / 100);
-  const fraction = Math.trunc(abs % 100);
-  const fracStr = String(fraction).padStart(2, "0");
-  return `${negative ? "-" : ""}${whole}.${fracStr}`;
-}
-
 function assertValidAmount(value: string) {
   if (!/^\d+(\.\d{1,2})?$/.test(value.trim())) {
     throw new PaymentError("Monto inválido.", "INVALID_AMOUNT");
   }
-  const cents = toCents(value);
+  const cents = paymentToCents(value);
   if (cents <= 0) {
     throw new PaymentError("El monto debe ser mayor a 0.", "INVALID_AMOUNT");
   }
@@ -110,11 +97,12 @@ function assertValidAmount(value: string) {
 function aggregateApplications(
   applications: PaymentApplicationInput[],
 ): Cents {
-  return applications.reduce((acc, a) => acc + toCents(a.amount), 0);
+  return applications.reduce((acc, a) => acc + paymentToCents(a.amount), 0);
 }
 
 export async function createPayment(
   input: CreatePaymentInput,
+  options: { tx?: Prisma.TransactionClient } = {},
 ): Promise<PaymentCreateResult> {
   assertValidAmount(input.amount);
 
@@ -122,12 +110,12 @@ export async function createPayment(
     if (!/^\d+(\.\d{1,2})?$/.test(a.amount.trim())) {
       throw new PaymentError("Monto aplicado inválido.", "INVALID_AMOUNT");
     }
-    if (toCents(a.amount) <= 0) {
+    if (paymentToCents(a.amount) <= 0) {
       throw new PaymentError("El monto aplicado debe ser mayor a 0.", "INVALID_AMOUNT");
     }
   }
 
-  const paymentCents = toCents(input.amount);
+  const paymentCents = paymentToCents(input.amount);
   const appliedCents = aggregateApplications(input.applications);
   if (appliedCents > paymentCents) {
     throw new PaymentError(
@@ -136,8 +124,8 @@ export async function createPayment(
     );
   }
 
-  const prisma = getPrisma();
-  return prisma.$transaction(async (tx) => {
+  const externalTx = options.tx;
+  const execute = async (tx: Prisma.TransactionClient) => {
     const customer = await tx.customer.findUnique({ where: { id: input.customerId } });
     if (!customer) {
       throw new PaymentError("La clienta ya no existe.", "CUSTOMER_NOT_FOUND");
@@ -154,6 +142,7 @@ export async function createPayment(
           total: true,
           validatedPaid: true,
           balance: true,
+          status: true,
         },
       });
       if (orders.length !== uniqueIds.length) {
@@ -166,12 +155,18 @@ export async function createPayment(
           "CUSTOMER_MISMATCH",
         );
       }
-      // Validar contra sobreaplicación por pedido
+      // Validar contra sobreaplicación y pedidos cancelados/vencidos.
       for (const app of input.applications) {
         const order = orders.find((o) => o.id === app.orderId);
         if (!order) continue;
-        const balance = toCents(order.balance.toString());
-        if (toCents(app.amount) > balance) {
+        if (order.status === "CANCELLED" || order.status === "EXPIRED") {
+          throw new PaymentError(
+            `No puedes aplicar el pago a un pedido ${order.status === "CANCELLED" ? "cancelado" : "vencido"}.`,
+            "CUSTOMER_MISMATCH",
+          );
+        }
+        const balance = paymentToCents(order.balance.toString());
+        if (paymentToCents(app.amount) > balance) {
           throw new PaymentError(
             `La aplicación al pedido ${app.orderId} (S/${app.amount}) supera su saldo (S/${centsToDecimalString(balance)}).`,
             "ORDER_OVERPAYMENT",
@@ -197,13 +192,18 @@ export async function createPayment(
         data: {
           paymentId: payment.id,
           orderId: a.orderId,
-          amount: centsToDecimalString(toCents(a.amount)),
+          amount: centsToDecimalString(paymentToCents(a.amount)),
         },
       });
     }
 
     return { paymentId: payment.id };
-  });
+  };
+
+  if (externalTx) {
+    return execute(externalTx);
+  }
+  return getPrisma().$transaction(execute);
 }
 
 type OrderPaymentSummary = {
@@ -231,9 +231,9 @@ async function summarizeOrder(
   }
   return {
     orderId: order.id,
-    total: toCents(order.total.toString()),
-    validatedPaid: toCents(order.validatedPaid.toString()),
-    balance: toCents(order.balance.toString()),
+    total: paymentToCents(order.total.toString()),
+    validatedPaid: paymentToCents(order.validatedPaid.toString()),
+    balance: paymentToCents(order.balance.toString()),
   };
 }
 
@@ -286,7 +286,7 @@ export async function validatePayment(
         }
 
         const appliedCents = payment.applications.reduce(
-          (acc, a) => acc + toCents(a.amount.toString()),
+          (acc, a) => acc + paymentToCents(a.amount.toString()),
           0,
         );
 
@@ -315,8 +315,8 @@ export async function validatePayment(
         for (const app of payment.applications) {
           const order = orders.find((o) => o.id === app.orderId);
           if (!order) continue;
-          const balance = toCents(order.balance.toString());
-          if (toCents(app.amount.toString()) > balance) {
+          const balance = paymentToCents(order.balance.toString());
+          if (paymentToCents(app.amount.toString()) > balance) {
             throw new PaymentError(
               `La aplicación al pedido ${app.orderId} (S/${app.amount.toString()}) supera su saldo (S/${centsToDecimalString(balance)}).`,
               "ORDER_OVERPAYMENT",
@@ -324,13 +324,17 @@ export async function validatePayment(
           }
         }
 
-        // Excedente = lo aplicado menos lo que se necesitaba para cubrir esos pedidos.
-        // Calculamos el "necesario" como la suma de balances previos a la aplicación.
+        // Excedente = (lo aplicado - lo que se necesitaba) + (monto del pago - lo aplicado).
+        // El segundo término cubre el caso en que el operador dejó dinero sin asignar
+        // a ningún pedido: sin esto, validar el pago "perdería" ese monto.
         let requiredCents = 0;
         for (const order of orders) {
-          requiredCents += toCents(order.balance.toString());
+          requiredCents += paymentToCents(order.balance.toString());
         }
-        const excessCents = Math.max(0, appliedCents - requiredCents);
+        const paymentAmountCents = paymentToCents(payment.amount.toString());
+        const overpaymentCents = Math.max(0, appliedCents - requiredCents);
+        const unallocatedCents = Math.max(0, paymentAmountCents - appliedCents);
+        const excessCents = overpaymentCents + unallocatedCents;
         const hasExcess = excessCents > 0;
 
         if (hasExcess) {
@@ -363,7 +367,7 @@ export async function validatePayment(
         // Aplicar montos a pedidos respetando el balance real.
         for (const app of payment.applications) {
           const summary = await summarizeOrder(tx, app.orderId);
-          const appCents = toCents(app.amount.toString());
+          const appCents = paymentToCents(app.amount.toString());
           const effective = Math.min(appCents, summary.balance);
           const newValidated = summary.validatedPaid + effective;
           const next = recomputeOrderState(summary, newValidated);
@@ -436,6 +440,25 @@ export async function validatePayment(
           },
         });
 
+        await auditInTx(tx, input.actorId ?? input.validatedById ?? null, {
+          action: "PAYMENT_VALIDATED",
+          entity: "Payment",
+          entityId: input.paymentId,
+          metadata: {
+            customerId: payment.customerId,
+            paymentAmount: payment.amount.toString(),
+            appliedCents: centsToDecimalString(appliedCents),
+            excessCents: centsToDecimalString(excessCents),
+            excessTreatment: hasExcess
+              ? treatment === "REJECT"
+                ? "CREDIT"
+                : treatment
+              : "NONE",
+            creditId: creditId ?? null,
+            affectedOrderIds: payment.applications.map((a) => a.orderId),
+          },
+        });
+
         return {
           paymentId: input.paymentId,
           excessCents,
@@ -477,119 +500,190 @@ export async function rejectPayment(
   }
 
   const prisma = getPrisma();
-  return prisma.$transaction(async (tx) => {
-    const payment = await tx.payment.findUnique({
-      where: { id: input.paymentId },
-      include: { applications: true },
-    });
-    if (!payment) {
-      throw new PaymentError("El pago ya no existe.", "PAYMENT_NOT_FOUND");
-    }
-    if (payment.status === "VALIDATED") {
-      throw new PaymentError("No puedes rechazar un pago ya validado.", "ALREADY_VALIDATED");
-    }
-    if (payment.status === "REJECTED") {
-      throw new PaymentError("El pago ya fue rechazado.", "ALREADY_REJECTED");
-    }
+  try {
+    return await prisma.$transaction(
+      async (tx) => {
+        const payment = await tx.payment.findUnique({
+          where: { id: input.paymentId },
+          include: { applications: true },
+        });
+        if (!payment) {
+          throw new PaymentError("El pago ya no existe.", "PAYMENT_NOT_FOUND");
+        }
+        if (payment.status === "VALIDATED") {
+          throw new PaymentError(
+            "No puedes rechazar un pago ya validado.",
+            "ALREADY_VALIDATED",
+          );
+        }
+        if (payment.status === "REJECTED") {
+          throw new PaymentError("El pago ya fue rechazado.", "ALREADY_REJECTED");
+        }
 
-    await tx.payment.update({
-      where: { id: input.paymentId },
-      data: {
-        status: "REJECTED",
-        rejectedAt: new Date(),
-        rejectionReason: reason,
-        validatedAt: null,
+        await tx.payment.update({
+          where: { id: input.paymentId },
+          data: {
+            status: "REJECTED",
+            rejectedAt: new Date(),
+            rejectionReason: reason,
+            validatedAt: null,
+          },
+        });
+
+        await auditInTx(tx, input.actorId ?? null, {
+          action: "PAYMENT_REJECTED",
+          entity: "Payment",
+          entityId: input.paymentId,
+          metadata: {
+            customerId: payment.customerId,
+            reason,
+            paymentAmount: payment.amount.toString(),
+          },
+        });
+
+        return { paymentId: input.paymentId };
       },
-    });
-
-    return { paymentId: input.paymentId };
-  });
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5000,
+        timeout: 15000,
+      },
+    );
+  } catch (error) {
+    if (error instanceof PaymentError) throw error;
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === "P2034" || error.message.includes("serialization"))
+    ) {
+      throw new PaymentError(
+        "Conflicto al rechazar el pago. Intenta nuevamente.",
+        "CONFLICT",
+      );
+    }
+    throw error;
+  }
 }
 
 export async function setPaymentApplications(
   paymentId: string,
   applications: PaymentApplicationInput[],
+  options: { actorId?: string | null } = {},
 ): Promise<void> {
   for (const a of applications) {
     if (!/^\d+(\.\d{1,2})?$/.test(a.amount.trim())) {
       throw new PaymentError("Monto aplicado inválido.", "INVALID_AMOUNT");
     }
-    if (toCents(a.amount) <= 0) {
+    if (paymentToCents(a.amount) <= 0) {
       throw new PaymentError("El monto aplicado debe ser mayor a 0.", "INVALID_AMOUNT");
     }
   }
   const appliedCents = aggregateApplications(applications);
 
   const prisma = getPrisma();
-  await prisma.$transaction(async (tx) => {
-    const payment = await tx.payment.findUnique({
-      where: { id: paymentId },
-      include: { applications: true, customer: { select: { id: true } } },
-    });
-    if (!payment) {
-      throw new PaymentError("El pago ya no existe.", "PAYMENT_NOT_FOUND");
-    }
-    if (payment.status !== "PENDING") {
-      throw new PaymentError(
-        "Solo puedes editar aplicaciones de pagos pendientes.",
-        "ALREADY_VALIDATED",
-      );
-    }
-    const paymentCents = toCents(payment.amount.toString());
-    if (appliedCents > paymentCents) {
-      throw new PaymentError(
-        "La suma aplicada supera el monto del pago.",
-        "INVALID_APPLICATION_SUM",
-      );
-    }
-
-    if (applications.length > 0) {
-      const orderIds = applications.map((a) => a.orderId);
-      const uniqueIds = Array.from(new Set(orderIds));
-      const orders = await tx.order.findMany({
-        where: { id: { in: uniqueIds } },
-        select: {
-          id: true,
-          customerId: true,
-          total: true,
-          validatedPaid: true,
-          balance: true,
-        },
-      });
-      if (orders.length !== uniqueIds.length) {
-        throw new PaymentError("Uno de los pedidos ya no existe.", "ORDER_NOT_FOUND");
-      }
-      const mismatched = orders.find((o) => o.customerId !== payment.customerId);
-      if (mismatched) {
-        throw new PaymentError(
-          "Todos los pedidos deben pertenecer a la misma clienta.",
-          "CUSTOMER_MISMATCH",
-        );
-      }
-      for (const app of applications) {
-        const order = orders.find((o) => o.id === app.orderId);
-        if (!order) continue;
-        const balance = toCents(order.balance.toString());
-        if (toCents(app.amount) > balance) {
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        const payment = await tx.payment.findUnique({
+          where: { id: paymentId },
+          include: { applications: true, customer: { select: { id: true } } },
+        });
+        if (!payment) {
+          throw new PaymentError("El pago ya no existe.", "PAYMENT_NOT_FOUND");
+        }
+        if (payment.status !== "PENDING") {
           throw new PaymentError(
-            `La aplicación al pedido ${app.orderId} (S/${app.amount}) supera su saldo (S/${centsToDecimalString(balance)}).`,
-            "ORDER_OVERPAYMENT",
+            "Solo puedes editar aplicaciones de pagos pendientes.",
+            "ALREADY_VALIDATED",
           );
         }
-      }
-    }
+        const paymentCents = paymentToCents(payment.amount.toString());
+        if (appliedCents > paymentCents) {
+          throw new PaymentError(
+            "La suma aplicada supera el monto del pago.",
+            "INVALID_APPLICATION_SUM",
+          );
+        }
 
-    await tx.paymentApplication.deleteMany({ where: { paymentId } });
-    for (const a of applications) {
-      await tx.paymentApplication.create({
-        data: {
-          paymentId,
-          orderId: a.orderId,
-          amount: centsToDecimalString(toCents(a.amount)),
-        },
-      });
+        if (applications.length > 0) {
+          const orderIds = applications.map((a) => a.orderId);
+          const uniqueIds = Array.from(new Set(orderIds));
+          const orders = await tx.order.findMany({
+            where: { id: { in: uniqueIds } },
+            select: {
+              id: true,
+              customerId: true,
+              total: true,
+              validatedPaid: true,
+              balance: true,
+              status: true,
+            },
+          });
+          if (orders.length !== uniqueIds.length) {
+            throw new PaymentError("Uno de los pedidos ya no existe.", "ORDER_NOT_FOUND");
+          }
+          const mismatched = orders.find((o) => o.customerId !== payment.customerId);
+          if (mismatched) {
+            throw new PaymentError(
+              "Todos los pedidos deben pertenecer a la misma clienta.",
+              "CUSTOMER_MISMATCH",
+            );
+          }
+          for (const app of applications) {
+            const order = orders.find((o) => o.id === app.orderId);
+            if (!order) continue;
+            if (order.status === "CANCELLED" || order.status === "EXPIRED") {
+              throw new PaymentError(
+                `No puedes aplicar el pago a un pedido ${order.status === "CANCELLED" ? "cancelado" : "vencido"}.`,
+                "CUSTOMER_MISMATCH",
+              );
+            }
+            const balance = paymentToCents(order.balance.toString());
+            if (paymentToCents(app.amount) > balance) {
+              throw new PaymentError(
+                `La aplicación al pedido ${app.orderId} (S/${app.amount}) supera su saldo (S/${centsToDecimalString(balance)}).`,
+                "ORDER_OVERPAYMENT",
+              );
+            }
+          }
+        }
+
+        await tx.paymentApplication.deleteMany({ where: { paymentId } });
+        for (const a of applications) {
+          await tx.paymentApplication.create({
+            data: {
+              paymentId,
+              orderId: a.orderId,
+              amount: centsToDecimalString(paymentToCents(a.amount)),
+            },
+          });
+        }
+
+        await auditInTx(tx, options.actorId ?? null, {
+          action: "PAYMENT_APPLICATIONS_UPDATED",
+          entity: "Payment",
+          entityId: paymentId,
+          metadata: { count: applications.length },
+        });
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5000,
+        timeout: 15000,
+      },
+    );
+  } catch (error) {
+    if (error instanceof PaymentError) throw error;
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === "P2034" || error.message.includes("serialization"))
+    ) {
+      throw new PaymentError(
+        "Conflicto al actualizar las aplicaciones. Intenta nuevamente.",
+        "CONFLICT",
+      );
     }
-  });
+    throw error;
+  }
 }
 
 export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
@@ -621,3 +715,4 @@ export async function getCustomerOpenOrders(customerId: string) {
 
 // Reexport for callers needing the engine that creates credits from overpayments.
 export { createOverpaymentCredit } from "@/lib/credits";
+

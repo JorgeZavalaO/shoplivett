@@ -7,6 +7,8 @@ import { Prisma, type ShippingMethod, type ShipmentStatus } from "@prisma/client
 
 import { getPrisma } from "@/lib/prisma";
 import { SHIPPING_METHOD_LABELS } from "@/lib/settings-defaults";
+import { toCents, centsToDecimalString, type Cents } from "@/lib/money";
+import { auditInTx } from "@/lib/audit";
 
 export class ShipmentError extends Error {
   constructor(
@@ -29,26 +31,12 @@ export class ShipmentError extends Error {
   }
 }
 
-type Cents = number;
-
-function toCents(value: string): Cents {
-  const num = Number(value);
-  if (!Number.isFinite(num) || num < 0) {
+function shipmentToCents(value: string): Cents {
+  try {
+    return toCents(value, { allowNegative: true });
+  } catch {
     throw new ShipmentError("Monto inválido.", "INVALID_AMOUNT");
   }
-  const [whole, fraction = ""] = value.trim().split(".");
-  const safeWhole = (whole || "0").replace(/[^0-9]/g, "") || "0";
-  const safeFraction = (fraction || "").replace(/[^0-9]/g, "").padEnd(2, "0").slice(0, 2);
-  return Number(safeWhole) * 100 + Number(safeFraction);
-}
-
-function centsToDecimalString(cents: Cents): string {
-  const negative = cents < 0;
-  const abs = negative ? -cents : cents;
-  const whole = Math.trunc(abs / 100);
-  const fraction = Math.trunc(abs % 100);
-  const fracStr = String(fraction).padStart(2, "0");
-  return `${negative ? "-" : ""}${whole}.${fracStr}`;
 }
 
 export type CreateShipmentInput = {
@@ -64,6 +52,7 @@ export type CreateShipmentInput = {
   referenceSnapshot?: string | null;
   notes?: string | null;
   createdById?: string | null;
+  actorId?: string | null;
 };
 
 export type UpdateShipmentInput = {
@@ -78,6 +67,7 @@ export type UpdateShipmentInput = {
   referenceSnapshot?: string | null;
   notes?: string | null;
   updatedById?: string | null;
+  actorId?: string | null;
 };
 
 const STATUS_FLOW: Record<ShipmentStatus, ShipmentStatus[]> = {
@@ -153,15 +143,15 @@ export async function createShipment(
         const settings = await tx.businessSettings.findUnique({ where: { id: "default" } });
         const freeShippingEnabled = settings?.freeShippingEnabled ?? false;
         const freeShippingThreshold = settings
-          ? toCents(settings.freeShippingThreshold.toString())
+          ? shipmentToCents(settings.freeShippingThreshold.toString())
           : 0;
 
         const totalCents = orders.reduce(
-          (acc, o) => acc + toCents(o.total.toString()),
+          (acc, o) => acc + shipmentToCents(o.total.toString()),
           0,
         );
 
-        const shippingCents = toCents(input.shippingCost || "0");
+        const shippingCents = shipmentToCents(input.shippingCost || "0");
         let finalCostCents = shippingCents;
         let isFree = false;
         if (input.forceFreeShipping) {
@@ -207,6 +197,23 @@ export async function createShipment(
           });
         }
 
+        await auditInTx(tx, input.actorId ?? input.createdById ?? null, {
+          action: "SHIPMENT_CREATED",
+          entity: "Shipment",
+          entityId: shipment.id,
+          metadata: {
+            customerId: input.customerId,
+            shippingMethod: input.shippingMethod,
+            ordersCount: uniqueIds.length,
+            orderIds: uniqueIds,
+            shippingCost: centsToDecimalString(finalCostCents),
+            isFreeShipping: isFree,
+            agencyName: input.agencyName ?? null,
+            trackingCode: input.trackingCode ?? null,
+            freeShippingRule,
+          },
+        });
+
         return { shipmentId: shipment.id };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 15000 },
@@ -228,53 +235,69 @@ export async function updateShipment(
 ): Promise<{ shipmentId: string }> {
   const prisma = getPrisma();
   try {
-    return await prisma.$transaction(async (tx) => {
-      const shipment = await tx.shipment.findUnique({ where: { id: input.shipmentId } });
-      if (!shipment) {
-        throw new ShipmentError("El envío ya no existe.", "SHIPMENT_NOT_FOUND");
-      }
-      if (shipment.status === "DELIVERED" || shipment.status === "CANCELLED") {
-        throw new ShipmentError(
-          "No puedes editar un envío entregado o cancelado.",
-          "INVALID_STATUS_TRANSITION",
-        );
-      }
+    return await prisma.$transaction(
+      async (tx) => {
+        const shipment = await tx.shipment.findUnique({ where: { id: input.shipmentId } });
+        if (!shipment) {
+          throw new ShipmentError("El envío ya no existe.", "SHIPMENT_NOT_FOUND");
+        }
+        if (shipment.status === "DELIVERED" || shipment.status === "CANCELLED") {
+          throw new ShipmentError(
+            "No puedes editar un envío entregado o cancelado.",
+            "INVALID_STATUS_TRANSITION",
+          );
+        }
 
-      const data: Prisma.ShipmentUpdateInput = {};
-      if (input.shippingMethod) data.shippingMethod = input.shippingMethod;
-      if (typeof input.agencyName !== "undefined") data.agencyName = input.agencyName;
-      if (typeof input.trackingCode !== "undefined") data.trackingCode = input.trackingCode;
-      if (typeof input.addressSnapshot !== "undefined")
-        data.addressSnapshot = input.addressSnapshot;
-      if (typeof input.districtSnapshot !== "undefined")
-        data.districtSnapshot = input.districtSnapshot;
-      if (typeof input.referenceSnapshot !== "undefined")
-        data.referenceSnapshot = input.referenceSnapshot;
-      if (typeof input.notes !== "undefined") data.notes = input.notes;
-      if (typeof input.updatedById !== "undefined" && input.updatedById) {
-        data.updatedBy = { connect: { id: input.updatedById } };
-      }
+        const data: Prisma.ShipmentUpdateInput = {};
+        if (input.shippingMethod) data.shippingMethod = input.shippingMethod;
+        if (typeof input.agencyName !== "undefined") data.agencyName = input.agencyName;
+        if (typeof input.trackingCode !== "undefined") data.trackingCode = input.trackingCode;
+        if (typeof input.addressSnapshot !== "undefined")
+          data.addressSnapshot = input.addressSnapshot;
+        if (typeof input.districtSnapshot !== "undefined")
+          data.districtSnapshot = input.districtSnapshot;
+        if (typeof input.referenceSnapshot !== "undefined")
+          data.referenceSnapshot = input.referenceSnapshot;
+        if (typeof input.notes !== "undefined") data.notes = input.notes;
+        if (typeof input.updatedById !== "undefined" && input.updatedById) {
+          data.updatedBy = { connect: { id: input.updatedById } };
+        }
 
-      if (typeof input.isFreeShipping === "boolean") {
-        data.isFreeShipping = input.isFreeShipping;
-        if (input.isFreeShipping) {
-          data.shippingCost = "0.00";
+        if (typeof input.isFreeShipping === "boolean") {
+          data.isFreeShipping = input.isFreeShipping;
+          if (input.isFreeShipping) {
+            data.shippingCost = "0.00";
+          } else if (input.shippingCost) {
+            const cents = shipmentToCents(input.shippingCost);
+            data.shippingCost = centsToDecimalString(cents);
+          }
         } else if (input.shippingCost) {
-          const cents = toCents(input.shippingCost);
-          data.shippingCost = centsToDecimalString(cents);
+          if (shipment.isFreeShipping) {
+            data.shippingCost = "0.00";
+          } else {
+            const cents = shipmentToCents(input.shippingCost);
+            data.shippingCost = centsToDecimalString(cents);
+          }
         }
-      } else if (input.shippingCost) {
-        if (shipment.isFreeShipping) {
-          data.shippingCost = "0.00";
-        } else {
-          const cents = toCents(input.shippingCost);
-          data.shippingCost = centsToDecimalString(cents);
-        }
-      }
 
-      await tx.shipment.update({ where: { id: input.shipmentId }, data });
-      return { shipmentId: input.shipmentId };
-    });
+        await tx.shipment.update({ where: { id: input.shipmentId }, data });
+        await auditInTx(tx, input.actorId ?? input.updatedById ?? null, {
+          action: "SHIPMENT_STATUS_CHANGED",
+          entity: "Shipment",
+          entityId: input.shipmentId,
+          metadata: {
+            kind: "update",
+            updatedFields: Object.keys(data),
+          },
+        });
+        return { shipmentId: input.shipmentId };
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5000,
+        timeout: 15000,
+      },
+    );
   } catch (error) {
     if (error instanceof ShipmentError) throw error;
     if (
@@ -288,30 +311,51 @@ export async function updateShipment(
 }
 
 export async function changeShipmentStatus(
-  input: { shipmentId: string; to: ShipmentStatus },
+  input: { shipmentId: string; to: ShipmentStatus; actorId?: string | null; notes?: string | null },
 ): Promise<{ shipmentId: string }> {
   const prisma = getPrisma();
   try {
-    return await prisma.$transaction(async (tx) => {
-      const shipment = await tx.shipment.findUnique({ where: { id: input.shipmentId } });
-      if (!shipment) {
-        throw new ShipmentError("El envío ya no existe.", "SHIPMENT_NOT_FOUND");
-      }
-      if (!canTransition(shipment.status, input.to)) {
-        throw new ShipmentError(
-          `No puedes pasar de ${shipment.status} a ${input.to}.`,
-          "INVALID_STATUS_TRANSITION",
-        );
-      }
-      const now = new Date();
-      const data: Prisma.ShipmentUpdateInput = { status: input.to };
-      if (input.to === "PREPARING") data.preparedAt = now;
-      if (input.to === "SHIPPED") data.shippedAt = now;
-      if (input.to === "DELIVERED") data.deliveredAt = now;
-      if (input.to === "CANCELLED") data.cancelledAt = now;
-      await tx.shipment.update({ where: { id: input.shipmentId }, data });
-      return { shipmentId: input.shipmentId };
-    });
+    return await prisma.$transaction(
+      async (tx) => {
+        const shipment = await tx.shipment.findUnique({ where: { id: input.shipmentId } });
+        if (!shipment) {
+          throw new ShipmentError("El envío ya no existe.", "SHIPMENT_NOT_FOUND");
+        }
+        if (!canTransition(shipment.status, input.to)) {
+          throw new ShipmentError(
+            `No puedes pasar de ${shipment.status} a ${input.to}.`,
+            "INVALID_STATUS_TRANSITION",
+          );
+        }
+        const now = new Date();
+        const data: Prisma.ShipmentUpdateInput = { status: input.to };
+        if (input.to === "PREPARING") data.preparedAt = now;
+        if (input.to === "SHIPPED") data.shippedAt = now;
+        if (input.to === "DELIVERED") data.deliveredAt = now;
+        if (input.to === "CANCELLED") {
+          data.cancelledAt = now;
+          if (input.notes) data.notes = input.notes;
+        }
+        await tx.shipment.update({ where: { id: input.shipmentId }, data });
+        await auditInTx(tx, input.actorId ?? null, {
+          action:
+            input.to === "CANCELLED" ? "SHIPMENT_CANCELLED" : "SHIPMENT_STATUS_CHANGED",
+          entity: "Shipment",
+          entityId: input.shipmentId,
+          metadata: {
+            from: shipment.status,
+            to: input.to,
+            ...(input.notes ? { notes: input.notes } : {}),
+          },
+        });
+        return { shipmentId: input.shipmentId };
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5000,
+        timeout: 15000,
+      },
+    );
   } catch (error) {
     if (error instanceof ShipmentError) throw error;
     if (
@@ -325,20 +369,15 @@ export async function changeShipmentStatus(
 }
 
 export async function cancelShipment(
-  input: { shipmentId: string; reason?: string | null },
+  input: { shipmentId: string; reason?: string | null; actorId?: string | null },
 ): Promise<{ shipmentId: string }> {
+  // El motivo/nota se persiste en la misma transacción que el cambio de estado
+  // para evitar cancelaciones sin motivo cuando el segundo `update` fallaba.
   return changeShipmentStatus({
     shipmentId: input.shipmentId,
     to: "CANCELLED",
-  }).then(async (result) => {
-    if (input.reason) {
-      const prisma = getPrisma();
-      await prisma.shipment.update({
-        where: { id: input.shipmentId },
-        data: { notes: input.reason },
-      });
-    }
-    return result;
+    actorId: input.actorId ?? null,
+    notes: input.reason ?? null,
   });
 }
 
@@ -534,3 +573,4 @@ export const SHIPMENT_STATUS_LABELS: Record<ShipmentStatus, string> = {
 };
 
 export { SHIPPING_METHOD_LABELS };
+
