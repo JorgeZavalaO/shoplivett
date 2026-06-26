@@ -185,14 +185,35 @@ export async function rejectPaymentAction(
   }
 
   try {
-    await rejectPayment({
+    const result = await rejectPayment({
       paymentId: parsed.data.paymentId,
       reason: parsed.data.reason,
       actorId: user?.id ?? null,
     });
     revalidatePath("/pagos");
     revalidatePath(`/pagos/${parsed.data.paymentId}`);
-    return { ok: true, message: "Pago rechazado." };
+    revalidatePath("/pedidos");
+    revalidatePath("/pedidos/vencidos");
+    revalidatePath("/inventario");
+    if (result.cancelledOrders.length > 0) {
+      for (const cancelled of result.cancelledOrders) {
+        revalidatePath(`/pedidos/${cancelled.orderId}`);
+      }
+    }
+    if (result.cancelledOrders.length === 0) {
+      return { ok: true, message: "Pago rechazado." };
+    }
+    const orderList = result.cancelledOrders
+      .map((c) => c.orderNumber)
+      .join(", ");
+    const units = result.cancelledOrders.reduce(
+      (acc, c) => acc + c.releasedUnits,
+      0,
+    );
+    return {
+      ok: true,
+      message: `Pago rechazado. Se cancelaron ${result.cancelledOrders.length} reserva(s) (${orderList}) y se liberaron ${units} unidad(es) de stock.`,
+    };
   } catch (error) {
     if (error instanceof PaymentError) {
       return { ok: false, message: error.message };

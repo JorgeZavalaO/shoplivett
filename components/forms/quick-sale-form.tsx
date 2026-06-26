@@ -181,9 +181,8 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods }: Props) {
             Live activo: <span className="font-medium">{openLive.name}</span>
           </div>
         ) : (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-            Sin live activo.{" "}
-            <Link href="/lives/nuevo" className="underline">Crear uno</Link>
+          <div className="rounded-lg border border-muted bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+            El pedido se registrará sin live asociado.
           </div>
         )}
 

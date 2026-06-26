@@ -5,6 +5,7 @@ import { Prisma, OrderStatus } from "@prisma/client";
 
 import { getPrisma } from "@/lib/prisma";
 import { releaseStock } from "@/lib/inventory";
+import { auditInTx } from "@/lib/audit";
 
 export class OrderExpiryError extends Error {
   constructor(
@@ -14,6 +15,7 @@ export class OrderExpiryError extends Error {
       | "ORDER_NOT_EXPIRED"
       | "ORDER_NOT_CANCELLABLE"
       | "ALREADY_EXPIRED"
+      | "ALREADY_CANCELLED"
       | "CONFLICT",
   ) {
     super(message);
@@ -29,6 +31,105 @@ const EXPIRABLE_STATUSES: OrderStatus[] = [
   "PAYMENT_VALIDATION_PENDING",
   "RESERVED",
 ];
+
+export type CloseReservationReason = "EXPIRED" | "CANCELLED";
+
+export type CloseReservationInput = {
+  orderId: string;
+  reason: CloseReservationReason;
+  actorId?: string | null;
+  notes?: string | null;
+  tx: Prisma.TransactionClient;
+};
+
+/**
+ * Cierra una reserva no pagada liberando stock reservado, rechazando pagos
+ * pendientes y dejando el pedido en `EXPIRED` o `CANCELLED` con `balance = 0`.
+ * Pensado para ser invocado dentro de una transacción existente.
+ */
+export async function closeUnpaidReservation(
+  input: CloseReservationInput,
+): Promise<{ releasedUnits: number; orderNumber: string }> {
+  const order = await input.tx.order.findUnique({
+    where: { id: input.orderId },
+    include: {
+      items: { select: { variantId: true, quantity: true } },
+      payments: { where: { status: "PENDING" }, select: { id: true } },
+    },
+  });
+  if (!order) {
+    throw new OrderExpiryError("El pedido ya no existe.", "ORDER_NOT_FOUND");
+  }
+  if (order.status === "EXPIRED") {
+    throw new OrderExpiryError("El pedido ya está vencido.", "ALREADY_EXPIRED");
+  }
+  if (order.status === "CANCELLED") {
+    throw new OrderExpiryError("El pedido está cancelado.", "ALREADY_CANCELLED");
+  }
+  if (order.status === "PAID") {
+    throw new OrderExpiryError(
+      "No puedes cerrar un pedido ya pagado.",
+      "ORDER_NOT_CANCELLABLE",
+    );
+  }
+  if (order.status === "PARTIALLY_PAID") {
+    throw new OrderExpiryError(
+      "El pedido tiene pagos validados. Cancela los pagos o gestiona la devolución manualmente antes de cerrarlo.",
+      "ORDER_NOT_CANCELLABLE",
+    );
+  }
+
+  for (const item of order.items) {
+    if (item.quantity <= 0) continue;
+    await releaseStock(item.variantId, item.quantity, {
+      reason: input.notes ?? `Reserva ${order.orderNumber}`,
+      movementType: "EXPIRE",
+      tx: input.tx,
+    });
+  }
+
+  for (const payment of order.payments) {
+    await input.tx.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: "REJECTED",
+        rejectedAt: new Date(),
+        rejectionReason:
+          input.notes ?? `Reserva ${order.orderNumber} cerrada`,
+        validatedAt: null,
+      },
+    });
+  }
+
+  const targetStatus: OrderStatus =
+    input.reason === "CANCELLED" ? "CANCELLED" : "EXPIRED";
+
+  await input.tx.order.update({
+    where: { id: order.id },
+    data: {
+      status: targetStatus,
+      balance: "0",
+      ...(input.reason === "EXPIRED"
+        ? { expiredAt: new Date(), expiredById: input.actorId ?? null }
+        : {}),
+    },
+  });
+
+  const auditAction =
+    input.reason === "CANCELLED" ? "ORDER_CANCELLED" : "ORDER_EXPIRED";
+  await auditInTx(input.tx, input.actorId ?? null, {
+    action: auditAction,
+    entity: "Order",
+    entityId: order.id,
+    metadata: {
+      orderNumber: order.orderNumber,
+      trigger: input.notes ?? null,
+    },
+  });
+
+  const releasedUnits = order.items.reduce((acc, i) => acc + i.quantity, 0);
+  return { releasedUnits, orderNumber: order.orderNumber };
+}
 
 export async function listExpiredReservations(args?: {
   query?: string;
@@ -118,31 +219,10 @@ export async function expireReservation(input: {
       async (tx) => {
         const order = await tx.order.findUnique({
           where: { id: input.orderId },
-          include: {
-            items: { select: { variantId: true, quantity: true } },
-            payments: { where: { status: "PENDING" }, select: { id: true } },
-          },
+          select: { expiresAt: true },
         });
         if (!order) {
           throw new OrderExpiryError("El pedido ya no existe.", "ORDER_NOT_FOUND");
-        }
-        if (order.status === "EXPIRED") {
-          throw new OrderExpiryError("El pedido ya está vencido.", "ALREADY_EXPIRED");
-        }
-        if (order.status === "CANCELLED") {
-          throw new OrderExpiryError("El pedido está cancelado.", "ORDER_NOT_CANCELLABLE");
-        }
-        if (order.status === "PAID") {
-          throw new OrderExpiryError(
-            "No puedes vencer un pedido ya pagado.",
-            "ORDER_NOT_CANCELLABLE",
-          );
-        }
-        if (order.status === "PARTIALLY_PAID") {
-          throw new OrderExpiryError(
-            "El pedido tiene pagos validados. Cancela los pagos o gestiona la devolución manualmente antes de vencerlo.",
-            "ORDER_NOT_CANCELLABLE",
-          );
         }
         if (order.expiresAt.getTime() > Date.now()) {
           throw new OrderExpiryError(
@@ -150,44 +230,14 @@ export async function expireReservation(input: {
             "ORDER_NOT_EXPIRED",
           );
         }
-
-        // Liberar stock reservado por cada item.
-        for (const item of order.items) {
-          if (item.quantity <= 0) continue;
-          await releaseStock(item.variantId, item.quantity, {
-            reason: input.reason ?? `Reserva vencida ${order.orderNumber}`,
-            movementType: "EXPIRE",
-            tx,
-          });
-        }
-
-        // Rechazar pagos PENDING asociados a este pedido.
-        for (const payment of order.payments) {
-          await tx.payment.update({
-            where: { id: payment.id },
-            data: {
-              status: "REJECTED",
-              rejectedAt: new Date(),
-              rejectionReason:
-                input.reason ?? `Reserva ${order.orderNumber} vencida`,
-              validatedAt: null,
-            },
-          });
-        }
-
-        // Saldo del pedido a 0 al vencer (la clienta ya no debe).
-        await tx.order.update({
-          where: { id: order.id },
-          data: {
-            status: "EXPIRED",
-            expiredAt: new Date(),
-            expiredById: input.expiredById ?? null,
-            balance: "0",
-          },
+        const result = await closeUnpaidReservation({
+          orderId: input.orderId,
+          reason: "EXPIRED",
+          actorId: input.expiredById ?? null,
+          notes: input.reason ?? null,
+          tx,
         });
-
-        const releasedUnits = order.items.reduce((acc, i) => acc + i.quantity, 0);
-        return { orderId: order.id, releasedUnits };
+        return { orderId: input.orderId, releasedUnits: result.releasedUnits };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 15000 },
     );
@@ -199,6 +249,45 @@ export async function expireReservation(input: {
     ) {
       throw new OrderExpiryError(
         "Conflicto al vencer la reserva. Intenta nuevamente.",
+        "CONFLICT",
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * Cancela manualmente una reserva no pagada. Libera stock y rechaza pagos
+ * pendientes del pedido. No aplica a pedidos con pagos validados.
+ */
+export async function cancelUnpaidOrder(input: {
+  orderId: string;
+  actorId?: string | null;
+  reason?: string | null;
+}): Promise<{ orderId: string; releasedUnits: number }> {
+  const prisma = getPrisma();
+  try {
+    return await prisma.$transaction(
+      async (tx) => {
+        const result = await closeUnpaidReservation({
+          orderId: input.orderId,
+          reason: "CANCELLED",
+          actorId: input.actorId ?? null,
+          notes: input.reason ?? null,
+          tx,
+        });
+        return { orderId: input.orderId, releasedUnits: result.releasedUnits };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 15000 },
+    );
+  } catch (error) {
+    if (error instanceof OrderExpiryError) throw error;
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === "P2034" || error.message.includes("serialization"))
+    ) {
+      throw new OrderExpiryError(
+        "Conflicto al cancelar la reserva. Intenta nuevamente.",
         "CONFLICT",
       );
     }

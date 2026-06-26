@@ -264,7 +264,7 @@ Páginas:
 - **Validación transaccional** (`Serializable`): al validar se recalculan `validatedPaid`,
   `balance` y `Order.status` (`RESERVED` / `PARTIALLY_PAID` / `PAID`), y el stock reservado
   se mueve a vendido cuando el pedido queda `PAID`.
-- **Rechazo** con motivo obligatorio; no afecta saldos ni stock.
+- **Rechazo** con motivo obligatorio. Si el pedido asociado no tiene pagos validados ni otros pagos pendientes que lo sostengan, se cancela la reserva, se libera el stock reservado y se rechazan los pagos pendientes del pedido (transaccional, dentro de la misma `Serializable` que el rechazo). En cualquier otro caso, no se liberan saldos ni stock.
 - Permisos de validación leídos desde `BusinessSettings.paymentValidatorRoles`.
 
 Páginas:

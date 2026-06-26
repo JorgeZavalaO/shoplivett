@@ -237,7 +237,7 @@ test.describe("Sprint 15 — Flujos obligatorios", () => {
     ).toBe(true);
   });
 
-  test("RF-S15-07 — Rechazo de pago no afecta saldos", async () => {
+  test("RF-S15-07 — Rechazo de pago: libera stock y cancela reserva sin pagos validados", async () => {
     const { user } = await getAdmin();
     const customer = await createTestCustomer("06");
     const variant = await createTestProductWithStock("06", 5);
@@ -252,13 +252,18 @@ test.describe("Sprint 15 — Flujos obligatorios", () => {
       actorId: user.id,
     });
 
+    const reserved = await prisma.productVariant.findUnique({
+      where: { id: variant.id },
+    });
+    expect(Number(reserved?.reservedStock)).toBe(1);
+
     const payment = await createPayment({
       customerId: customer.id,
       method: "YAPE",
       amount: "60",
       applications: [{ orderId: order.orderId, amount: "60" }],
     });
-    await rejectPayment({
+    const result = await rejectPayment({
       paymentId: payment.paymentId,
       reason: "Captura ilegible",
       actorId: user.id,
@@ -268,10 +273,104 @@ test.describe("Sprint 15 — Flujos obligatorios", () => {
       where: { id: payment.paymentId },
     });
     expect(rejected?.status).toBe("REJECTED");
+    const cancelledOrder = await prisma.order.findUnique({
+      where: { id: order.orderId },
+    });
+    expect(cancelledOrder?.status).toBe("CANCELLED");
+    expect(Number(cancelledOrder?.balance)).toBe(0);
+    expect(result.cancelledOrders).toHaveLength(1);
+    expect(result.cancelledOrders[0]?.orderId).toBe(order.orderId);
+
+    const after = await prisma.productVariant.findUnique({
+      where: { id: variant.id },
+    });
+    expect(Number(after?.reservedStock)).toBe(0);
+    expect(Number(after?.stock)).toBe(Number(reserved?.stock));
+  });
+
+  test("RF-S15-09 — Rechazo de pago: pedido con otro pago pendiente no se cancela", async () => {
+    const { user } = await getAdmin();
+    const customer = await createTestCustomer("09");
+    const variant = await createTestProductWithStock("09", 5);
+
+    const order = await createQuickSale({
+      customerId: customer.id,
+      items: [{ variantId: variant.id, quantity: 1 }],
+      discount: "0",
+      shippingAmount: "0",
+      advanceAmount: "50",
+      paymentMethod: "YAPE",
+      actorId: user.id,
+    });
+
+    const secondPayment = await createPayment({
+      customerId: customer.id,
+      method: "YAPE",
+      amount: "20",
+      applications: [{ orderId: order.orderId, amount: "20" }],
+    });
+
+    const result = await rejectPayment({
+      paymentId: order.paymentId,
+      reason: "Captura ilegible",
+      actorId: user.id,
+    });
+
+    expect(result.cancelledOrders).toHaveLength(0);
     const untouched = await prisma.order.findUnique({
       where: { id: order.orderId },
     });
     expect(untouched?.status).toBe("PAYMENT_VALIDATION_PENDING");
+    const reserved = await prisma.productVariant.findUnique({
+      where: { id: variant.id },
+    });
+    expect(Number(reserved?.reservedStock)).toBe(1);
+
+    const secondRow = await prisma.payment.findUnique({
+      where: { id: secondPayment.paymentId },
+    });
+    expect(secondRow?.status).toBe("PENDING");
+  });
+
+  test("RF-S15-10 — Rechazo de pago: pedido parcialmente pagado no se cancela", async () => {
+    const { user } = await getAdmin();
+    const customer = await createTestCustomer("10");
+    const variant = await createTestProductWithStock("10", 5);
+
+    const order = await createQuickSale({
+      customerId: customer.id,
+      items: [{ variantId: variant.id, quantity: 1 }],
+      discount: "0",
+      shippingAmount: "0",
+      advanceAmount: "50",
+      paymentMethod: "YAPE",
+      actorId: user.id,
+    });
+
+    await validatePayment({ paymentId: order.paymentId, actorId: user.id });
+
+    const partial = await createPayment({
+      customerId: customer.id,
+      method: "YAPE",
+      amount: "20",
+      applications: [{ orderId: order.orderId, amount: "20" }],
+    });
+
+    const result = await rejectPayment({
+      paymentId: partial.paymentId,
+      reason: "Pago duplicado",
+      actorId: user.id,
+    });
+
+    expect(result.cancelledOrders).toHaveLength(0);
+    const orderRow = await prisma.order.findUnique({
+      where: { id: order.orderId },
+    });
+    expect(orderRow?.status).toBe("PARTIALLY_PAID");
+    const reserved = await prisma.productVariant.findUnique({
+      where: { id: variant.id },
+    });
+    expect(Number(reserved?.reservedStock)).toBe(1);
   });
 
   test("RF-S15-08 — Ajuste manual de stock", async () => {

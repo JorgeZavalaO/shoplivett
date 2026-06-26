@@ -10,7 +10,6 @@ import {
   calculateOrderBalance,
   calculateOrderExpiry,
 } from "@/lib/orders";
-import { assertLiveIsOpen, LiveError } from "@/lib/live";
 import { uploadImage, deleteImage, ImageUploadError } from "@/lib/blob";
 import { createPayment, PaymentError } from "@/lib/payments";
 import { auditInTx } from "@/lib/audit";
@@ -66,17 +65,6 @@ export async function createQuickSale(
   }
 
   const prisma = getPrisma();
-
-  if (input.liveSessionId) {
-    try {
-      await assertLiveIsOpen(input.liveSessionId);
-    } catch (error) {
-      if (error instanceof LiveError) {
-        throw new OrderError(error.message, "LIVE_CLOSED");
-      }
-      throw error;
-    }
-  }
 
   const customer = await prisma.customer.findUnique({
     where: { id: input.customerId },
@@ -156,12 +144,19 @@ export async function createQuickSale(
         const orderNumber = await generateOrderNumber(tx);
         const expiresAt = await calculateOrderExpiry(new Date(), settings.reservationDays);
         const balance = calculateOrderBalance(totals.total, "0");
+        const live = input.liveSessionId
+          ? await tx.liveSession.findUnique({
+              where: { id: input.liveSessionId },
+              select: { id: true, status: true },
+            })
+          : null;
+        const resolvedLiveSessionId = live?.status === "OPEN" ? live.id : null;
 
         const order = await tx.order.create({
           data: {
             orderNumber,
             customerId: input.customerId,
-            liveSessionId: input.liveSessionId ?? null,
+            liveSessionId: resolvedLiveSessionId,
             status: "PAYMENT_VALIDATION_PENDING",
             subtotal: totals.subtotal,
             discount: input.discount || "0",
@@ -233,7 +228,7 @@ export async function createQuickSale(
               quantity: li.quantity,
               unitPrice: li.unitPrice,
             })),
-            liveSessionId: input.liveSessionId ?? null,
+            liveSessionId: resolvedLiveSessionId,
           },
         });
 

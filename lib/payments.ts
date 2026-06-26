@@ -7,6 +7,7 @@ import { Prisma, PaymentStatus, type PaymentMethod } from "@prisma/client";
 
 import { getPrisma } from "@/lib/prisma";
 import { confirmSaleStock } from "@/lib/inventory";
+import { closeUnpaidReservation, OrderExpiryError } from "@/lib/order-expiry";
 import { PAYMENT_METHOD_LABELS } from "@/lib/settings-defaults";
 import { CreditError } from "@/lib/credits";
 import { toCents, centsToDecimalString, type Cents } from "@/lib/money";
@@ -488,9 +489,14 @@ export async function validatePayment(
   }
 }
 
+export type RejectPaymentResult = {
+  paymentId: string;
+  cancelledOrders: { orderId: string; orderNumber: string; releasedUnits: number }[];
+};
+
 export async function rejectPayment(
   input: RejectPaymentInput,
-): Promise<{ paymentId: string }> {
+): Promise<RejectPaymentResult> {
   const reason = input.reason.trim();
   if (reason.length < 5) {
     throw new PaymentError(
@@ -541,7 +547,61 @@ export async function rejectPayment(
           },
         });
 
-        return { paymentId: input.paymentId };
+        const cancelledOrders: RejectPaymentResult["cancelledOrders"] = [];
+        if (payment.applications.length > 0) {
+          const orderIds = Array.from(
+            new Set(payment.applications.map((a) => a.orderId)),
+          );
+          const orders = await tx.order.findMany({
+            where: { id: { in: orderIds } },
+            select: {
+              id: true,
+              orderNumber: true,
+              status: true,
+              validatedPaid: true,
+              payments: {
+                where: { status: "PENDING" },
+                select: { id: true },
+              },
+            },
+          });
+          for (const order of orders) {
+            const stillHasOtherPending = order.payments.some(
+              (p) => p.id !== payment.id,
+            );
+            const isPaidEnough =
+              paymentToCents(order.validatedPaid.toString()) > 0;
+            if (
+              stillHasOtherPending ||
+              isPaidEnough ||
+              (order.status !== "PAYMENT_VALIDATION_PENDING" &&
+                order.status !== "RESERVED")
+            ) {
+              continue;
+            }
+            try {
+              const result = await closeUnpaidReservation({
+                orderId: order.id,
+                reason: "CANCELLED",
+                actorId: input.actorId ?? null,
+                notes: `Pago rechazado: ${reason}`,
+                tx,
+              });
+              cancelledOrders.push({
+                orderId: order.id,
+                orderNumber: result.orderNumber,
+                releasedUnits: result.releasedUnits,
+              });
+            } catch (error) {
+              if (error instanceof OrderExpiryError) {
+                continue;
+              }
+              throw error;
+            }
+          }
+        }
+
+        return { paymentId: input.paymentId, cancelledOrders };
       },
       {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -551,6 +611,7 @@ export async function rejectPayment(
     );
   } catch (error) {
     if (error instanceof PaymentError) throw error;
+    if (error instanceof OrderExpiryError) throw error;
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       (error.code === "P2034" || error.message.includes("serialization"))

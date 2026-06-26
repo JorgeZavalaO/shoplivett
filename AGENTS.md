@@ -112,6 +112,11 @@ pnpm test:e2e          # corre smoke + 8 flujos obligatorios
 - Transacciones para operaciones que afectan múltiples tablas: usar
   `prisma.$transaction(async (tx) => { ... })` con `Serializable` cuando
   haya riesgo de carrera (stock, pagos, lives).
+- Cierre de reservas no pagadas (vencimiento, cancelación manual, rechazo de
+  pago que deja la reserva sin sustento) debe canalizarse por
+  `closeUnpaidReservation(...)` de `lib/order-expiry.ts`. Esto garantiza que
+  liberar stock, rechazar pagos pendientes y cambiar el estado del pedido
+  se ejecuten de forma atómica y auditable.
 
 ## Despliegue y entorno
 

@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Truck } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Truck } from "lucide-react";
 
 import { getOrderDetailAction } from "@/actions/orders";
 import { OrderStatusBadge } from "@/components/dashboard/order-status-badge";
+import { OrderExpiryBadge } from "@/components/dashboard/order-expiry-badge";
 import { PaymentStatusBadge } from "@/components/dashboard/payment-status-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,13 +15,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { CancelUnpaidOrderForm } from "@/components/forms/cancel-unpaid-order-form";
 import { requireRole, requireUser } from "@/lib/permissions";
 import { formatWhatsAppDisplay } from "@/lib/phone";
 import { PAYMENT_METHOD_LABELS } from "@/lib/settings-defaults";
 import {
   WhatsAppActions,
 } from "@/components/whatsapp/whatsapp-actions";
-import { buildWhatsappLink, buildWhatsappMessage } from "@/lib/whatsapp";
+import { buildWhatsappLink, buildWhatsappMessage, type OrderTemplateKey } from "@/lib/whatsapp";
+import { deriveOrderExpiryState } from "@/lib/orders";
 import { MessageCircle } from "lucide-react";
 
 
@@ -38,48 +41,63 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
     order.status === "PAID" &&
     (!order.shipmentOrder || order.shipmentOrder.shipment.status === "CANCELLED");
 
+  const canCancelUnpaid =
+    order.status === "PAYMENT_VALIDATION_PENDING" ||
+    order.status === "RESERVED";
+
   const latestPayment = order.payments[0] ?? null;
-  const whatsappLink = buildWhatsappLink(
-    order.customer.whatsapp,
+  const expiryState = deriveOrderExpiryState(order.expiresAt, {
+    status: order.status,
+  });
+  let defaultTemplateKey: Exclude<OrderTemplateKey, "PAYMENT_VALIDATED">;
+  if (
+    order.status === "EXPIRED" ||
+    order.status === "CANCELLED" ||
+    expiryState.isOverdue
+  ) {
+    defaultTemplateKey = "RESERVATION_EXPIRED";
+  } else if (expiryState.isNearExpiry) {
+    defaultTemplateKey = "RESERVATION_NEAR_EXPIRY";
+  } else if (order.status === "PAYMENT_VALIDATION_PENDING") {
+    defaultTemplateKey = "SEPARATION_PENDING_VALIDATION";
+  } else {
+    defaultTemplateKey = "BALANCE_REMINDER";
+  }
+  const baseOrder = {
+    orderNumber: order.orderNumber,
+    total: order.total.toString(),
+    validatedPaid: order.validatedPaid.toString(),
+    balance: order.balance.toString(),
+    expiresAt: order.expiresAt,
+    status: order.status,
+  } as const;
+  const baseCustomer = {
+    name: order.customer.name,
+    whatsapp: order.customer.whatsapp,
+  } as const;
+  const fallbackPayment = latestPayment
+    ? {
+        amount: latestPayment.amount.toString(),
+        method: latestPayment.method,
+        operationNumber: latestPayment.operationNumber,
+      }
+    : { amount: order.total.toString(), method: "OTHER" as const };
+  const whatsappMessage =
     order.status === "PAID"
       ? buildWhatsappMessage({
           key: "PAYMENT_VALIDATED",
-          customer: { name: order.customer.name, whatsapp: order.customer.whatsapp },
-          order: {
-            orderNumber: order.orderNumber,
-            total: order.total.toString(),
-            validatedPaid: order.validatedPaid.toString(),
-            balance: order.balance.toString(),
-            expiresAt: order.expiresAt,
-            status: order.status,
-          },
-          payment: latestPayment
-            ? {
-                amount: latestPayment.amount.toString(),
-                method: latestPayment.method,
-                operationNumber: latestPayment.operationNumber,
-              }
-            : { amount: order.total.toString(), method: "OTHER" },
+          customer: baseCustomer,
+          order: baseOrder,
+          payment: fallbackPayment,
         })
       : buildWhatsappMessage({
-          key:
-            order.status === "PAYMENT_VALIDATION_PENDING"
-              ? "SEPARATION_PENDING_VALIDATION"
-              : order.status === "RESERVED" || order.status === "PARTIALLY_PAID"
-                ? "BALANCE_REMINDER"
-                : order.status === "EXPIRED"
-                  ? "RESERVATION_EXPIRED"
-                  : "BALANCE_REMINDER",
-          customer: { name: order.customer.name, whatsapp: order.customer.whatsapp },
-          order: {
-            orderNumber: order.orderNumber,
-            total: order.total.toString(),
-            validatedPaid: order.validatedPaid.toString(),
-            balance: order.balance.toString(),
-            expiresAt: order.expiresAt,
-            status: order.status,
-          },
-        }),
+          key: defaultTemplateKey,
+          customer: baseCustomer,
+          order: baseOrder,
+        });
+  const whatsappLink = buildWhatsappLink(
+    order.customer.whatsapp,
+    whatsappMessage,
   );
   const hasContext =
     whatsappLink !== null;
@@ -98,6 +116,10 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
             {order.orderNumber}
           </h1>
           <OrderStatusBadge status={order.status} />
+          <OrderExpiryBadge
+            expiresAt={order.expiresAt}
+            status={order.status}
+          />
         </div>
         <p className="text-sm text-muted-foreground">
           <Link href={`/clientes/${order.customer.id}`} className="hover:underline">
@@ -144,6 +166,23 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
                   <Truck className="size-4" /> Crear envío con este pedido
                 </Link>
               }
+            />
+          </div>
+        ) : null}
+        {canCancelUnpaid ? (
+          <div className="mt-3 max-w-md rounded-lg border border-amber-300 bg-amber-50 p-3">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amber-800">
+              <AlertTriangle className="size-4" />
+              <span>Reserva sin pago validado</span>
+            </div>
+            <p className="mb-3 text-xs text-amber-700">
+              Si el pedido no se va a pagar, cancela la reserva para liberar
+              el stock reservado. Los pagos pendientes del pedido se
+              rechazarán.
+            </p>
+            <CancelUnpaidOrderForm
+              orderId={order.id}
+              orderNumber={order.orderNumber}
             />
           </div>
         ) : null}
@@ -357,17 +396,7 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
                     }
                   : undefined
               }
-              defaultTemplate={
-                order.status === "PAID"
-                  ? "PAYMENT_VALIDATED"
-                  : order.status === "PAYMENT_VALIDATION_PENDING"
-                    ? "SEPARATION_PENDING_VALIDATION"
-                    : order.status === "RESERVED" || order.status === "PARTIALLY_PAID"
-                      ? "BALANCE_REMINDER"
-                      : order.status === "EXPIRED"
-                        ? "RESERVATION_EXPIRED"
-                        : "BALANCE_REMINDER"
-              }
+              defaultTemplate={defaultTemplateKey}
             />
           </CardContent>
         </Card>

@@ -5,6 +5,32 @@ Todos los cambios notables de Shoplivett se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - Sprint 16 - Reservas, rechazos y recordatorios
+
+### Añadido
+- Helpers en `lib/orders.ts`:
+  - `deriveOrderExpiryState` para calcular flags derivados `isOverdue` / `isNearExpiry` a partir de `expiresAt` y del estado del pedido.
+  - `formatOrderExpiryState` para producir etiquetas legibles (`"Vencida"`, `"Vence en N h"`).
+- Componente `OrderExpiryBadge` en `components/dashboard/order-expiry-badge.tsx` que pinta el badge de vencimiento en listados y detalle.
+- Acción `cancelUnpaidOrderAction` en `actions/order-cancellation.ts` y formulario `CancelUnpaidOrderForm` para cancelar manualmente pedidos sin pago validado desde la pantalla de detalle.
+- Helper transaccional `closeUnpaidReservation` en `lib/order-expiry.ts` que centraliza la liberación de stock, rechazo de pagos pendientes y cambio de estado de un pedido. Es reutilizado por `expireReservation`, `cancelUnpaidOrder` y `rejectPayment`.
+- Plantilla de WhatsApp `RESERVATION_NEAR_EXPIRY` se usa como `defaultTemplate` cuando un pedido está por vencer en `app/(dashboard)/pedidos/[id]/page.tsx`.
+
+### Cambiado
+- `lib/payments.ts:rejectPayment` ahora evalúa cada pedido afectado. Si el pedido no tiene pagos validados y no le quedan otros pagos pendientes que puedan sostener la reserva, el rechazo:
+  1. libera el stock reservado de cada `OrderItem` (`InventoryMovement` con tipo `EXPIRE`),
+  2. marca el pedido como `CANCELLED`,
+  3. deja `balance = 0`,
+  4. registra auditoría `ORDER_CANCELLED` dentro de la misma transacción.
+  En cualquier otro caso el rechazo no modifica saldos ni stock (mismo comportamiento que antes).
+- `lib/order-expiry.ts:expireReservation` se reescribe como wrapper sobre `closeUnpaidReservation` para evitar duplicación de lógica.
+- `e2e/flows.spec.ts` ajusta el caso de rechazo de pago (RF-S15-07) y añade RF-S15-09 / RF-S15-10 cubriendo:
+  - rechazo del único pago pendiente libera stock y cancela la reserva,
+  - rechazo con otro pago pendiente no cancela ni libera stock,
+  - rechazo sobre pedido parcialmente pagado no cancela ni libera stock.
+- Página `/pedidos` muestra el badge de vencimiento por fila (columna "Vence").
+- Página `/pedidos/[id]` muestra el badge junto al estado, un banner ámbar con la acción de cancelación manual y un `defaultTemplate` que cambia a `RESERVATION_NEAR_EXPIRY` o `RESERVATION_EXPIRED` según la situación del pedido.
+
 ## [0.16.0] - Sprint 15 - Pulido, pruebas y despliegue
 
 ### Añadido
