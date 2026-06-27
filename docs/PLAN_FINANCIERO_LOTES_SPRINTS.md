@@ -14,7 +14,7 @@ Documento operativo para coordinar multiples sesiones de trabajo sobre la evoluc
 | Sprint 22 | Completado | 0.23.0 | Gastos operativos mensuales |
 | Sprint 23 | Completado | 0.24.0 | Incidencias, devoluciones, danos y perdidas |
 | Sprint 24 | Completado | 0.25.0 | Dashboard financiero |
-| Sprint 25 | Pendiente | 0.26.0 | Reportes financieros y exportacion |
+| Sprint 25 | Completado | 0.26.0 | Reportes financieros y exportacion |
 | Sprint 26 | Pendiente | 0.27.0 | UX, alertas, badges y responsive financiero |
 | Sprint 27 | Pendiente | 0.28.0 | Seed financiero, pruebas y cierre |
 
@@ -572,19 +572,43 @@ Extender `/reportes` con reportes financieros descargables.
 
 ### Checklist
 
-- [ ] Definir contratos de filtros.
-- [ ] Crear agregadores financieros.
-- [ ] Crear vistas tabulares.
-- [ ] Crear utilidad de CSV.
-- [ ] Agregar botones de descarga.
-- [ ] Verificar totales contra dashboard.
-- [ ] Actualizar README, CHANGELOG y version.
+- [x] Definir contratos de filtros.
+- [x] Crear agregadores financieros.
+- [x] Crear vistas tabulares.
+- [x] Crear utilidad de CSV.
+- [x] Agregar botones de descarga.
+- [x] Verificar totales contra dashboard.
+- [x] Actualizar README, CHANGELOG y version.
 
 ### Criterios De Salida
 
 - Reportes descargables en CSV.
 - Totales consistentes con dashboard.
 - Datos historicos usan costo congelado.
+
+### Notas De Avance
+
+- Sprint 25 cerrado. Version `0.26.0`.
+- Utilidad CSV en `lib/csv-export.ts`: `buildCsv(rows, columns)` con escape RFC 4180 (comillas dobles, comas y saltos de linea), `csvFilename(prefix, date?)` para nombres slug-friendly y `centsToCsv(cents)` para montos en centavos. El archivo sale con BOM UTF-8 y CRLF para maxima compatibilidad con Excel.
+- Modulo `lib/financial-reports.ts` con selectores minimos y agregadores puros en centavos enteros:
+  - `getSalesByMonthReport(range)`: ventas PAID agrupadas por mes usando `date_trunc('month', "profitCalculatedAt")` (con fallback N queries si el driver no soporta el SQL). Devuelve revenue, costo, utilidad bruta, fees, empaque, utilidad neta y margen bps por mes, mas totales (RF-S25-01).
+  - `getProductProfitabilityReport(range, { categoryId, minUnits })`: top productos por utilidad bruta con snapshot de costo real y stock (RF-S25-02).
+  - `getBatchProfitabilityReport(range)`: rentabilidad por lote con unidades vendidas, ingreso asignado, costo asignado, margen y ROI (RF-S25-03).
+  - `getStockValuationReport({ categoryId, query })`: valor del stock actual a costo aterrizado con fallback a `ProductVariant.cost`, desglose por origen de costo (RF-S25-04).
+  - `getLowRotationReport({ days, categoryId })`: variantes sin ventas en el umbral, con valor del stock y dias desde la ultima venta (RF-S25-05).
+  - `getExpensesReport(filter)`: gastos operativos con desglose activo/anulado, reusando `listExpenses` (RF-S25-06).
+  - `getCustomersFinancialReport(range, { query })`: resumen financiero por cliente (facturado, cobrado, pendiente, credito disponible, pedidos y pedidos PAID) (RF-S25-07).
+  - `getReturnsLossesReport(range, { type, status, decision })`: devoluciones y perdidas del periodo con totales neto/recuperado/perdido (RF-S25-08).
+- `lib/expenses-shared.ts` y `lib/incidents-shared.ts` ampliados con `EXPENSE_STATUS_VALUES`, `EXPENSE_STATUS_LABELS` e `INCIDENT_STATUS_VALUES` para alimentar selects y parsers.
+- Acciones de servidor en `actions/financial-reports.ts` con `requireRole("ADMIN")` para cada reporte.
+- Route handler `app/api/reportes/[section]/route.ts` (RF-S25-09) con secciones `sales`, `products`, `batches`, `stock`, `rotation`, `expenses`, `customers` y `returns`. Devuelve CSV con `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename=...` y `Cache-Control: no-store`. Los query params replican los filtros GET del UI.
+- `app/(dashboard)/reportes/page.tsx` extendido con 8 secciones financieras (`fin-sales`, `fin-products`, `fin-batches`, `fin-stock`, `fin-rotation`, `fin-expenses`, `fin-customers`, `fin-returns`) que reutilizan `ReportFilters`, `Card` y `Table` existentes. Helper `buildCsvHref(current, section, extra)` preserva los filtros activos al armar el link de descarga.
+- Componentes nuevos: `components/reports/csv-download-button.tsx`, `sales-by-month-view.tsx`, `product-profitability-report-view.tsx`, `batch-profitability-report-view.tsx`, `stock-valuation-report-view.tsx`, `low-rotation-report-view.tsx`, `financial-expenses-view.tsx`, `customers-financial-report-view.tsx`, `returns-losses-report-view.tsx`. Cada vista incluye un `SummaryCard` y una `Table` con tono verde/rojo segun margen o perdida.
+- Sin cache persistente: cada peticion recalcula para mantener consistencia entre instancias serverless. Los datos historicos usan costo congelado (`OrderItem.totalCostPen` y `grossProfitPen`) tal como exige la regla del Sprint 21.
+- Tests: `scripts/test-financial-reports.ts` con 11/11 tests (CSV escaping, csvFilename, centsToCsv, ventas por mes, utilidad por producto, rentabilidad por lote, stock valorizado, baja rotacion, gastos, clientes, devoluciones). Los tests previos siguen pasando: `test-financial-dashboard` 12/12, `test-expenses` 7/7, `test-order-batch-fifo` 10/10, `test-incidents` 11/11, `test-costing` 27/27.
+- `pnpm typecheck` → 0 errores.
+- `pnpm lint` → 0 errores (warnings preexistentes fuera del sprint).
+- `pnpm build` → 31/31 paginas, ruta `/api/reportes/[section]` registrada.
 
 ## Sprint 26 - UX, Alertas, Badges Y Responsive Financiero
 
@@ -719,3 +743,4 @@ Usar esta plantilla al final de cada sprint dentro de `CHANGELOG.md` y como resu
 | 2026-06-26 | Sprint 22 | OpenCode | Gastos operativos mensuales: modelo Expense con soft delete, enums de categoria/tipo/estado, actions CRUD con auditoria, /gastos con tabla y filtros, dashboard admin con utilidad neta real del mes, 7 tests de dominio | Ninguno |
 | 2026-06-26 | Sprint 23 | OpenCode | Incidencias, devoluciones, danos y perdidas: modelo Incident con soft delete, integracion transaccional con stock (RESTOCK/DAMAGE/LOSS) y creditos (CREDIT), /incidencias con tabla y filtros, dashboard admin con perdidas del mes descontadas de la utilidad neta real, 11 tests de dominio | Ninguno |
 | 2026-06-26 | Sprint 24 | OpenCode | Dashboard financiero: agregadores en lib/financial-dashboard.ts (overview, valor de stock, capital en lotes, top/bottom productos, baja rotacion, rentabilidad por lote, alertas), filtros GET (year, month, salesChannel, batchId, categoryId) en /dashboard para ADMIN, 12 tests de dominio | Ninguno |
+| 2026-06-26 | Sprint 25 | OpenCode | Reportes financieros y exportacion CSV: modulo lib/financial-reports.ts con 8 agregadores (ventas por mes, utilidad por producto, rentabilidad por lote, stock valorizado, baja rotacion, gastos, clientes, devoluciones), utilidad lib/csv-export.ts, route handler /api/reportes/[section], 8 secciones nuevas en /reportes, 11 tests de dominio | Ninguno |

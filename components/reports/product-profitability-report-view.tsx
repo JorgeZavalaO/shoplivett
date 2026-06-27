@@ -1,0 +1,143 @@
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { SummaryCard } from "@/components/reports/summary-card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { CsvDownloadButton } from "@/components/reports/csv-download-button";
+import type { ProductProfitabilityReport } from "@/lib/financial-reports";
+
+function fmtMoney(value: string): string {
+  return `S/ ${value}`;
+}
+
+function fmtPct(bps: number): string {
+  return `${(bps / 100).toFixed(1)}%`;
+}
+
+export function ProductProfitabilityReportView({
+  data,
+  csvHref,
+}: {
+  data: ProductProfitabilityReport;
+  csvHref: string;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        <SummaryCard
+          title="Unidades vendidas"
+          value={String(data.totals.unitsSold)}
+          hint="Lineas con costo congelado (BATCH/LEGACY)"
+        />
+        <SummaryCard
+          title="Ingreso (rango)"
+          value={fmtMoney(data.totals.revenue)}
+          tone="success"
+        />
+        <SummaryCard
+          title="Costo (rango)"
+          value={fmtMoney(data.totals.cost)}
+        />
+        <SummaryCard
+          title="Utilidad bruta (rango)"
+          value={fmtMoney(data.totals.grossProfit)}
+          tone={data.totals.grossProfitCents < 0 ? "destructive" : "default"}
+        />
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <CardTitle className="text-base">Utilidad por producto</CardTitle>
+            <CardDescription>
+              Top productos por utilidad bruta con snapshots de costo real.
+              {data.categoryId ? " Filtrado por categoria." : ""}
+            </CardDescription>
+          </div>
+          <CsvDownloadButton href={csvHref} />
+        </CardHeader>
+        <CardContent>
+          {data.rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Sin ventas en el rango.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Producto</TableHead>
+                    <TableHead>Variante</TableHead>
+                    <TableHead className="text-right">Uds</TableHead>
+                    <TableHead className="text-right">Ingreso</TableHead>
+                    <TableHead className="text-right">Costo</TableHead>
+                    <TableHead className="text-right">Utilidad</TableHead>
+                    <TableHead className="text-right">Margen</TableHead>
+                    <TableHead className="text-right">Stock</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.rows.map((r) => (
+                    <TableRow key={r.variantId}>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{r.productName}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {r.categoryName}
+                            {r.color ? ` · ${r.color}` : ""}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {r.variantCode}
+                      </TableCell>
+                      <TableCell className="text-right">{r.unitsSold}</TableCell>
+                      <TableCell className="text-right">
+                        {fmtMoney(r.revenue)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {fmtMoney(r.cost)}
+                      </TableCell>
+                      <TableCell
+                        className={`text-right ${
+                          r.grossProfitCents < 0
+                            ? "text-destructive"
+                            : "text-emerald-600"
+                        }`}
+                      >
+                        {fmtMoney(r.grossProfit)}
+                      </TableCell>
+                      <TableCell
+                        className={`text-right ${
+                          r.marginBps < 0
+                            ? "text-destructive"
+                            : r.marginBps < 1500
+                              ? "text-amber-600"
+                              : ""
+                        }`}
+                      >
+                        {fmtPct(r.marginBps)}
+                      </TableCell>
+                      <TableCell className="text-right">{r.stock}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

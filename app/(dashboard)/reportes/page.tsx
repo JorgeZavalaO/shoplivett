@@ -19,6 +19,16 @@ import {
   getTopProductsReportAction,
   listCategoryOptionsAction,
 } from "@/actions/reports";
+import {
+  getBatchProfitabilityReportAction,
+  getCustomersFinancialReportAction,
+  getExpensesReportAction,
+  getLowRotationReportAction,
+  getProductProfitabilityReportAction,
+  getReturnsLossesReportAction,
+  getSalesByMonthReportAction,
+  getStockValuationReportAction,
+} from "@/actions/financial-reports";
 import { ReportFilters } from "@/components/reports/report-filters";
 import { SummaryCard } from "@/components/reports/summary-card";
 import { PaymentsReportView } from "@/components/reports/payments-report-view";
@@ -27,6 +37,14 @@ import { CreditsReportView } from "@/components/reports/credits-report-view";
 import { LivesReportView } from "@/components/reports/lives-report-view";
 import { StockReportView } from "@/components/reports/stock-report-view";
 import { TopProductsView } from "@/components/reports/top-products-view";
+import { SalesByMonthView } from "@/components/reports/sales-by-month-view";
+import { ProductProfitabilityReportView } from "@/components/reports/product-profitability-report-view";
+import { BatchProfitabilityReportView } from "@/components/reports/batch-profitability-report-view";
+import { StockValuationReportView } from "@/components/reports/stock-valuation-report-view";
+import { LowRotationReportView } from "@/components/reports/low-rotation-report-view";
+import { FinancialExpensesView } from "@/components/reports/financial-expenses-view";
+import { CustomersFinancialReportView } from "@/components/reports/customers-financial-report-view";
+import { ReturnsLossesReportView } from "@/components/reports/returns-losses-report-view";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +54,19 @@ import {
   PAYMENT_METHOD_VALUES,
   PAYMENT_STATUS_VALUES,
 } from "@/lib/reports";
+import {
+  EXPENSE_CATEGORY_LABELS,
+  EXPENSE_CATEGORY_OPTIONS,
+  EXPENSE_STATUS_VALUES,
+  EXPENSE_TYPE_OPTIONS,
+} from "@/lib/expenses-shared";
+import {
+  INCIDENT_DECISION_OPTIONS,
+  INCIDENT_STATUS_VALUES,
+  INCIDENT_TYPE_OPTIONS,
+} from "@/lib/incidents-shared";
+import { type IncidentStatus, type IncidentType, type IncidentReturnDecision } from "@prisma/client";
+import type { ExpenseCategory, ExpenseStatus, ExpenseType } from "@prisma/client";
 
 export const metadata: Metadata = { title: "Reportes" };
 
@@ -47,6 +78,14 @@ const SECTIONS = [
   { key: "lives", label: "Ventas por live" },
   { key: "stock", label: "Stock actual" },
   { key: "top", label: "Productos más vendidos" },
+  { key: "fin-sales", label: "Ventas por mes" },
+  { key: "fin-products", label: "Utilidad por producto" },
+  { key: "fin-batches", label: "Rentabilidad por lote" },
+  { key: "fin-stock", label: "Stock valorizado" },
+  { key: "fin-rotation", label: "Sin rotación" },
+  { key: "fin-expenses", label: "Gastos" },
+  { key: "fin-customers", label: "Clientes" },
+  { key: "fin-returns", label: "Devoluciones" },
 ] as const;
 
 type SectionKey = (typeof SECTIONS)[number]["key"];
@@ -102,6 +141,55 @@ function parseCreditOrigin(
   return "ALL";
 }
 
+function parseExpenseCategory(value: string | undefined): ExpenseCategory | "ALL" {
+  if (!value) return "ALL";
+  if (value in EXPENSE_CATEGORY_LABELS) return value as ExpenseCategory;
+  return "ALL";
+}
+
+function parseExpenseType(value: string | undefined): ExpenseType | "ALL" {
+  if (!value) return "ALL";
+  if (value === "FIXED" || value === "VARIABLE") return value;
+  return "ALL";
+}
+
+function parseExpenseStatus(value: string | undefined): ExpenseStatus | "ALL" {
+  if (!value) return "ALL";
+  if (value === "ACTIVE" || value === "VOIDED") return value;
+  return "ALL";
+}
+
+function parseIncidentType(value: string | undefined): IncidentType | "ALL" {
+  if (!value) return "ALL";
+  if (INCIDENT_TYPE_OPTIONS.some((o) => o.value === value)) {
+    return value as IncidentType;
+  }
+  return "ALL";
+}
+
+function parseIncidentStatus(value: string | undefined): IncidentStatus | "ALL" {
+  if (!value) return "ALL";
+  if (INCIDENT_STATUS_VALUES.some((s: IncidentStatus) => s === value)) {
+    return value as IncidentStatus;
+  }
+  return "ALL";
+}
+
+function parseIncidentDecision(
+  value: string | undefined,
+): IncidentReturnDecision | "ALL" {
+  if (!value) return "ALL";
+  if (INCIDENT_DECISION_OPTIONS.some((d) => d.value === value)) {
+    return value as IncidentReturnDecision;
+  }
+  return "ALL";
+}
+
+function parseInt32(value: string | undefined, fallback: number): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
+}
+
 function parseDate(value: string | undefined): Date | null {
   if (!value) return null;
   const d = new Date(`${value}T00:00:00`);
@@ -138,6 +226,29 @@ function buildHref(current: SearchParams, patch: Record<string, string | null>):
   }
   const qs = params.toString();
   return qs ? `/reportes?${qs}` : "/reportes";
+}
+
+function buildCsvHref(
+  current: SearchParams,
+  section: string,
+  extra: Record<string, string | null> = {},
+): string {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(current)) {
+    if (v == null) continue;
+    const value = Array.isArray(v) ? v[0] : v;
+    if (value !== undefined && value !== "") params.set(k, value);
+  }
+  params.delete("section");
+  params.delete("page");
+  for (const [k, v] of Object.entries(extra)) {
+    if (v === null || v === "") params.delete(k);
+    else params.set(k, v);
+  }
+  const qs = params.toString();
+  return qs
+    ? `/api/reportes/${section}?${qs}`
+    : `/api/reportes/${section}`;
 }
 
 export default async function ReportesPage({
@@ -628,6 +739,584 @@ export default async function ReportesPage({
           </CardContent>
         </Card>
         <TopProductsView data={data} hasRange={hasRange} />
+      </ReportesShell>
+    );
+  }
+
+  if (section === "fin-sales") {
+    const data = await getSalesByMonthReportAction(range);
+    return (
+      <ReportesShell section={section} sp={sp}>
+        <ReportFilters
+          from={fromInput}
+          to={toInput}
+          query=""
+          baseHref={buildHref(sp, { section: "fin-sales" }) as Route}
+          totalLabel="Meses con ventas"
+          totalValue={String(data.rows.length)}
+        />
+        <SalesByMonthView
+          data={data}
+          csvHref={buildCsvHref(sp, "sales")}
+        />
+      </ReportesShell>
+    );
+  }
+
+  if (section === "fin-products") {
+    const categoryId = first(sp, "categoryId") ?? "";
+    const minUnits = parseInt32(first(sp, "minUnits"), 1);
+    const [data, categories] = await Promise.all([
+      getProductProfitabilityReportAction(range, {
+        categoryId: categoryId || null,
+        minUnits,
+      }),
+      listCategoryOptionsAction(),
+    ]);
+    const extra = (
+      <div className="flex flex-wrap items-end gap-2">
+        <input type="hidden" name="section" value="fin-products" />
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="categoryId" className="text-xs text-muted-foreground">
+            Categoria
+          </label>
+          <select
+            id="categoryId"
+            name="categoryId"
+            defaultValue={categoryId}
+            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+          >
+            <option value="">Todas</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="minUnits" className="text-xs text-muted-foreground">
+            Min. unidades
+          </label>
+          <input
+            id="minUnits"
+            name="minUnits"
+            type="number"
+            min={1}
+            defaultValue={minUnits}
+            className="h-8 w-20 rounded-lg border border-input bg-transparent px-2 text-sm"
+          />
+        </div>
+      </div>
+    );
+    return (
+      <ReportesShell section={section} sp={sp}>
+        <ReportFilters
+          from={fromInput}
+          to={toInput}
+          query=""
+          baseHref={buildHref(sp, { section: "fin-products" }) as Route}
+          extra={extra}
+          totalLabel="Variantes en el reporte"
+          totalValue={String(data.rows.length)}
+        />
+        <ProductProfitabilityReportView
+          data={data}
+          csvHref={buildCsvHref(sp, "products", {
+            categoryId: categoryId || null,
+            minUnits: String(minUnits),
+          })}
+        />
+      </ReportesShell>
+    );
+  }
+
+  if (section === "fin-batches") {
+    const data = await getBatchProfitabilityReportAction(range);
+    return (
+      <ReportesShell section={section} sp={sp}>
+        <ReportFilters
+          from={fromInput}
+          to={toInput}
+          query=""
+          baseHref={buildHref(sp, { section: "fin-batches" }) as Route}
+          totalLabel="Lotes con ventas"
+          totalValue={String(data.rows.length)}
+        />
+        <BatchProfitabilityReportView
+          data={data}
+          csvHref={buildCsvHref(sp, "batches")}
+        />
+      </ReportesShell>
+    );
+  }
+
+  if (section === "fin-stock") {
+    const categoryId = first(sp, "categoryId") ?? "";
+    const query = first(sp, "q") ?? "";
+    const [data, categories] = await Promise.all([
+      getStockValuationReportAction({
+        categoryId: categoryId || null,
+        query: query || undefined,
+      }),
+      listCategoryOptionsAction(),
+    ]);
+    return (
+      <ReportesShell section={section} sp={sp}>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Filtros</CardTitle>
+            <CardDescription>
+              Busca por nombre, codigo o color. Filtra por categoria para
+              reportes mas enfocados.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form
+              method="get"
+              action={buildHref(sp, { section: "fin-stock" }) as Route}
+              className="flex flex-wrap items-end gap-3"
+            >
+              <input type="hidden" name="section" value="fin-stock" />
+              <div className="flex flex-1 flex-col gap-1.5 min-w-48">
+                <label htmlFor="q" className="text-xs text-muted-foreground">
+                  Buscar
+                </label>
+                <input
+                  id="q"
+                  name="q"
+                  defaultValue={query}
+                  placeholder="Nombre, codigo o color"
+                  className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="categoryId"
+                  className="text-xs text-muted-foreground"
+                >
+                  Categoria
+                </label>
+                <select
+                  id="categoryId"
+                  name="categoryId"
+                  defaultValue={categoryId}
+                  className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                >
+                  <option value="">Todas</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button type="submit" size="sm">
+                  Aplicar
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  render={
+                    <a href={buildHref(sp, { section: "fin-stock" }) as Route}>
+                      Limpiar
+                    </a>
+                  }
+                />
+              </div>
+            </form>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Variantes valorizadas: <span className="font-medium">{data.rows.length}</span>
+            </p>
+          </CardContent>
+        </Card>
+        <StockValuationReportView
+          data={data}
+          csvHref={buildCsvHref(sp, "stock", {
+            categoryId: categoryId || null,
+            q: query || null,
+          })}
+        />
+      </ReportesShell>
+    );
+  }
+
+  if (section === "fin-rotation") {
+    const days = parseInt32(first(sp, "days"), 60);
+    const categoryId = first(sp, "categoryId") ?? "";
+    const [data, categories] = await Promise.all([
+      getLowRotationReportAction({
+        days,
+        categoryId: categoryId || null,
+      }),
+      listCategoryOptionsAction(),
+    ]);
+    return (
+      <ReportesShell section={section} sp={sp}>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Filtros</CardTitle>
+            <CardDescription>
+              Define el umbral en dias para considerar una variante como sin
+              rotacion.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form
+              method="get"
+              action={buildHref(sp, { section: "fin-rotation" }) as Route}
+              className="flex flex-wrap items-end gap-3"
+            >
+              <input type="hidden" name="section" value="fin-rotation" />
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="days" className="text-xs text-muted-foreground">
+                  Umbral (dias)
+                </label>
+                <input
+                  id="days"
+                  name="days"
+                  type="number"
+                  min={1}
+                  max={365}
+                  defaultValue={days}
+                  className="h-8 w-24 rounded-lg border border-input bg-transparent px-2 text-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="categoryId"
+                  className="text-xs text-muted-foreground"
+                >
+                  Categoria
+                </label>
+                <select
+                  id="categoryId"
+                  name="categoryId"
+                  defaultValue={categoryId}
+                  className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                >
+                  <option value="">Todas</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button type="submit" size="sm">
+                  Aplicar
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  render={
+                    <a
+                      href={buildHref(sp, { section: "fin-rotation" }) as Route}
+                    >
+                      Limpiar
+                    </a>
+                  }
+                />
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+        <LowRotationReportView
+          data={data}
+          csvHref={buildCsvHref(sp, "rotation", {
+            days: String(days),
+            categoryId: categoryId || null,
+          })}
+        />
+      </ReportesShell>
+    );
+  }
+
+  if (section === "fin-expenses") {
+    const year = parseInt32(first(sp, "year"), new Date().getFullYear());
+    const month = parseInt32(first(sp, "month"), new Date().getMonth() + 1);
+    const safeMonth = Math.min(12, Math.max(1, month));
+    const safeYear = Math.max(2000, Math.min(2100, year));
+    const category = parseExpenseCategory(first(sp, "category"));
+    const type = parseExpenseType(first(sp, "type"));
+    const status = parseExpenseStatus(first(sp, "status"));
+    const query = first(sp, "q") ?? "";
+    const data = await getExpensesReportAction({
+      year: safeYear,
+      month: safeMonth,
+      category,
+      type,
+      status,
+      query: query || undefined,
+      page: 1,
+      perPage: 1000,
+    });
+    const extra = (
+      <div className="flex flex-wrap items-end gap-2">
+        <input type="hidden" name="section" value="fin-expenses" />
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="year" className="text-xs text-muted-foreground">
+            Año
+          </label>
+          <input
+            id="year"
+            name="year"
+            type="number"
+            min={2000}
+            max={2100}
+            defaultValue={safeYear}
+            className="h-8 w-24 rounded-lg border border-input bg-transparent px-2 text-sm"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="month" className="text-xs text-muted-foreground">
+            Mes
+          </label>
+          <select
+            id="month"
+            name="month"
+            defaultValue={String(safeMonth)}
+            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+          >
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="category" className="text-xs text-muted-foreground">
+            Categoria
+          </label>
+          <select
+            id="category"
+            name="category"
+            defaultValue={category}
+            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+          >
+            <option value="ALL">Todas</option>
+            {EXPENSE_CATEGORY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="type" className="text-xs text-muted-foreground">
+            Tipo
+          </label>
+          <select
+            id="type"
+            name="type"
+            defaultValue={type}
+            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+          >
+            <option value="ALL">Todos</option>
+            {EXPENSE_TYPE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="status" className="text-xs text-muted-foreground">
+            Estado
+          </label>
+          <select
+            id="status"
+            name="status"
+            defaultValue={status}
+            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+          >
+            <option value="ALL">Todos</option>
+            {EXPENSE_STATUS_VALUES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="q" className="text-xs text-muted-foreground">
+            Buscar
+          </label>
+          <input
+            id="q"
+            name="q"
+            defaultValue={query}
+            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+          />
+        </div>
+      </div>
+    );
+    return (
+      <ReportesShell section={section} sp={sp}>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Filtros</CardTitle>
+            <CardDescription>
+              Gastos operativos con categoria, tipo, estado y busqueda libre.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form
+              method="get"
+              action={buildHref(sp, { section: "fin-expenses" }) as Route}
+              className="flex flex-wrap items-end gap-3"
+            >
+              {extra}
+              <div className="flex items-center gap-2">
+                <Button type="submit" size="sm">
+                  Aplicar
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  render={
+                    <a
+                      href={buildHref(sp, { section: "fin-expenses" }) as Route}
+                    >
+                      Limpiar
+                    </a>
+                  }
+                />
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+        <FinancialExpensesView
+          data={data}
+          csvHref={buildCsvHref(sp, "expenses", {
+            year: String(safeYear),
+            month: String(safeMonth),
+            category: category === "ALL" ? null : category,
+            type: type === "ALL" ? null : type,
+            status: status === "ALL" ? null : status,
+            q: query || null,
+          })}
+        />
+      </ReportesShell>
+    );
+  }
+
+  if (section === "fin-customers") {
+    const query = first(sp, "q") ?? "";
+    const data = await getCustomersFinancialReportAction(range, {
+      query: query || undefined,
+    });
+    return (
+      <ReportesShell section={section} sp={sp}>
+        <ReportFilters
+          from={fromInput}
+          to={toInput}
+          query={query}
+          baseHref={buildHref(sp, { section: "fin-customers" }) as Route}
+          totalLabel="Clientes en el reporte"
+          totalValue={String(data.rows.length)}
+        />
+        <CustomersFinancialReportView
+          data={data}
+          csvHref={buildCsvHref(sp, "customers", { q: query || null })}
+        />
+      </ReportesShell>
+    );
+  }
+
+  if (section === "fin-returns") {
+    const type = parseIncidentType(first(sp, "type"));
+    const status = parseIncidentStatus(first(sp, "status"));
+    const decision = parseIncidentDecision(first(sp, "decision"));
+    const data = await getReturnsLossesReportAction(range, {
+      type,
+      status,
+      decision,
+    });
+    const extra = (
+      <div className="flex flex-wrap items-end gap-2">
+        <input type="hidden" name="section" value="fin-returns" />
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="type" className="text-xs text-muted-foreground">
+            Tipo
+          </label>
+          <select
+            id="type"
+            name="type"
+            defaultValue={type}
+            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+          >
+            <option value="ALL">Todos</option>
+            {INCIDENT_TYPE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="status" className="text-xs text-muted-foreground">
+            Estado
+          </label>
+          <select
+            id="status"
+            name="status"
+            defaultValue={status}
+            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+          >
+            <option value="ALL">Todos</option>
+            {INCIDENT_STATUS_VALUES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="decision" className="text-xs text-muted-foreground">
+            Decision
+          </label>
+          <select
+            id="decision"
+            name="decision"
+            defaultValue={decision}
+            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+          >
+            <option value="ALL">Todas</option>
+            {INCIDENT_DECISION_OPTIONS.map((d) => (
+              <option key={d.value} value={d.value}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    );
+    return (
+      <ReportesShell section={section} sp={sp}>
+        <ReportFilters
+          from={fromInput}
+          to={toInput}
+          query=""
+          baseHref={buildHref(sp, { section: "fin-returns" }) as Route}
+          extra={extra}
+          totalLabel="Incidencias en el reporte"
+          totalValue={String(data.rows.length)}
+        />
+        <ReturnsLossesReportView
+          data={data}
+          csvHref={buildCsvHref(sp, "returns", {
+            type: type === "ALL" ? null : type,
+            status: status === "ALL" ? null : status,
+            decision: decision === "ALL" ? null : decision,
+          })}
+        />
       </ReportesShell>
     );
   }

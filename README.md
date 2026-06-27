@@ -121,6 +121,25 @@ Bloques principales del panel:
 
 Los tests de dominio viven en `scripts/test-financial-dashboard.ts` (12/12). Se ejecutan con `pnpm tsx scripts/_with-env.ts scripts/test-financial-dashboard.ts`.
 
+### Sprint 25 — Reportes financieros y exportación CSV (versión 0.26.0)
+
+El módulo `/reportes` extiende las secciones operativas del Sprint 13 con 8 reportes financieros descargables. Los agregadores viven en `lib/financial-reports.ts` y usan costo congelado (`OrderItem.totalCostPen` / `grossProfitPen`) para mantener la regla del Sprint 21.
+
+Secciones nuevas (acceso solo ADMIN):
+
+- **Ventas por mes** (RF-S25-01): `date_trunc` sobre `Order.profitCalculatedAt` con revenue, costo, utilidad bruta, fees, empaque, utilidad neta y margen bps por mes.
+- **Utilidad por producto** (RF-S25-02): top por utilidad bruta con filtro de categoría y mínimo de unidades.
+- **Rentabilidad por lote** (RF-S25-03): unidades vendidas, ingreso asignado, costo asignado, margen y ROI por lote.
+- **Stock valorizado** (RF-S25-04): valor del stock actual a costo aterrizado con fallback a `ProductVariant.cost`.
+- **Sin rotación** (RF-S25-05): variantes sin ventas en el umbral, con valor en stock y días desde la última venta.
+- **Gastos** (RF-S25-06): gastos operativos con filtros de año, mes, categoría, tipo y estado.
+- **Clientes** (RF-S25-07): resumen financiero por cliente (facturado, cobrado, saldo pendiente, crédito disponible).
+- **Devoluciones** (RF-S25-08): devoluciones y pérdidas con totales neto/recuperado/perdido (excluye canceladas).
+
+Cada sección incluye un botón **Descargar CSV** que apunta a `app/api/reportes/[section]/route.ts` (RF-S25-09). El handler replica los filtros GET del UI, aplica escape RFC 4180 (comillas, comas, saltos de línea) y devuelve el archivo con `Content-Type: text/csv; charset=utf-8`, BOM UTF-8 y CRLF para máxima compatibilidad con Excel en Windows.
+
+Los tests de dominio viven en `scripts/test-financial-reports.ts` (11/11). Se ejecutan con `pnpm tsx scripts/_with-env.ts scripts/test-financial-reports.ts`.
+
 ## Deploy en Vercel
 
 1. Crea un proyecto nuevo en Vercel y enlázalo a este repositorio.

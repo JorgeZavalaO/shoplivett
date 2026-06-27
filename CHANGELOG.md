@@ -5,6 +5,44 @@ Todos los cambios notables de Shoplivett se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0] - Sprint 25 - Reportes financieros y exportación CSV
+
+### Añadido
+- Modulo de agregadores `lib/financial-reports.ts` con selectores minimos y manejo interno en centavos enteros (`Cents`):
+  - `getSalesByMonthReport(range)`: ventas PAID agrupadas por mes (utiliza `date_trunc('month', "profitCalculatedAt")` con fallback a N queries). Devuelve revenue, costo, utilidad bruta, fees, empaque, utilidad neta y margen bps por mes, mas totales (RF-S25-01).
+  - `getProductProfitabilityReport(range, { categoryId, minUnits })`: productos por utilidad bruta con snapshot de costo real y stock actual (RF-S25-02).
+  - `getBatchProfitabilityReport(range)`: rentabilidad por lote con unidades vendidas, ingreso asignado, costo asignado, margen y ROI (RF-S25-03).
+  - `getStockValuationReport({ categoryId, query })`: valor del stock actual a costo aterrizado con fallback a `ProductVariant.cost`, desglose por origen de costo (RF-S25-04).
+  - `getLowRotationReport({ days, categoryId })`: variantes sin ventas en el umbral, con valor del stock y dias desde la ultima venta (RF-S25-05).
+  - `getExpensesReport(filter)`: gastos operativos reutilizando `listExpenses` con totales activo/anulado separados (RF-S25-06).
+  - `getCustomersFinancialReport(range, { query })`: resumen financiero por cliente (facturado, cobrado, saldo pendiente, credito disponible, pedidos totales y PAID) (RF-S25-07).
+  - `getReturnsLossesReport(range, { type, status, decision })`: devoluciones y perdidas del periodo con totales neto/recuperado/perdido, excluyendo canceladas (RF-S25-08).
+- Utilidad `lib/csv-export.ts` para generar archivos CSV: `buildCsv(rows, columns)` con escape RFC 4180 (comillas dobles, comas y saltos de linea), `csvFilename(prefix, date?)` para nombres slug-friendly y `centsToCsv(cents)` para montos. El archivo sale con BOM UTF-8 y CRLF para maxima compatibilidad con Excel.
+- `lib/expenses-shared.ts` y `lib/incidents-shared.ts` ampliados con `EXPENSE_STATUS_VALUES`, `EXPENSE_STATUS_LABELS` e `INCIDENT_STATUS_VALUES` para alimentar selects y parsers.
+- Acciones de servidor en `actions/financial-reports.ts` con `requireRole("ADMIN")` para cada reporte (`getSalesByMonthReportAction`, `getProductProfitabilityReportAction`, `getBatchProfitabilityReportAction`, `getStockValuationReportAction`, `getLowRotationReportAction`, `getExpensesReportAction`, `getCustomersFinancialReportAction`, `getReturnsLossesReportAction`).
+- Route handler `app/api/reportes/[section]/route.ts` (RF-S25-09) con secciones `sales`, `products`, `batches`, `stock`, `rotation`, `expenses`, `customers` y `returns`. Devuelve CSV con `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename=...` y `Cache-Control: no-store`. Los query params replican los filtros GET del UI.
+- `app/(dashboard)/reportes/page.tsx` extendido con 8 secciones financieras (`fin-sales`, `fin-products`, `fin-batches`, `fin-stock`, `fin-rotation`, `fin-expenses`, `fin-customers`, `fin-returns`) que reutilizan `ReportFilters`, `Card` y `Table` existentes. Helper `buildCsvHref(current, section, extra)` preserva los filtros activos al armar el link de descarga.
+- Componentes nuevos en `components/reports/`: `csv-download-button.tsx`, `sales-by-month-view.tsx`, `product-profitability-report-view.tsx`, `batch-profitability-report-view.tsx`, `stock-valuation-report-view.tsx`, `low-rotation-report-view.tsx`, `financial-expenses-view.tsx`, `customers-financial-report-view.tsx`, `returns-losses-report-view.tsx`. Cada vista incluye `SummaryCard` y `Table` con tono verde/rojo segun margen o perdida.
+- `scripts/test-financial-reports.ts` con 11/11 tests de dominio que cubren escape CSV, slug de filename, conversion de centavos, ventas por mes, utilidad por producto, rentabilidad por lote, stock valorizado, baja rotacion, gastos, clientes y devoluciones. Los tests previos siguen pasando: `test-financial-dashboard` 12/12, `test-expenses` 7/7, `test-order-batch-fifo` 10/10, `test-incidents` 11/11, `test-costing` 27/27.
+
+### Decisiones
+- Sin cache persistente: cada peticion recalcula para mantener consistencia entre instancias serverless. Los datos historicos usan costo congelado (`OrderItem.totalCostPen` y `grossProfitPen`) tal como exige la regla del Sprint 21.
+- `getSalesByMonthReport` prefiere SQL con `date_trunc` para una sola query agregada, pero cae a N queries individuales si el driver Prisma no soporta el SQL con tipos decimales (fallback defensivo para entornos donde `Prisma.sql` con templates tipados falle).
+- El CSV incluye BOM UTF-8 + CRLF para que Excel en Windows reconozca acentos y saltos de linea sin intervencion del usuario.
+- `getReturnsLossesReport` excluye incidencias `CANCELLED` de los totales perdidos/recuperados para que la suma refleje el impacto financiero real, alineado con la regla de "anular no revierte movimientos" del Sprint 23.
+- El helper `buildCsvHref` preserva TODOS los query params del UI (incluidos filtros que no son del reporte) salvo `section` y `page`, de modo que la descarga refleja exactamente lo que el admin ve en pantalla.
+
+### Verificacion
+- `pnpm tsx scripts/_with-env.ts scripts/test-financial-reports.ts` → 11/11 tests pasan.
+- `pnpm tsx scripts/_with-env.ts scripts/test-financial-dashboard.ts` → 12/12 tests previos siguen pasando.
+- `pnpm tsx scripts/_with-env.ts scripts/test-expenses.ts` → 7/7 tests previos siguen pasando.
+- `pnpm tsx scripts/_with-env.ts scripts/test-order-batch-fifo.ts` → 10/10 tests previos siguen pasando.
+- `pnpm tsx scripts/_with-env.ts scripts/test-incidents.ts` → 11/11 tests previos siguen pasando.
+- `pnpm tsx scripts/_with-env.ts scripts/test-costing.ts` → 27/27 tests previos siguen pasando.
+- `pnpm typecheck` → 0 errores.
+- `pnpm lint` → 0 errores (warnings preexistentes fuera del sprint).
+- `pnpm build` → 31/31 paginas, ruta `/api/reportes/[section]` registrada.
+
 ## [0.25.0] - Sprint 24 - Dashboard financiero
 
 ### Añadido

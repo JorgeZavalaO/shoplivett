@@ -33,6 +33,12 @@ export const INCIDENT_STATUS_OPTIONS: Array<{ value: IncidentStatus; label: stri
   Object.keys(INCIDENT_STATUS_LABELS) as IncidentStatus[]
 ).map((key) => ({ value: key, label: INCIDENT_STATUS_LABELS[key] }));
 
+export const INCIDENT_STATUS_VALUES: IncidentStatus[] = [
+  "OPEN",
+  "RESOLVED",
+  "CANCELLED",
+];
+
 export const INCIDENT_DECISION_OPTIONS: Array<{
   value: IncidentReturnDecision;
   label: string;

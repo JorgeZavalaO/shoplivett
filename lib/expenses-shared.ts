@@ -1,7 +1,7 @@
 // Constantes y tipos de Expenses seguros para cliente.
 // NO importar nada de Prisma aquí (este archivo se usa también en componentes client).
 
-import type { ExpenseCategory, ExpenseType } from "@prisma/client";
+import type { ExpenseCategory, ExpenseStatus, ExpenseType } from "@prisma/client";
 
 export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   RENT: "Alquiler",
@@ -23,6 +23,11 @@ export const EXPENSE_TYPE_LABELS: Record<ExpenseType, string> = {
   VARIABLE: "Variable",
 };
 
+export const EXPENSE_STATUS_LABELS: Record<ExpenseStatus, string> = {
+  ACTIVE: "Activo",
+  VOIDED: "Anulado",
+};
+
 export const EXPENSE_CATEGORY_OPTIONS: Array<{
   value: ExpenseCategory;
   label: string;
@@ -38,3 +43,8 @@ export const EXPENSE_TYPE_OPTIONS: Array<{
   value: key,
   label: EXPENSE_TYPE_LABELS[key],
 }));
+
+export const EXPENSE_STATUS_VALUES: ExpenseStatus[] = [
+  "ACTIVE",
+  "VOIDED",
+];
