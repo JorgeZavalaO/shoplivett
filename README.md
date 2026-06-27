@@ -1,6 +1,6 @@
 # Shoplivett
 
-Administrador interno de ventas para una tienda de carteras que vende principalmente por **TikTok Live**: clientes, productos, variantes, stock, reservas, pagos (Yape/Plin), envíos agrupados, créditos y reportes.
+Administrador interno de ventas para una tienda de carteras que vende principalmente por **TikTok Live**: clientes, productos, variantes, stock, reservas, pagos (Yape/Plin), envíos agrupados, créditos y reportes. La siguiente fase documentada extiende el sistema hacia finanzas por lotes de importación, costo real, gastos, incidencias y rentabilidad.
 
 ## Stack
 
@@ -9,7 +9,7 @@ Administrador interno de ventas para una tienda de carteras que vende principalm
 - Tailwind CSS 4 + `@base-ui/react`
 - Prisma 7 + Neon PostgreSQL
 - Auth.js v5 (Credentials) con sesión JWT en cookie httpOnly
-- React Hook Form + Zod
+- Server Actions + Zod + `useActionState`
 - TanStack Table (Sprint 3+)
 - Vercel Blob (Sprint 4+)
 - Sonner, Lucide React
@@ -89,6 +89,38 @@ Por defecto, el seed crea tres usuarios (solo para desarrollo):
 | `pnpm db:studio` | Abre Prisma Studio. |
 | `pnpm db:seed` | Crea los usuarios seed (idempotente). |
 
+## Roadmap financiero por lotes
+
+La evolución financiera está documentada en [`docs/PLAN_FINANCIERO_LOTES_SPRINTS.md`](./docs/PLAN_FINANCIERO_LOTES_SPRINTS.md). Ese documento es la fuente operativa para trabajar en múltiples sesiones sobre los próximos sprints.
+
+Decisiones funcionales cerradas para esta fase:
+
+- La utilidad mensual se reconoce cuando el pedido queda en estado `PAID`.
+- La salida de stock por lote será FIFO automática.
+- La publicidad se registrará como gasto operativo mensual.
+- `Order` y `OrderItem` seguirán siendo la fuente de verdad de ventas; no se creará una tabla `Sale` paralela.
+- `BusinessSettings` se extenderá para reglas financieras; no se reemplazará por una tabla key-value.
+
+Regla de continuidad: al cerrar cada sprint financiero se debe actualizar el plan en `docs/`, este `README.md`, `CHANGELOG.md` y la versión en `package.json`.
+
+### Sprint 24 — Dashboard financiero (versión 0.25.0)
+
+El panel `/dashboard` para ADMIN combina las métricas operativas del Sprint 11 con un nuevo bloque financiero. Los agregadores viven en `lib/financial-dashboard.ts` y operan con `select` mínimos, `Cents` enteros y sin cache persistente (cada request recalcula para mantener consistencia entre instancias serverless).
+
+Filtros GET disponibles: `year`, `month`, `salesChannel`, `batchId`, `categoryId`. Se aplican al overview, a los top/bottom productos y a la rentabilidad por lote. El stock valorizado y la rotación baja operan sobre el estado actual.
+
+Bloques principales del panel:
+
+- **Overview del periodo**: ventas, costo real, utilidad bruta, fees, empaque, gastos, pérdidas y utilidad neta real con margen en bps.
+- **Stock valorizado**: valor total a costo aterrizado (promedio ponderado por unidades disponibles) con fallback a `ProductVariant.cost` para variantes sin lote, desglose por categoría, conteo de variantes con/sin lote.
+- **Capital en lotes**: inversión total acumulada, valor disponible en lotes no `CLOSED`, unidades disponibles/recibidas y desglose por estado.
+- **Rentabilidad por lote**: unidades vendidas, ingreso asignado, costo asignado, margen y ROI por lote.
+- **Top productos** y **productos con menor margen** dentro del periodo.
+- **Productos sin rotación** (umbral por defecto 60 días) con valor en stock y días desde la última venta.
+- **Alertas**: margen por debajo del objetivo, utilidad negativa, productos con margen bajo y productos sin rotación.
+
+Los tests de dominio viven en `scripts/test-financial-dashboard.ts` (12/12). Se ejecutan con `pnpm tsx scripts/_with-env.ts scripts/test-financial-dashboard.ts`.
+
 ## Deploy en Vercel
 
 1. Crea un proyecto nuevo en Vercel y enlázalo a este repositorio.
@@ -151,7 +183,7 @@ components/            UI, layout, forms, tables, dashboard
 lib/                   auth, prisma, validations, permissions, settings, phone, customer-helpers, blob, utils
 prisma/                schema.prisma y seed
 types/                 Enums compartidos del dominio
-docs/                  Plan de sprints, requisitos funcionales y no funcionales, flujos
+docs/                  Planes de sprints, roadmap financiero, requisitos funcionales/no funcionales y flujos
 CHANGELOG.md           Historial de versiones
 ```
 
@@ -346,6 +378,40 @@ Páginas:
   - `RNF-S12-03` variables vacías se sustituyen sin romper el mensaje.
   - `RNF-S12-04` números se normalizan a formato `wa.me` compatible.
 
+### Sprint 23 — Incidencias, devoluciones, daños y pérdidas
+
+- Vista `/incidencias` (sólo `ADMIN`) con tabla paginada, filtros (tipo, estado, decisión, mes) y resumen de total perdido/recuperado de la página (excluye canceladas).
+- Vista `/incidencias/nuevo` con `IncidentForm` (buscadores async para pedido, variante y clienta; selección de línea de pedido; tipo y decisión validados).
+- Vista `/incidencias/[id]` con detalle, botones de resolver y cancelar (motivo obligatorio, `ConfirmDialog`).
+- Modelo `Incident` con soft delete (status = CANCELLED) e integraciones transaccionales:
+  - `RETURN + RESTOCK`: devuelve unidades a `stock` y reduce `soldStock` con `InventoryMovement` tipo `IN`.
+  - `RETURN + CREDIT`: crea `CustomerCredit` con origin `MANUAL` y vincula al `Incident.creditId`.
+  - `RETURN + REPLACE`/`DISCARDED`: solo registro.
+  - `DAMAGE`/`LOSS` en stock propio: reduce `stock` y registra `InventoryMovement` tipo `ADJUSTMENT`.
+  - `DAMAGE`/`LOSS`/`CLAIM` post-venta: solo registra los montos `lost`/`recovered`.
+- Módulo de dominio `lib/incidents.ts` con `createIncident`, `resolveIncident`, `cancelIncident`, `listIncidents`, `getIncidentDetail` y `getMonthlyIncidentSummary` (desglose por tipo, separación perdido vs recuperado, neto del periodo).
+- `lib/dashboard.ts` y `lib/expenses.ts` (`getFinancialPeriod`) restan el `lostAmount` de las incidencias no canceladas al calcular la utilidad neta real del mes.
+- Dashboard admin: nueva card "Pérdidas por incidencias del mes" y card combinada "Gastos + pérdidas del mes" con enlace a `/incidencias`.
+- Acciones `createIncidentAction`, `resolveIncidentAction`, `cancelIncidentAction` con `Serializable` + `auditInTx`. Validaciones Zod dedicadas (`IncidentCreateSchema`, `IncidentResolveSchema`, `IncidentCancelSchema`).
+- Enums de auditoría `INCIDENT_CREATED`, `INCIDENT_RESOLVED` y `INCIDENT_CANCELLED` con sus etiquetas en `/auditoria`.
+- Script de tests `scripts/test-incidents.ts` con 11 tests de dominio (validación, integración con stock, créditos, filtros, agregadores, transiciones de estado con guardas).
+
+### Sprint 22 — Gastos operativos mensuales
+
+- Vista `/gastos` (sólo `ADMIN`) con tabla paginada, filtros (categoría, tipo, estado, mes) y resumen del total activo de la página.
+- Vista `/gastos/nuevo` con `ExpenseForm` (categoría fija o variable, fecha, detalle, monto, medio de pago, notas).
+- Vista `/gastos/[id]` con detalle, edición y anulación (soft delete vía `status = VOIDED`) con motivo obligatorio.
+- Modelo `Expense` con soft delete para preservar auditoría y los totales históricos. La anulación descuenta el gasto de los agregadores financieros en el mismo instante.
+- Módulo de dominio `lib/expenses.ts` con:
+  - `listExpenses` (filtros por mes/categoría/tipo/estado y query, paginación).
+  - `getMonthlyExpenseSummary` (total, desglose por categoría ordenado por monto, separación fijo vs variable).
+  - `getFinancialPeriod` (revenue, costo real, utilidad bruta, gastos, utilidad neta real y margen bps) que descuenta los gastos operativos del mes de la utilidad operativa de los pedidos `PAID`.
+- `lib/dashboard.ts` añade al dashboard admin las cards "Ventas del mes", "Utilidad bruta del mes", "Gastos operativos del mes" y "Utilidad neta real del mes" con margen bps y tono verde/rojo.
+- Acciones `createExpenseAction`, `updateExpenseAction` y `voidExpenseAction` con transacciones `Serializable`, `auditInTx` y `revalidatePath`. Validaciones Zod dedicadas (`ExpenseCreateSchema`, `ExpenseUpdateSchema`, `ExpenseVoidSchema`).
+- Enums de auditoría `EXPENSE_CREATED`, `EXPENSE_UPDATED` y `EXPENSE_VOIDED` con sus etiquetas en `/auditoria`.
+- Script de tests `scripts/test-expenses.ts` con 7 tests de dominio (validación, agregadores, filtros, financial period).
+- Helper `scripts/_with-env.ts` para correr los scripts de tests cargando `.env` en local (los scripts existentes como `test-order-batch-fifo.ts` siguen funcionando con el mismo wrapper).
+
 ### Reportes (Sprint 13)
 
 - Vista `/reportes` (sólo `ADMIN`) con shell de secciones: Resumen, Pagos, Saldos pendientes, Créditos, Ventas por live, Stock actual, Productos más vendidos.
@@ -383,6 +449,18 @@ Páginas:
   - `RNF-S14-03` el módulo `/auditoria` y sus actions sólo son accesibles para `ADMIN`; el sidebar lo oculta para otros roles.
   - `RNF-S14-04` las operaciones críticas (pagos, pedidos, envíos) registran la auditoría dentro de la misma transacción de Prisma, evitando inconsistencias entre el cambio de negocio y el log.
 
+### Configuración financiera base (Sprint 18)
+
+Extensión del módulo `/configuracion` con los parámetros financieros que gobernarán los siguientes sprints de la fase por lotes:
+
+- **Tipo de cambio** USD → PEN configurable (`defaultExchangeRate`), con hasta 4 decimales.
+- **Márgenes objetivo** en basis points (mínimo aceptable y objetivo recomendado) para los badges y reportes financieros.
+- **Costos estándar**: costo de empaque (`standardPackagingCostPen`) y método de asignación de costos por defecto (`BY_VALUE`, `BY_WEIGHT`, `MIXED`, `MANUAL`) con porcentajes de valor/peso cuando se elige el método mixto (deben sumar 100).
+- **Comisión por medio de pago** (Yape, Plin, Efectivo, Otro) almacenada en `Json` como basis points y mostrada en porcentaje en la UI.
+- **Canales de venta** habilitados (`TIKTOK_LIVE`, `INSTAGRAM_LIVE`, `TIENDA`, `WHATSAPP_DIRECTO`, `OTRO`).
+- Auditoría `SETTINGS_UPDATED` extendida con el detalle `previous` / `next` para todos los campos nuevos.
+- Nuevos helpers en `lib/settings.ts` (`getDefaultExchangeRate`, `getTargetMargins`, `getDefaultCostAllocationMethod`, `getMixedAllocationPercents`, `getStandardPackagingCost`, `getPaymentMethodFees`, `getEnabledSalesChannels`) listos para los Sprints 19, 20 y 21.
+
 ## Estado de sprints
 
 - ✅ Sprint 0 — Base técnica
@@ -401,6 +479,14 @@ Páginas:
 - ✅ Sprint 13 — Reportes
 - ✅ Sprint 14 — Auditoría y seguridad operativa
 - ✅ Sprint 15 — Pulido, pruebas y despliegue
+- ✅ Sprint 16 — Reservas, rechazos y recordatorios
+- ✅ Sprint 17 — Plan financiero por lotes e importaciones
+- ✅ Sprint 18 — Configuración financiera base
+- ✅ Sprint 19 — Lotes de importación MVP
+- ✅ Sprint 20 — Motor de costeo aterrizado
+- ✅ Sprint 21 — Integración lote, stock y venta FIFO
+- ✅ Sprint 22 — Gastos operativos mensuales (`/gastos`)
+- ✅ Sprint 23 — Incidencias, devoluciones, daños y pérdidas (`/incidencias`)
 
 ### Sprint 15 — Pulido, pruebas y despliegue
 

@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import type { JWT } from "next-auth/jwt";
 
 import { prisma } from "@/lib/prisma";
-import { LoginSchema } from "@/lib/validations";
+import { LoginSchema } from "@/lib/validations/auth";
 import type { Role } from "@/lib/permissions";
 
 declare module "next-auth" {

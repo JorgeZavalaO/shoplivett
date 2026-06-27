@@ -8,13 +8,19 @@
 import { unstable_cache, revalidateTag, updateTag } from "next/cache";
 import type {
   BusinessSettings as PrismaBusinessSettings,
+  CostAllocationMethod,
   PaymentMethod,
   Role,
+  SalesChannel,
   ShippingMethod,
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/prisma";
-import { DEFAULT_BUSINESS_SETTINGS } from "@/lib/settings-defaults";
+import {
+  DEFAULT_BUSINESS_SETTINGS,
+  coercePaymentMethodFees,
+  type PaymentMethodFees,
+} from "@/lib/settings-defaults";
 
 export const SETTINGS_CACHE_TAG = "settings";
 const SETTINGS_ID = "default";
@@ -38,6 +44,18 @@ async function loadSettings(): Promise<PrismaBusinessSettings> {
       enabledPaymentMethods: DEFAULT_BUSINESS_SETTINGS.enabledPaymentMethods,
       enabledShippingMethods: DEFAULT_BUSINESS_SETTINGS.enabledShippingMethods,
       paymentValidatorRoles: DEFAULT_BUSINESS_SETTINGS.paymentValidatorRoles,
+      defaultExchangeRate: DEFAULT_BUSINESS_SETTINGS.defaultExchangeRate,
+      minimumTargetMarginBps: DEFAULT_BUSINESS_SETTINGS.minimumTargetMarginBps,
+      objectiveTargetMarginBps: DEFAULT_BUSINESS_SETTINGS.objectiveTargetMarginBps,
+      defaultCostAllocationMethod:
+        DEFAULT_BUSINESS_SETTINGS.defaultCostAllocationMethod,
+      mixedValueAllocationPercent:
+        DEFAULT_BUSINESS_SETTINGS.mixedValueAllocationPercent,
+      mixedWeightAllocationPercent:
+        DEFAULT_BUSINESS_SETTINGS.mixedWeightAllocationPercent,
+      standardPackagingCostPen: DEFAULT_BUSINESS_SETTINGS.standardPackagingCostPen,
+      paymentMethodFees: DEFAULT_BUSINESS_SETTINGS.paymentMethodFees,
+      enabledSalesChannels: DEFAULT_BUSINESS_SETTINGS.enabledSalesChannels,
     },
     update: {},
   });
@@ -105,4 +123,51 @@ export async function getFreeShippingRule(): Promise<{
     enabled: s.freeShippingEnabled,
     threshold: s.freeShippingThreshold.toString(),
   };
+}
+
+// =====================================================================
+// Helpers financieros (Sprint 18)
+// =====================================================================
+
+export async function getDefaultExchangeRate(): Promise<number> {
+  const s = await getSettings();
+  return Number(s.defaultExchangeRate.toString());
+}
+
+export async function getTargetMargins(): Promise<{
+  minimumBps: number;
+  objectiveBps: number;
+}> {
+  const s = await getSettings();
+  return {
+    minimumBps: s.minimumTargetMarginBps,
+    objectiveBps: s.objectiveTargetMarginBps,
+  };
+}
+
+export async function getDefaultCostAllocationMethod(): Promise<CostAllocationMethod> {
+  return (await getSettings()).defaultCostAllocationMethod;
+}
+
+export async function getMixedAllocationPercents(): Promise<{
+  value: number;
+  weight: number;
+}> {
+  const s = await getSettings();
+  return {
+    value: s.mixedValueAllocationPercent,
+    weight: s.mixedWeightAllocationPercent,
+  };
+}
+
+export async function getStandardPackagingCost(): Promise<string> {
+  return (await getSettings()).standardPackagingCostPen.toString();
+}
+
+export async function getPaymentMethodFees(): Promise<PaymentMethodFees> {
+  return coercePaymentMethodFees((await getSettings()).paymentMethodFees);
+}
+
+export async function getEnabledSalesChannels(): Promise<SalesChannel[]> {
+  return (await getSettings()).enabledSalesChannels;
 }

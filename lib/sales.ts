@@ -1,6 +1,8 @@
 // Lógica de venta rápida: crea pedido, items, pago pendiente, reserva stock.
 // Todo corre dentro de una transacción Prisma.
 
+import type { SalesChannel } from "@prisma/client";
+
 import { getPrisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { reserveStock } from "@/lib/inventory";
@@ -14,6 +16,11 @@ import { uploadImage, deleteImage, ImageUploadError } from "@/lib/blob";
 import { createPayment, PaymentError } from "@/lib/payments";
 import { auditInTx } from "@/lib/audit";
 import { toCents, centsToDecimalString } from "@/lib/money";
+import {
+  BatchAllocationError,
+  checkBatchStock,
+  persistQuickSaleLine,
+} from "@/lib/order-batch-allocation";
 
 export class OrderError extends Error {
   constructor(
@@ -26,7 +33,9 @@ export class OrderError extends Error {
       | "LIVE_CLOSED"
       | "BLOB_ERROR"
       | "PAYMENT_ERROR"
-      | "CONFLICT",
+      | "CONFLICT"
+      | "INSUFFICIENT_BATCH_STOCK"
+      | "BATCH_NOT_CALCULATED",
   ) {
     super(message);
     this.name = "OrderError";
@@ -43,6 +52,7 @@ export type QuickSaleInput = {
   paymentMethod: string;
   operationNumber?: string;
   notes?: string;
+  salesChannel?: SalesChannel;
   receiptFiles?: File[];
   actorId?: string | null;
 };
@@ -77,7 +87,7 @@ export async function createQuickSale(
   const variants = await prisma.productVariant.findMany({
     where: { id: { in: variantIds }, status: "ACTIVE", product: { isActive: true } },
     select: {
-      id: true, code: true, price: true,
+      id: true, code: true, price: true, cost: true,
       stock: true, reservedStock: true, soldStock: true, color: true,
     },
   });
@@ -88,6 +98,23 @@ export async function createQuickSale(
         `La variante ${item.variantId} no está disponible.`,
         "VARIANT_NOT_FOUND",
       );
+    }
+  }
+
+  // Verificación temprana de stock por lote (FIFO). Si la variante opera
+  // con lotes, no basta con `ProductVariant.stock`; el origen de verdad
+  // para la venta es `ImportBatchItem.quantityAvailable` (Sprint 21).
+  for (const item of input.items) {
+    try {
+      await checkBatchStock(prisma, item.variantId, item.quantity);
+    } catch (error) {
+      if (error instanceof BatchAllocationError) {
+        if (error.code === "INSUFFICIENT_BATCH_STOCK") {
+          throw new OrderError(error.message, "INSUFFICIENT_BATCH_STOCK");
+        }
+        throw new OrderError(error.message, "INSUFFICIENT_STOCK");
+      }
+      throw error;
     }
   }
 
@@ -164,21 +191,41 @@ export async function createQuickSale(
             total: totals.total,
             validatedPaid: "0",
             balance,
+            salesChannel: input.salesChannel ?? "WHATSAPP_DIRECTO",
             expiresAt,
             notes: input.notes ?? null,
           },
         });
 
         for (const li of lineItems) {
-          await tx.orderItem.create({
-            data: {
-              orderId: order.id,
+          const variant = variantMap.get(li.variantId)!;
+          const persist = await persistQuickSaleLine({
+            tx,
+            orderId: order.id,
+            item: {
               variantId: li.variantId,
               quantity: li.quantity,
               unitPrice: li.unitPrice,
-              lineTotal: centsToDecimalString(
-                toCents(li.unitPrice, { allowNegative: true }) * li.quantity,
-              ),
+              variant: { cost: variant.cost },
+            },
+          });
+          await auditInTx(tx, input.actorId ?? null, {
+            action: "ORDER_BATCH_ALLOCATED",
+            entity: "OrderItem",
+            entityId: persist.orderItemId,
+            metadata: {
+              orderId: order.id,
+              variantId: li.variantId,
+              quantity: li.quantity,
+              costSource: persist.costSource,
+              unitCostPen: persist.unitCostPen,
+              allocations: persist.allocations.map((a) => ({
+                batchId: a.batchId,
+                batchItemId: a.batchItemId,
+                quantity: a.quantity,
+                unitCostPen: a.unitCostPen,
+                subtotalCostPen: a.subtotalCostPen,
+              })),
             },
           });
         }
@@ -223,6 +270,7 @@ export async function createQuickSale(
             total: totals.total,
             advance: input.advanceAmount,
             paymentMethod: input.paymentMethod,
+            salesChannel: input.salesChannel ?? "WHATSAPP_DIRECTO",
             items: lineItems.map((li) => ({
               variantId: li.variantId,
               quantity: li.quantity,
@@ -249,6 +297,15 @@ export async function createQuickSale(
     }
     if (error instanceof PaymentError) {
       throw new OrderError(error.message, "PAYMENT_ERROR");
+    }
+    if (error instanceof BatchAllocationError) {
+      if (error.code === "INSUFFICIENT_BATCH_STOCK") {
+        throw new OrderError(error.message, "INSUFFICIENT_BATCH_STOCK");
+      }
+      if (error.code === "CONFLICT") {
+        throw new OrderError(error.message, "CONFLICT");
+      }
+      throw new OrderError(error.message, "INSUFFICIENT_STOCK");
     }
     if (error instanceof OrderError) throw error;
     throw error;

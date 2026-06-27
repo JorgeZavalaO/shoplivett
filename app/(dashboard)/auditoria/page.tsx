@@ -52,6 +52,21 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   CREDIT_REFUNDED: "Devolución registrada",
   CREDIT_APPLIED: "Crédito aplicado",
   SETTINGS_UPDATED: "Configuración actualizada",
+  IMPORT_BATCH_CREATED: "Lote de importación creado",
+  IMPORT_BATCH_UPDATED: "Lote de importación actualizado",
+  IMPORT_BATCH_STATUS_CHANGED: "Estado de lote cambiado",
+  IMPORT_BATCH_ITEM_ADDED: "Producto agregado a lote",
+  IMPORT_BATCH_ITEM_REMOVED: "Producto removido de lote",
+  IMPORT_BATCH_RECALCULATED: "Costos de lote recalculados",
+  ORDER_BATCH_ALLOCATED: "Stock de lote asignado a pedido",
+  ORDER_BATCH_ALLOCATION_RELEASED: "Asignación de lote liberada",
+  ORDER_PROFIT_RECOGNIZED: "Utilidad reconocida",
+  EXPENSE_CREATED: "Gasto operativo creado",
+  EXPENSE_UPDATED: "Gasto operativo actualizado",
+  EXPENSE_VOIDED: "Gasto operativo anulado",
+  INCIDENT_CREATED: "Incidencia creada",
+  INCIDENT_RESOLVED: "Incidencia resuelta",
+  INCIDENT_CANCELLED: "Incidencia cancelada",
 };
 
 const ACTION_TONE: Record<AuditAction, string> = {
@@ -74,6 +89,21 @@ const ACTION_TONE: Record<AuditAction, string> = {
   CREDIT_REFUNDED: "bg-amber-500 text-white",
   CREDIT_APPLIED: "bg-blue-200 text-blue-900",
   SETTINGS_UPDATED: "bg-blue-200 text-blue-900",
+  IMPORT_BATCH_CREATED: "bg-emerald-600 text-white",
+  IMPORT_BATCH_UPDATED: "bg-blue-200 text-blue-900",
+  IMPORT_BATCH_STATUS_CHANGED: "bg-amber-500 text-white",
+  IMPORT_BATCH_ITEM_ADDED: "bg-emerald-600 text-white",
+  IMPORT_BATCH_ITEM_REMOVED: "bg-destructive text-white",
+  IMPORT_BATCH_RECALCULATED: "bg-blue-200 text-blue-900",
+  ORDER_BATCH_ALLOCATED: "bg-emerald-600 text-white",
+  ORDER_BATCH_ALLOCATION_RELEASED: "bg-amber-500 text-white",
+  ORDER_PROFIT_RECOGNIZED: "bg-emerald-600 text-white",
+  EXPENSE_CREATED: "bg-emerald-600 text-white",
+  EXPENSE_UPDATED: "bg-blue-200 text-blue-900",
+  EXPENSE_VOIDED: "bg-destructive text-white",
+  INCIDENT_CREATED: "bg-amber-500 text-white",
+  INCIDENT_RESOLVED: "bg-emerald-600 text-white",
+  INCIDENT_CANCELLED: "bg-muted text-muted-foreground",
 };
 
 type SearchParams = Record<string, string | string[] | undefined>;

@@ -1,10 +1,17 @@
 // Validadores Zod centralizados.
 import { z } from "zod";
 import {
+  CostAllocationMethod,
   CustomerStatus,
+  ExpenseCategory,
+  ExpenseType,
+  IncidentReturnDecision,
+  IncidentStatus,
+  IncidentType,
   LiveChannel,
   PaymentMethod,
   Role,
+  SalesChannel,
   ShippingMethod,
 } from "@prisma/client";
 
@@ -15,17 +22,10 @@ export const PaginationSchema = z.object({
 
 export type Pagination = z.infer<typeof PaginationSchema>;
 
-export const LoginSchema = z.object({
-  email: z
-    .string({ message: "El correo es obligatorio." })
-    .min(1, "El correo es obligatorio.")
-    .email("Ingresa un correo válido."),
-  password: z
-    .string({ message: "La contraseña es obligatoria." })
-    .min(6, "La contraseña debe tener al menos 6 caracteres."),
-});
-
-export type LoginInput = z.infer<typeof LoginSchema>;
+// Re-export para no romper imports existentes.
+// El esquema vive en lib/validations/auth.ts para que pueda ser consumido
+// desde el middleware (Edge runtime) sin arrastrar el cliente de Prisma.
+export { LoginSchema, type LoginInput } from "@/lib/validations/auth";
 
 // Helpers para strings que representan montos en formato decimal (12,2).
 const decimalString = (opts: { min?: number; label: string; allowZero?: boolean }) =>
@@ -53,41 +53,108 @@ const decimalString = (opts: { min?: number; label: string; allowZero?: boolean 
       },
     );
 
-export const BusinessSettingsSchema = z.object({
-  reservationDays: z.coerce
-    .number({ message: "Los días de reserva son obligatorios." })
-    .int("Debe ser un número entero.")
-    .min(1, "Debe ser al menos 1 día.")
-    .max(60, "Máximo 60 días."),
-  minimumAdvance: decimalString({ label: "El adelanto mínimo", min: 0.01 }),
-  currency: z
-    .string()
-    .trim()
-    .length(3, "La moneda debe tener 3 letras.")
-    .regex(/^[A-Z]{3}$/, "Usa un código de moneda en mayúsculas (ej. PEN)."),
-  freeShippingEnabled: z.boolean(),
-  freeShippingThreshold: decimalString({
-    label: "El monto mínimo para envío gratis",
-    allowZero: true,
-  }),
-  productCodePrefix: z
-    .string()
-    .trim()
-    .min(2, "Mínimo 2 caracteres.")
-    .max(6, "Máximo 6 caracteres.")
-    .regex(/^[A-Z0-9-]+$/, "Solo mayúsculas, números y guiones."),
-  allowOverpaymentCredit: z.boolean(),
-  allowRefund: z.boolean(),
-  enabledPaymentMethods: z
-    .array(z.enum(PaymentMethod))
-    .min(1, "Selecciona al menos un medio de pago."),
-  enabledShippingMethods: z
-    .array(z.enum(ShippingMethod))
-    .min(1, "Selecciona al menos un medio de envío."),
-  paymentValidatorRoles: z
-    .array(z.enum(Role))
-    .min(1, "Selecciona al menos un rol que pueda validar pagos."),
-});
+export const BusinessSettingsSchema = z
+  .object({
+    reservationDays: z.coerce
+      .number({ message: "Los días de reserva son obligatorios." })
+      .int("Debe ser un número entero.")
+      .min(1, "Debe ser al menos 1 día.")
+      .max(60, "Máximo 60 días."),
+    minimumAdvance: decimalString({ label: "El adelanto mínimo", min: 0.01 }),
+    currency: z
+      .string()
+      .trim()
+      .length(3, "La moneda debe tener 3 letras.")
+      .regex(/^[A-Z]{3}$/, "Usa un código de moneda en mayúsculas (ej. PEN)."),
+    freeShippingEnabled: z.boolean(),
+    freeShippingThreshold: decimalString({
+      label: "El monto mínimo para envío gratis",
+      allowZero: true,
+    }),
+    productCodePrefix: z
+      .string()
+      .trim()
+      .min(2, "Mínimo 2 caracteres.")
+      .max(6, "Máximo 6 caracteres.")
+      .regex(/^[A-Z0-9-]+$/, "Solo mayúsculas, números y guiones."),
+    allowOverpaymentCredit: z.boolean(),
+    allowRefund: z.boolean(),
+    enabledPaymentMethods: z
+      .array(z.enum(PaymentMethod))
+      .min(1, "Selecciona al menos un medio de pago."),
+    enabledShippingMethods: z
+      .array(z.enum(ShippingMethod))
+      .min(1, "Selecciona al menos un medio de envío."),
+    paymentValidatorRoles: z
+      .array(z.enum(Role))
+      .min(1, "Selecciona al menos un rol que pueda validar pagos."),
+    defaultExchangeRate: z
+      .string()
+      .trim()
+      .min(1, "El tipo de cambio es obligatorio.")
+      .refine((s) => /^\d+(\.\d{1,4})?$/.test(s), {
+        message: "El tipo de cambio debe tener hasta 4 decimales.",
+      })
+      .refine((s) => Number(s) > 0, {
+        message: "El tipo de cambio debe ser mayor a 0.",
+      }),
+    minimumTargetMarginBps: z.coerce
+      .number({ message: "El margen mínimo es obligatorio." })
+      .int("Debe ser un número entero.")
+      .min(0, "No puede ser negativo.")
+      .max(10000, "Máximo 10000 (100%)."),
+    objectiveTargetMarginBps: z.coerce
+      .number({ message: "El margen objetivo es obligatorio." })
+      .int("Debe ser un número entero.")
+      .min(0, "No puede ser negativo.")
+      .max(10000, "Máximo 10000 (100%)."),
+    defaultCostAllocationMethod: z.enum(CostAllocationMethod, {
+      message: "Selecciona un método de asignación.",
+    }),
+    mixedValueAllocationPercent: z.coerce
+      .number({ message: "El porcentaje de valor es obligatorio." })
+      .int("Debe ser un número entero.")
+      .min(0, "No puede ser negativo.")
+      .max(100, "Máximo 100."),
+    mixedWeightAllocationPercent: z.coerce
+      .number({ message: "El porcentaje de peso es obligatorio." })
+      .int("Debe ser un número entero.")
+      .min(0, "No puede ser negativo.")
+      .max(100, "Máximo 100."),
+    standardPackagingCostPen: decimalString({
+      label: "El costo de empaque",
+      allowZero: true,
+    }),
+    paymentMethodFees: z.object({
+      YAPE: z.coerce.number().int().min(0).max(10000),
+      PLIN: z.coerce.number().int().min(0).max(10000),
+      CASH: z.coerce.number().int().min(0).max(10000),
+      OTHER: z.coerce.number().int().min(0).max(10000),
+    }),
+    enabledSalesChannels: z
+      .array(z.enum(SalesChannel))
+      .min(1, "Selecciona al menos un canal de venta."),
+  })
+  .superRefine((data, ctx) => {
+    if (data.minimumTargetMarginBps > data.objectiveTargetMarginBps) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["minimumTargetMarginBps"],
+        message: "El margen mínimo no puede superar al objetivo.",
+      });
+    }
+    if (
+      data.defaultCostAllocationMethod === "MIXED" &&
+      data.mixedValueAllocationPercent + data.mixedWeightAllocationPercent !==
+        100
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["mixedValueAllocationPercent"],
+        message: "La suma de valor y peso debe ser 100 cuando el método es mixto.",
+      });
+    }
+  });
 
 export type BusinessSettingsInput = z.infer<typeof BusinessSettingsSchema>;
 
@@ -386,6 +453,10 @@ export const CreateOrderSchema = z
     paymentMethod: z.enum(PaymentMethod, { message: "Selecciona un método de pago." }),
     operationNumber: z.string().trim().max(60).optional().or(z.literal("").transform(() => undefined)),
     notes: z.string().trim().max(1000).optional().or(z.literal("").transform(() => undefined)),
+    salesChannel: z
+      .enum(SalesChannel)
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
   })
   .superRefine((data, ctx) => {
     if (!Array.isArray(data.items) || data.items.length === 0) {
@@ -411,3 +482,320 @@ export const CreateOrderSchema = z
   });
 
 export type CreateOrderInput = z.infer<typeof CreateOrderSchema>;
+
+// =====================================================================
+// Import Batches
+// =====================================================================
+
+const batchDecimal = (opts: { label: string; allowZero?: boolean }) =>
+  z
+    .string()
+    .trim()
+    .min(1, `${opts.label} es obligatorio.`)
+    .refine((s) => /^\d+(\.\d{1,2})?$/.test(s), {
+      message: `${opts.label} debe tener hasta 2 decimales.`,
+    })
+    .refine(
+      (s) => {
+        const n = Number(s);
+        if (Number.isNaN(n)) return false;
+        if (!opts.allowZero && n <= 0) return false;
+        if (opts.allowZero && n < 0) return false;
+        return true;
+      },
+      { message: opts.allowZero ? `${opts.label} no puede ser negativo.` : `${opts.label} debe ser mayor a 0.` },
+    );
+
+const batchDecimal4 = (opts: { label: string; allowZero?: boolean }) =>
+  z
+    .string()
+    .trim()
+    .min(1, `${opts.label} es obligatorio.`)
+    .refine((s) => /^\d+(\.\d{1,4})?$/.test(s), {
+      message: `${opts.label} debe tener hasta 4 decimales.`,
+    })
+    .refine(
+      (s) => {
+        const n = Number(s);
+        if (Number.isNaN(n)) return false;
+        if (!opts.allowZero && n <= 0) return false;
+        if (opts.allowZero && n < 0) return false;
+        return true;
+      },
+      { message: opts.allowZero ? `${opts.label} no puede ser negativo.` : `${opts.label} debe ser mayor a 0.` },
+    );
+
+export const ImportBatchCreateSchema = z.object({
+  purchaseDate: z
+    .string({ message: "La fecha de compra es obligatoria." })
+    .min(1, "La fecha de compra es obligatoria."),
+  shopper: z
+    .string({ message: "El shopper es obligatorio." })
+    .trim()
+    .min(2, "Mínimo 2 caracteres.")
+    .max(100, "Máximo 100 caracteres."),
+  agency: z
+    .string({ message: "La agencia es obligatoria." })
+    .trim()
+    .min(2, "Mínimo 2 caracteres.")
+    .max(100, "Máximo 100 caracteres."),
+  totalCostUsd: batchDecimal({ label: "El costo total USD" }),
+  totalAdditionalCostsUsd: batchDecimal({ label: "Los costos adicionales USD", allowZero: true }),
+  totalAdditionalCostsPen: batchDecimal({ label: "Los costos adicionales PEN", allowZero: true }),
+  exchangeRate: batchDecimal4({ label: "El tipo de cambio" }),
+  notes: z
+    .string()
+    .trim()
+    .max(1000, "Máximo 1000 caracteres.")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+});
+
+export type ImportBatchCreateInput = z.infer<typeof ImportBatchCreateSchema>;
+
+export const ImportBatchUpdateSchema = z.object({
+  purchaseDate: z.string().min(1, "La fecha de compra es obligatoria.").optional(),
+  shopper: z.string().trim().min(2).max(100).optional(),
+  agency: z.string().trim().min(2).max(100).optional(),
+  totalCostUsd: batchDecimal({ label: "El costo total USD" }).optional(),
+  totalAdditionalCostsUsd: batchDecimal({ label: "Los costos adicionales USD", allowZero: true }).optional(),
+  totalAdditionalCostsPen: batchDecimal({ label: "Los costos adicionales PEN", allowZero: true }).optional(),
+  exchangeRate: batchDecimal4({ label: "El tipo de cambio" }).optional(),
+  status: z.enum(["PURCHASED", "IN_TRANSIT", "COMPLETE", "CLOSED"]).optional(),
+  notes: z.string().trim().max(1000).optional().or(z.literal("").transform(() => undefined)),
+});
+
+export type ImportBatchUpdateInput = z.infer<typeof ImportBatchUpdateSchema>;
+
+export const ImportBatchItemSchema = z
+  .object({
+    variantId: z.string().min(1, "Selecciona una variante."),
+    quantityPurchased: z.coerce
+      .number({ message: "La cantidad comprada es obligatoria." })
+      .int("Debe ser un número entero.")
+      .min(1, "Debe ser al menos 1.")
+      .max(100000, "Máximo 100000."),
+    quantityReceived: z.coerce
+      .number({ message: "La cantidad recibida es obligatoria." })
+      .int("Debe ser un número entero.")
+      .min(0, "No puede ser negativo.")
+      .max(100000, "Máximo 100000."),
+    unitCostUsd: batchDecimal4({ label: "El costo unitario USD" }),
+    weight: batchDecimal4({ label: "El peso", allowZero: true }),
+  })
+  .superRefine((data, ctx) => {
+    if (data.quantityReceived > data.quantityPurchased) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["quantityReceived"],
+        message: "La cantidad recibida no puede superar la comprada.",
+      });
+    }
+  });
+
+export type ImportBatchItemInput = z.infer<typeof ImportBatchItemSchema>;
+
+export const ImportBatchItemsSchema = z
+  .array(ImportBatchItemSchema)
+  .min(1, "Agrega al menos un producto al lote.");
+
+// =====================================================================
+// Expenses (Sprint 22)
+// =====================================================================
+
+export const ExpenseCategorySchema = z.enum(ExpenseCategory);
+export const ExpenseTypeSchema = z.enum(ExpenseType);
+
+export const ExpenseCreateSchema = z.object({
+  expenseDate: z
+    .string({ message: "La fecha es obligatoria." })
+    .min(1, "La fecha es obligatoria."),
+  category: ExpenseCategorySchema,
+  expenseType: ExpenseTypeSchema.default("VARIABLE"),
+  description: z
+    .string({ message: "El detalle es obligatorio." })
+    .trim()
+    .min(3, "Mínimo 3 caracteres.")
+    .max(200, "Máximo 200 caracteres."),
+  amount: decimalString({ label: "El monto", min: 0.01 }),
+  paymentMethod: z
+    .string()
+    .trim()
+    .max(40, "Máximo 40 caracteres.")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  notes: z
+    .string()
+    .trim()
+    .max(1000, "Máximo 1000 caracteres.")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+});
+
+export type ExpenseCreateInput = z.infer<typeof ExpenseCreateSchema>;
+
+export const ExpenseUpdateSchema = z.object({
+  expenseDate: z.string().min(1, "La fecha es obligatoria.").optional(),
+  category: ExpenseCategorySchema.optional(),
+  expenseType: ExpenseTypeSchema.optional(),
+  description: z
+    .string()
+    .trim()
+    .min(3, "Mínimo 3 caracteres.")
+    .max(200, "Máximo 200 caracteres.")
+    .optional(),
+  amount: decimalString({ label: "El monto", min: 0.01 }).optional(),
+  paymentMethod: z
+    .string()
+    .trim()
+    .max(40, "Máximo 40 caracteres.")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  notes: z
+    .string()
+    .trim()
+    .max(1000, "Máximo 1000 caracteres.")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+});
+
+export type ExpenseUpdateInput = z.infer<typeof ExpenseUpdateSchema>;
+
+export const ExpenseVoidSchema = z.object({
+  voidReason: z
+    .string()
+    .trim()
+    .min(5, "El motivo debe tener al menos 5 caracteres.")
+    .max(200, "Máximo 200 caracteres."),
+});
+
+export type ExpenseVoidInput = z.infer<typeof ExpenseVoidSchema>;
+
+// =====================================================================
+// Incidents (Sprint 23)
+// =====================================================================
+
+export const IncidentTypeSchema = z.enum(IncidentType);
+export const IncidentStatusSchema = z.enum(IncidentStatus);
+export const IncidentReturnDecisionSchema = z.enum(IncidentReturnDecision);
+
+const incidentAmount = decimalString({
+  label: "El monto",
+  allowZero: true,
+});
+
+export const IncidentCreateSchema = z
+  .object({
+    incidentDate: z
+      .string({ message: "La fecha es obligatoria." })
+      .min(1, "La fecha es obligatoria."),
+    type: IncidentTypeSchema,
+    decision: IncidentReturnDecisionSchema.default("NONE"),
+    orderId: z
+      .string()
+      .trim()
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    orderItemId: z
+      .string()
+      .trim()
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    variantId: z
+      .string()
+      .trim()
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    customerId: z
+      .string()
+      .trim()
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    quantity: z.coerce
+      .number({ message: "La cantidad es obligatoria." })
+      .int("Debe ser un número entero.")
+      .min(1, "Debe ser al menos 1.")
+      .max(100000, "Máximo 100000."),
+    description: z
+      .string({ message: "La descripcion es obligatoria." })
+      .trim()
+      .min(5, "Mínimo 5 caracteres.")
+      .max(500, "Máximo 500 caracteres."),
+    recoveredAmount: incidentAmount.optional(),
+    lostAmount: incidentAmount.optional(),
+    restockQuantity: z.coerce
+      .number()
+      .int("Debe ser un número entero.")
+      .min(0, "No puede ser negativo.")
+      .max(100000, "Máximo 100000.")
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    notes: z
+      .string()
+      .trim()
+      .max(1000, "Máximo 1000 caracteres.")
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+  })
+  .superRefine((data, ctx) => {
+    if (data.decision === "RESTOCK") {
+      if (!data.variantId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["variantId"],
+          message: "RESTOCK requiere seleccionar la variante.",
+        });
+      }
+      if (!data.restockQuantity || data.restockQuantity <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["restockQuantity"],
+          message: "RESTOCK requiere cantidad a devolver a stock.",
+        });
+      } else if (data.restockQuantity > data.quantity) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["restockQuantity"],
+          message: "La cantidad restock no puede superar la cantidad total.",
+        });
+      }
+    }
+    if (data.decision === "CREDIT" && !data.customerId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["customerId"],
+        message: "CREDIT requiere seleccionar la clienta para emitir el credito.",
+      });
+    }
+    if (
+      (data.type === "DAMAGE" || data.type === "LOSS") &&
+      data.decision === "NONE" &&
+      !data.variantId
+    ) {
+      // Permitimos da&nadas/perdidas sin variante (evento externo); no es bloqueante.
+    }
+  });
+
+export type IncidentCreateInput = z.infer<typeof IncidentCreateSchema>;
+
+export const IncidentResolveSchema = z.object({
+  resolutionNotes: z
+    .string()
+    .trim()
+    .min(3, "Mínimo 3 caracteres.")
+    .max(500, "Máximo 500 caracteres.")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+});
+
+export type IncidentResolveInput = z.infer<typeof IncidentResolveSchema>;
+
+export const IncidentCancelSchema = z.object({
+  cancelReason: z
+    .string()
+    .trim()
+    .min(5, "El motivo debe tener al menos 5 caracteres.")
+    .max(200, "Máximo 200 caracteres."),
+});
+
+export type IncidentCancelInput = z.infer<typeof IncidentCancelSchema>;

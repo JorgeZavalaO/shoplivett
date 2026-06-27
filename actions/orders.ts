@@ -104,6 +104,13 @@ export async function getOrderDetailAction(orderId: string) {
       notes: true,
       createdAt: true,
       updatedAt: true,
+      salesChannel: true,
+      productCostPen: true,
+      grossProfitPen: true,
+      paymentFeePen: true,
+      packagingCostPen: true,
+      netProfitPen: true,
+      profitCalculatedAt: true,
       customer: {
         select: {
           id: true,
@@ -124,6 +131,12 @@ export async function getOrderDetailAction(orderId: string) {
           quantity: true,
           unitPrice: true,
           lineTotal: true,
+          costSource: true,
+          unitCostPen: true,
+          totalCostPen: true,
+          netLineRevenuePen: true,
+          lineDiscountPen: true,
+          grossProfitPen: true,
           variant: {
             select: {
               id: true,
@@ -137,6 +150,17 @@ export async function getOrderDetailAction(orderId: string) {
                   category: { select: { id: true, name: true } },
                 },
               },
+            },
+          },
+          allocations: {
+            select: {
+              id: true,
+              batchId: true,
+              batchItemId: true,
+              quantity: true,
+              unitCostPen: true,
+              subtotalCostPen: true,
+              createdAt: true,
             },
           },
         },

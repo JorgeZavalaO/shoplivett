@@ -50,9 +50,10 @@ function SubmitButton() {
 type Props = {
   openLive?: { id: string; name: string } | null;
   enabledPaymentMethods: ("YAPE" | "PLIN" | "CASH" | "OTHER")[];
+  salesChannelOptions: { value: string; label: string }[];
 };
 
-export function QuickSaleForm({ openLive, enabledPaymentMethods }: Props) {
+export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOptions }: Props) {
   const [state, formAction] = useActionState<OrderActionResult, FormData>(
     createQuickSaleAction,
     initialState,
@@ -157,6 +158,9 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods }: Props) {
   const [paymentMethod, setPaymentMethod] = useState(enabledPaymentMethods[0] ?? "YAPE");
   const [operationNumber, setOperationNumber] = useState("");
   const [notes, setNotes] = useState("");
+  const [salesChannel, setSalesChannel] = useState(
+    salesChannelOptions[0]?.value ?? "WHATSAPP_DIRECTO",
+  );
 
   const canSubmit = customerId && cart.length > 0 && advanceAmount && Number(advanceAmount) > 0;
 
@@ -172,6 +176,7 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods }: Props) {
       <input type="hidden" name="paymentMethod" value={paymentMethod} />
       <input type="hidden" name="operationNumber" value={operationNumber} />
       <input type="hidden" name="notes" value={notes} />
+      <input type="hidden" name="salesChannel" value={salesChannel} />
 
       {/* Left: search + cart */}
       <div className="flex flex-1 flex-col gap-4">
@@ -382,6 +387,21 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods }: Props) {
                 {enabledPaymentMethods.map((m) => (
                   <option key={m} value={m}>
                     {m === "YAPE" ? "Yape" : m === "PLIN" ? "Plin" : m === "CASH" ? "Efectivo" : "Otro"}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">Canal de venta</label>
+              <select
+                value={salesChannel}
+                onChange={(e) => setSalesChannel(e.target.value)}
+                className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+              >
+                {salesChannelOptions.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
                   </option>
                 ))}
               </select>

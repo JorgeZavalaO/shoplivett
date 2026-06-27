@@ -93,6 +93,20 @@ async function main() {
       enabledPaymentMethods: DEFAULT_BUSINESS_SETTINGS.enabledPaymentMethods,
       enabledShippingMethods: DEFAULT_BUSINESS_SETTINGS.enabledShippingMethods,
       paymentValidatorRoles: DEFAULT_BUSINESS_SETTINGS.paymentValidatorRoles,
+      defaultExchangeRate: DEFAULT_BUSINESS_SETTINGS.defaultExchangeRate,
+      minimumTargetMarginBps: DEFAULT_BUSINESS_SETTINGS.minimumTargetMarginBps,
+      objectiveTargetMarginBps:
+        DEFAULT_BUSINESS_SETTINGS.objectiveTargetMarginBps,
+      defaultCostAllocationMethod:
+        DEFAULT_BUSINESS_SETTINGS.defaultCostAllocationMethod,
+      mixedValueAllocationPercent:
+        DEFAULT_BUSINESS_SETTINGS.mixedValueAllocationPercent,
+      mixedWeightAllocationPercent:
+        DEFAULT_BUSINESS_SETTINGS.mixedWeightAllocationPercent,
+      standardPackagingCostPen:
+        DEFAULT_BUSINESS_SETTINGS.standardPackagingCostPen,
+      paymentMethodFees: DEFAULT_BUSINESS_SETTINGS.paymentMethodFees,
+      enabledSalesChannels: DEFAULT_BUSINESS_SETTINGS.enabledSalesChannels,
     },
   });
   console.log("✔ SETTINGS default");

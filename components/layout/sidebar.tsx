@@ -18,6 +18,9 @@ import {
   Settings,
   Sparkles,
   AlertTriangle,
+  Layers,
+  Wallet,
+  AlertOctagon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -44,6 +47,9 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/envios", label: "Envíos", icon: Truck, module: "Sprint 10", roles: ["ADMIN", "DISPATCH"] },
   { href: "/reportes", label: "Reportes", icon: BarChart3, module: "Sprint 13", roles: ["ADMIN"] },
   { href: "/auditoria", label: "Auditoría", icon: ShieldCheck, module: "Sprint 14", roles: ["ADMIN"] },
+  { href: "/lotes", label: "Lotes", icon: Layers, module: "Sprint 19", roles: ["ADMIN", "SELLER"] },
+  { href: "/gastos", label: "Gastos", icon: Wallet, module: "Sprint 22", roles: ["ADMIN"] },
+  { href: "/incidencias", label: "Incidencias", icon: AlertOctagon, module: "Sprint 23", roles: ["ADMIN"] },
   { href: "/configuracion", label: "Configuración", icon: Settings, module: "Sprint 2", roles: ["ADMIN"] },
 ];
 

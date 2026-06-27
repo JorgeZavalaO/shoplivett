@@ -12,6 +12,11 @@ import { PAYMENT_METHOD_LABELS } from "@/lib/settings-defaults";
 import { CreditError } from "@/lib/credits";
 import { toCents, centsToDecimalString, type Cents } from "@/lib/money";
 import { auditInTx } from "@/lib/audit";
+import { recognizeOrderProfit } from "@/lib/order-batch-allocation";
+import {
+  coercePaymentMethodFees,
+  type PaymentMethodFees,
+} from "@/lib/settings-defaults";
 
 export class PaymentError extends Error {
   constructor(
@@ -257,6 +262,35 @@ function recomputeOrderState(summary: OrderPaymentSummary, newValidated: Cents) 
   };
 }
 
+async function recognizePaidOrderProfit(
+  tx: Prisma.TransactionClient,
+  orderId: string,
+): Promise<void> {
+  const settings = await tx.businessSettings.findUnique({
+    where: { id: "default" },
+  });
+  const fees: PaymentMethodFees = settings
+    ? coercePaymentMethodFees(settings.paymentMethodFees)
+    : { YAPE: 0, PLIN: 0, CASH: 0, OTHER: 0 };
+  const packaging = settings ? settings.standardPackagingCostPen.toString() : "0.00";
+  const result = await recognizeOrderProfit(tx, orderId, {
+    paymentMethodFees: fees,
+    packagingCostPen: packaging,
+  });
+  await auditInTx(tx, null, {
+    action: "ORDER_PROFIT_RECOGNIZED",
+    entity: "Order",
+    entityId: orderId,
+    metadata: {
+      productCostPen: centsToDecimalString(result.productCostCents),
+      grossProfitPen: centsToDecimalString(result.grossProfitCents),
+      paymentFeePen: centsToDecimalString(result.paymentFeeCents),
+      packagingCostPen: centsToDecimalString(result.packagingCostCents),
+      netProfitPen: centsToDecimalString(result.netProfitCents),
+    },
+  });
+}
+
 export async function validatePayment(
   input: ValidatePaymentInput,
 ): Promise<ValidatePaymentResult> {
@@ -392,6 +426,7 @@ export async function validatePayment(
                 tx,
               });
             }
+            await recognizePaidOrderProfit(tx, app.orderId);
           }
         }
 

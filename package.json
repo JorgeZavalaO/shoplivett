@@ -1,6 +1,6 @@
 {
   "name": "shoplivett",
-  "version": "0.16.0",
+  "version": "0.25.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -13,6 +13,7 @@
     "test:e2e:dev": "cross-env E2E_START_MODE=dev playwright test",
     "test:e2e:env": "cross-env E2E_ENV_FILE=.env.e2e playwright test",
     "test:e2e:install": "playwright install --with-deps chromium",
+    "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",

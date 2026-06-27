@@ -3,7 +3,7 @@ import {
   deriveOrderExpiryState,
   formatOrderExpiryState,
   type OrderExpiryState,
-} from "@/lib/orders";
+} from "@/lib/order-expiry-utils";
 
 type Variant = "default" | "destructive" | "outline" | "secondary";
 

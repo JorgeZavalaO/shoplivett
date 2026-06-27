@@ -9,6 +9,9 @@ import { getPrisma } from "@/lib/prisma";
 import { CreateOrderSchema, type CreateOrderInput } from "@/lib/validations";
 import { createQuickSale, OrderError } from "@/lib/sales";
 import { getOpenLive } from "@/lib/live";
+import { isSalesChannel } from "@/lib/order-batch-allocation";
+import { getEnabledSalesChannels } from "@/lib/settings";
+import { SALES_CHANNEL_LABELS } from "@/lib/settings-defaults";
 
 export type OrderActionResult = {
   ok: boolean;
@@ -39,6 +42,7 @@ function readForm(formData: FormData): Record<string, unknown> {
     paymentMethod: String(formData.get("paymentMethod") ?? "").trim(),
     operationNumber: String(formData.get("operationNumber") ?? "").trim(),
     notes: String(formData.get("notes") ?? "").trim(),
+    salesChannel: String(formData.get("salesChannel") ?? "").trim(),
   };
 }
 
@@ -66,6 +70,11 @@ export async function createQuickSaleAction(
 
   try {
     const user = await getCurrentUser();
+    const salesChannelRaw = parsed.data.salesChannel;
+    const salesChannel =
+      salesChannelRaw && isSalesChannel(salesChannelRaw)
+        ? salesChannelRaw
+        : "WHATSAPP_DIRECTO";
     const result = await createQuickSale({
       customerId: parsed.data.customerId,
       liveSessionId: parsed.data.liveSessionId,
@@ -76,6 +85,7 @@ export async function createQuickSaleAction(
       paymentMethod: parsed.data.paymentMethod,
       operationNumber: parsed.data.operationNumber,
       notes: parsed.data.notes,
+      salesChannel,
       receiptFiles: receiptFiles.length > 0 ? receiptFiles : undefined,
       actorId: user?.id ?? null,
     });
@@ -97,6 +107,20 @@ export async function getActiveLivesAction() {
   return open ? [open] : [];
 }
 
+export type SalesChannelOption = {
+  value: string;
+  label: string;
+};
+
+export async function getEnabledSalesChannelsAction(): Promise<SalesChannelOption[]> {
+  await requireRole(["ADMIN", "SELLER"]);
+  const channels = await getEnabledSalesChannels();
+  return channels.map((value) => ({
+    value,
+    label: SALES_CHANNEL_LABELS[value],
+  }));
+}
+
 export type VariantSearchResult = {
   id: string;
   code: string;
@@ -106,6 +130,7 @@ export type VariantSearchResult = {
   available: number;
   productName: string;
   categoryName: string;
+  operatesWithBatches?: boolean;
 };
 
 export async function searchVariantsForSaleAction(
@@ -141,6 +166,10 @@ export async function searchVariantsForSaleAction(
           category: { select: { name: true } },
         },
       },
+      batchItems: {
+        select: { id: true },
+        take: 1,
+      },
     },
   });
 
@@ -153,6 +182,7 @@ export async function searchVariantsForSaleAction(
     available: Math.max(0, v.stock - v.reservedStock - v.soldStock),
     productName: v.product.name,
     categoryName: v.product.category.name,
+    operatesWithBatches: v.batchItems.length > 0,
   }));
 }
 

@@ -42,6 +42,20 @@ async function ensureSettings() {
         "RECOJO",
       ],
       paymentValidatorRoles: ["ADMIN", "SELLER"],
+      defaultExchangeRate: "3.7500",
+      minimumTargetMarginBps: 1500,
+      objectiveTargetMarginBps: 3000,
+      defaultCostAllocationMethod: "MIXED",
+      mixedValueAllocationPercent: 50,
+      mixedWeightAllocationPercent: 50,
+      standardPackagingCostPen: "2.00",
+      paymentMethodFees: { YAPE: 0, PLIN: 0, CASH: 0, OTHER: 0 },
+      enabledSalesChannels: [
+        "TIKTOK_LIVE",
+        "INSTAGRAM_LIVE",
+        "TIENDA",
+        "WHATSAPP_DIRECTO",
+      ],
     },
   });
 }
@@ -81,13 +95,17 @@ export async function createTestCustomer(suffix: string) {
   });
 }
 
-export async function createTestProductWithStock(suffix: string, stock = 5) {
-  await ensureSettings();
-  const category = await prisma.category.upsert({
+async function getOrCreateCategory() {
+  return prisma.category.upsert({
     where: { slug: "e2e-cartera" },
     update: {},
     create: { name: "Cartera E2E", slug: "e2e-cartera", isActive: true },
   });
+}
+
+export async function createTestProductWithStock(suffix: string, stock = 5) {
+  await ensureSettings();
+  const category = await getOrCreateCategory();
   const product = await prisma.product.create({
     data: {
       name: `${TEST_PREFIX} Producto ${suffix}`,
@@ -119,6 +137,145 @@ export async function createTestProductWithStock(suffix: string, stock = 5) {
   return variant;
 }
 
+export type BatchSeed = {
+  variantId: string;
+  quantityAvailable: number;
+  landedUnitCostPen: string;
+  purchaseDate: Date;
+};
+
+/**
+ * Crea una variante con dos lotes FIFO pre-calculados. El primer lote es
+ * más antiguo y más barato, el segundo más reciente y más caro. El stock
+ * global se mantiene alineado con la suma disponible por lote.
+ */
+export async function createTestProductWithBatches(args: {
+  suffix: string;
+  oldBatch: { quantity: number; unitCost: string };
+  newBatch: { quantity: number; unitCost: string };
+}) {
+  await ensureSettings();
+  const category = await getOrCreateCategory();
+  const product = await prisma.product.create({
+    data: {
+      name: `${TEST_PREFIX} Producto ${args.suffix}`,
+      isActive: true,
+      categoryId: category.id,
+    },
+  });
+  const code = `E2E-${stamp}-${args.suffix}`.slice(0, 32);
+  const total =
+    args.oldBatch.quantity + args.newBatch.quantity;
+  const variant = await prisma.productVariant.create({
+    data: {
+      productId: product.id,
+      code,
+      price: "100.00",
+      cost: args.oldBatch.unitCost,
+      stock: total,
+      reservedStock: 0,
+      soldStock: 0,
+      status: "ACTIVE",
+    },
+  });
+  await prisma.inventoryMovement.create({
+    data: {
+      variantId: variant.id,
+      type: "IN",
+      quantity: total,
+      reason: "E2E seed",
+    },
+  });
+
+  const oldDate = new Date(Date.now() - 1000 * 60 * 60 * 24 * 30);
+  const newDate = new Date();
+  const created = await prisma.importBatch.create({
+    data: {
+      code: `E2E-${stamp}-${args.suffix}-A`,
+      purchaseDate: oldDate,
+      shopper: "E2E shopper",
+      agency: "E2E agency",
+      totalCostUsd: "0.00",
+      totalAdditionalCostsUsd: "0",
+      totalAdditionalCostsPen: "0",
+      exchangeRate: "3.7500",
+      totalInvestmentPen: "0.00",
+      status: "COMPLETE",
+      distributionMethod: "MIXED",
+      lastRecalculatedAt: new Date(),
+      createdById: null,
+    },
+  });
+  const createdNew = await prisma.importBatch.create({
+    data: {
+      code: `E2E-${stamp}-${args.suffix}-B`,
+      purchaseDate: newDate,
+      shopper: "E2E shopper",
+      agency: "E2E agency",
+      totalCostUsd: "0.00",
+      totalAdditionalCostsUsd: "0",
+      totalAdditionalCostsPen: "0",
+      exchangeRate: "3.7500",
+      totalInvestmentPen: "0.00",
+      status: "COMPLETE",
+      distributionMethod: "MIXED",
+      lastRecalculatedAt: new Date(),
+      createdById: null,
+    },
+  });
+
+  const oldItem = await prisma.importBatchItem.create({
+    data: {
+      batchId: created.id,
+      variantId: variant.id,
+      quantityPurchased: args.oldBatch.quantity,
+      quantityReceived: args.oldBatch.quantity,
+      quantityAvailable: args.oldBatch.quantity,
+      unitCostUsd: "0.0000",
+      unitCostPen: args.oldBatch.unitCost,
+      weight: "0",
+      subtotalUsd: "0.00",
+      subtotalPen: (
+        Number(args.oldBatch.unitCost) * args.oldBatch.quantity
+      ).toFixed(2),
+      additionalCostPen: "0.0000",
+      additionalSubtotalPen: "0.00",
+      landedUnitCostPen: args.oldBatch.unitCost,
+      landedSubtotalPen: (
+        Number(args.oldBatch.unitCost) * args.oldBatch.quantity
+      ).toFixed(2),
+      distributionBreakdown: undefined,
+      calculatedAt: new Date(),
+    },
+  });
+  const newItem = await prisma.importBatchItem.create({
+    data: {
+      batchId: createdNew.id,
+      variantId: variant.id,
+      quantityPurchased: args.newBatch.quantity,
+      quantityReceived: args.newBatch.quantity,
+      quantityAvailable: args.newBatch.quantity,
+      unitCostUsd: "0.0000",
+      unitCostPen: args.newBatch.unitCost,
+      weight: "0",
+      subtotalUsd: "0.00",
+      subtotalPen: (
+        Number(args.newBatch.unitCost) * args.newBatch.quantity
+      ).toFixed(2),
+      additionalCostPen: "0.0000",
+      additionalSubtotalPen: "0.00",
+      landedUnitCostPen: args.newBatch.unitCost,
+      landedSubtotalPen: (
+        Number(args.newBatch.unitCost) * args.newBatch.quantity
+      ).toFixed(2),
+      distributionBreakdown: undefined,
+      calculatedAt: new Date(),
+    },
+  });
+
+  return { variant, oldItem, newItem };
+}
+
 export async function cleanupTestData() {
   await prisma.paymentApplication.deleteMany({
     where: { payment: { customer: { name: { startsWith: TEST_PREFIX } } } },
@@ -138,11 +295,20 @@ export async function cleanupTestData() {
   await prisma.shipment.deleteMany({
     where: { customer: { name: { startsWith: TEST_PREFIX } } },
   });
+  await prisma.orderItemBatchAllocation.deleteMany({
+    where: { orderItem: { order: { customer: { name: { startsWith: TEST_PREFIX } } } } },
+  });
   await prisma.orderItem.deleteMany({
     where: { order: { customer: { name: { startsWith: TEST_PREFIX } } } },
   });
   await prisma.order.deleteMany({
     where: { customer: { name: { startsWith: TEST_PREFIX } } },
+  });
+  await prisma.importBatchItem.deleteMany({
+    where: { batch: { code: { startsWith: `E2E-${stamp}-` } } },
+  });
+  await prisma.importBatch.deleteMany({
+    where: { code: { startsWith: `E2E-${stamp}-` } },
   });
   await prisma.inventoryMovement.deleteMany({
     where: { reason: "E2E seed" },

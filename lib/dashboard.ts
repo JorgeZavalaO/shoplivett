@@ -98,6 +98,19 @@ export type DashboardMetrics = {
   pedidosListosDespachoCount: number;
   enviosEnProcesoCount: number;
 
+  // Finanzas del mes (Sprint 22)
+  monthRevenueCents: number;
+  monthRevenue: string;
+  monthGrossProfitCents: number;
+  monthGrossProfit: string;
+  monthExpensesCents: number;
+  monthExpenses: string;
+  monthIncidentLossCents: number;
+  monthIncidentLoss: string;
+  monthRealNetProfitCents: number;
+  monthRealNetProfit: string;
+  monthMarginBps: number;
+
   // Listas cortas
   pendingPayments: DashboardPendingPayment[];
   reservationsNearExpiry: DashboardReservacionItem[];
@@ -121,6 +134,17 @@ function emptyMetrics(): DashboardMetrics {
     creditosDisponibles: ZERO,
     pedidosListosDespachoCount: 0,
     enviosEnProcesoCount: 0,
+    monthRevenueCents: 0,
+    monthRevenue: ZERO,
+    monthGrossProfitCents: 0,
+    monthGrossProfit: ZERO,
+    monthExpensesCents: 0,
+    monthExpenses: ZERO,
+    monthIncidentLossCents: 0,
+    monthIncidentLoss: ZERO,
+    monthRealNetProfitCents: 0,
+    monthRealNetProfit: ZERO,
+    monthMarginBps: 0,
     pendingPayments: [],
     reservationsNearExpiry: [],
     ordersReadyForShipment: [],
@@ -134,6 +158,18 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
   const todayStart = startOfToday();
   const todayEnd = endOfToday();
   const nearExpiryThreshold = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const monthEnd = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    lastDay,
+    23,
+    59,
+    59,
+    999,
+  );
 
   const [
     ventasDelDiaAgg,
@@ -150,6 +186,10 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
     reservationsNearExpiryRows,
     ordersReadyForShipmentRows,
     shipmentsInProgressRows,
+    monthRevenueAgg,
+    monthGrossProfitAgg,
+    monthExpensesAgg,
+    monthIncidentLossAgg,
   ] = await Promise.all([
     prisma.order.aggregate({
       where: { createdAt: { gte: todayStart, lte: todayEnd } },
@@ -249,12 +289,56 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
         _count: { select: { orders: true } },
       },
     }),
+    prisma.order.aggregate({
+      where: {
+        status: "PAID",
+        profitCalculatedAt: { gte: monthStart, lte: monthEnd },
+      },
+      _sum: { total: true },
+    }),
+    prisma.order.aggregate({
+      where: {
+        status: "PAID",
+        profitCalculatedAt: { gte: monthStart, lte: monthEnd },
+      },
+      _sum: { grossProfitPen: true },
+    }),
+    prisma.expense.aggregate({
+      where: {
+        status: "ACTIVE",
+        expenseDate: { gte: monthStart, lte: monthEnd },
+      },
+      _sum: { amount: true },
+    }),
+    prisma.incident.aggregate({
+      where: {
+        status: { not: "CANCELLED" },
+        incidentDate: { gte: monthStart, lte: monthEnd },
+      },
+      _sum: { lostAmount: true },
+    }),
   ]);
 
   const ventasDelDiaCents = toCents(ventasDelDiaAgg._sum.total);
   const pagosValidadosDelDiaCents = toCents(pagosValidadosAgg._sum.amount);
   const deudaAcumuladaCents = toCents(deudaAgg._sum.balance);
   const creditosDisponiblesCents = toCents(creditoAgg._sum.availableAmount);
+
+  const monthRevenueCents = toCents(monthRevenueAgg._sum.total);
+  const monthGrossProfitCents = toCents(monthGrossProfitAgg._sum.grossProfitPen, {
+    allowNegative: true,
+  });
+  const monthExpensesCents = toCents(monthExpensesAgg._sum.amount);
+  const monthIncidentLossCents = toCents(
+    monthIncidentLossAgg._sum.lostAmount,
+    { allowNegative: true },
+  );
+  const monthRealNetProfitCents =
+    monthGrossProfitCents - monthExpensesCents - monthIncidentLossCents;
+  const monthMarginBps =
+    monthRevenueCents > 0
+      ? Math.round((monthRealNetProfitCents * 10000) / monthRevenueCents)
+      : 0;
 
   return {
     ...emptyMetrics(),
@@ -272,6 +356,17 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
     creditosDisponibles: centsToDecimalString(creditosDisponiblesCents),
     pedidosListosDespachoCount,
     enviosEnProcesoCount,
+    monthRevenueCents,
+    monthRevenue: centsToDecimalString(monthRevenueCents),
+    monthGrossProfitCents,
+    monthGrossProfit: centsToDecimalString(monthGrossProfitCents),
+    monthExpensesCents,
+    monthExpenses: centsToDecimalString(monthExpensesCents),
+    monthIncidentLossCents,
+    monthIncidentLoss: centsToDecimalString(monthIncidentLossCents),
+    monthRealNetProfitCents,
+    monthRealNetProfit: centsToDecimalString(monthRealNetProfitCents),
+    monthMarginBps,
     pendingPayments: pendingPaymentsRows.map((p) => ({
       id: p.id,
       amount: p.amount.toString(),

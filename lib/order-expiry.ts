@@ -6,6 +6,7 @@ import { Prisma, OrderStatus } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma";
 import { releaseStock } from "@/lib/inventory";
 import { auditInTx } from "@/lib/audit";
+import { releaseOrderItemAllocations } from "@/lib/order-batch-allocation";
 
 export class OrderExpiryError extends Error {
   constructor(
@@ -53,7 +54,7 @@ export async function closeUnpaidReservation(
   const order = await input.tx.order.findUnique({
     where: { id: input.orderId },
     include: {
-      items: { select: { variantId: true, quantity: true } },
+      items: { select: { id: true, variantId: true, quantity: true } },
       payments: { where: { status: "PENDING" }, select: { id: true } },
     },
   });
@@ -86,6 +87,19 @@ export async function closeUnpaidReservation(
       movementType: "EXPIRE",
       tx: input.tx,
     });
+    const released = await releaseOrderItemAllocations(input.tx, item.id);
+    if (released.length > 0) {
+      await auditInTx(input.tx, input.actorId ?? null, {
+        action: "ORDER_BATCH_ALLOCATION_RELEASED",
+        entity: "OrderItem",
+        entityId: item.id,
+        metadata: {
+          orderId: order.id,
+          reason: input.reason,
+          released,
+        },
+      });
+    }
   }
 
   for (const payment of order.payments) {

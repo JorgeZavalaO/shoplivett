@@ -7,6 +7,11 @@ import { getSettings } from "@/lib/settings";
 import { confirmSaleStock } from "@/lib/inventory";
 import { toCents, centsToDecimalString, type Cents } from "@/lib/money";
 import { auditInTx } from "@/lib/audit";
+import { recognizeOrderProfit } from "@/lib/order-batch-allocation";
+import {
+  coercePaymentMethodFees,
+  type PaymentMethodFees,
+} from "@/lib/settings-defaults";
 
 export class CreditError extends Error {
   constructor(
@@ -357,6 +362,32 @@ export async function applyCreditToOrder(
               tx,
             });
           }
+          const settings = await tx.businessSettings.findUnique({
+            where: { id: "default" },
+          });
+          const fees: PaymentMethodFees = settings
+            ? coercePaymentMethodFees(settings.paymentMethodFees)
+            : { YAPE: 0, PLIN: 0, CASH: 0, OTHER: 0 };
+          const packaging = settings
+            ? settings.standardPackagingCostPen.toString()
+            : "0.00";
+          const profit = await recognizeOrderProfit(tx, order.id, {
+            paymentMethodFees: fees,
+            packagingCostPen: packaging,
+          });
+          await auditInTx(tx, input.createdById ?? null, {
+            action: "ORDER_PROFIT_RECOGNIZED",
+            entity: "Order",
+            entityId: order.id,
+            metadata: {
+              source: "CREDIT_APPLICATION",
+              productCostPen: centsToDecimalString(profit.productCostCents),
+              grossProfitPen: centsToDecimalString(profit.grossProfitCents),
+              paymentFeePen: centsToDecimalString(profit.paymentFeeCents),
+              packagingCostPen: centsToDecimalString(profit.packagingCostCents),
+              netProfitPen: centsToDecimalString(profit.netProfitCents),
+            },
+          });
         }
 
         return {

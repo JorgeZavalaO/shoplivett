@@ -4,12 +4,23 @@ import { QuickSaleForm } from "@/components/forms/quick-sale-form";
 import { getOpenLive } from "@/lib/live";
 import { getSettings } from "@/lib/settings";
 import { requireRole } from "@/lib/permissions";
+import { getEnabledSalesChannels } from "@/lib/settings";
+import { SALES_CHANNEL_LABELS } from "@/lib/settings-defaults";
 
 export const metadata: Metadata = { title: "Venta rápida" };
 
 export default async function VentasPage() {
   await requireRole(["ADMIN", "SELLER"]);
-  const [openLive, settings] = await Promise.all([getOpenLive(), getSettings()]);
+  const [openLive, settings, enabledChannels] = await Promise.all([
+    getOpenLive(),
+    getSettings(),
+    getEnabledSalesChannels(),
+  ]);
+
+  const salesChannelOptions = enabledChannels.map((value) => ({
+    value,
+    label: SALES_CHANNEL_LABELS[value],
+  }));
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
@@ -23,6 +34,7 @@ export default async function VentasPage() {
       <QuickSaleForm
         openLive={openLive}
         enabledPaymentMethods={settings.enabledPaymentMethods}
+        salesChannelOptions={salesChannelOptions}
       />
     </div>
   );

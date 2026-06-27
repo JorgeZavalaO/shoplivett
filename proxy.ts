@@ -14,6 +14,9 @@ const PROTECTED_PREFIXES = [
   "/envios",
   "/reportes",
   "/auditoria",
+  "/lotes",
+  "/gastos",
+  "/incidencias",
   "/configuracion",
 ];
 

@@ -1,0 +1,93 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Ban, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { voidExpenseAction, type ExpenseActionResult } from "@/actions/expenses";
+
+type Props = {
+  expenseId: string;
+};
+
+export function VoidExpenseButton({ expenseId }: Props) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [isPending, startTransition] = useTransition();
+
+  function handleConfirm() {
+    const fd = new FormData();
+    fd.set("voidReason", reason.trim());
+    startTransition(async () => {
+      const result: ExpenseActionResult = await voidExpenseAction(
+        expenseId,
+        undefined,
+        fd,
+      );
+      if (result.ok) {
+        toast.success("Gasto anulado", { description: result.message });
+        setOpen(false);
+        setReason("");
+        router.refresh();
+      } else {
+        toast.error("No se pudo anular", { description: result.message });
+      }
+    });
+  }
+
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (isPending) return;
+        if (!next) setReason("");
+        setOpen(next);
+      }}
+      title="Anular gasto"
+      description={
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            Esta accion marca el gasto como anulado y lo descuenta de los
+            agregadores financieros. Se registrara en la auditoria.
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="voidReason" className="text-sm font-medium">
+              Motivo de anulacion *
+            </label>
+            <textarea
+              id="voidReason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={3}
+              maxLength={200}
+              placeholder="Indica el motivo de la anulacion"
+              className="min-h-20 rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              disabled={isPending}
+            />
+          </div>
+        </div>
+      }
+      confirmLabel={isPending ? "Anulando..." : "Anular gasto"}
+      tone="destructive"
+      onConfirm={handleConfirm}
+      pending={isPending}
+      trigger={
+        <Button variant="destructive" size="sm" disabled={isPending}>
+          {isPending ? (
+            <>
+              <Loader2 className="size-4 animate-spin" /> Anulando...
+            </>
+          ) : (
+            <>
+              <Ban className="size-4" /> Anular gasto
+            </>
+          )}
+        </Button>
+      }
+    />
+  );
+}

@@ -1,4 +1,4 @@
-// Prisma schema - Sprint 10 (envíos agrupados)
+// Prisma schema - Sprint 23 (incidencias, devoluciones, danos y perdidas)
 
 generator client {
   provider = "prisma-client-js"
@@ -42,6 +42,28 @@ enum LiveChannel {
   FACEBOOK
   WHATSAPP
   OTHER
+}
+
+enum SalesChannel {
+  TIKTOK_LIVE
+  INSTAGRAM_LIVE
+  TIENDA
+  WHATSAPP_DIRECTO
+  OTRO
+}
+
+enum CostAllocationMethod {
+  BY_VALUE
+  BY_WEIGHT
+  MIXED
+  MANUAL
+}
+
+enum ImportBatchStatus {
+  PURCHASED
+  IN_TRANSIT
+  COMPLETE
+  CLOSED
 }
 
 enum LiveStatus {
@@ -104,6 +126,53 @@ enum ShipmentStatus {
   CANCELLED
 }
 
+enum ExpenseCategory {
+  RENT
+  PAYROLL
+  ADVERTISING
+  UTILITIES
+  INTERNET
+  PACKAGING
+  SHIPPING
+  OFFICE_SUPPLIES
+  PROFESSIONAL_SERVICES
+  TAXES
+  MAINTENANCE
+  OTHER
+}
+
+enum ExpenseType {
+  FIXED
+  VARIABLE
+}
+
+enum ExpenseStatus {
+  ACTIVE
+  VOIDED
+}
+
+enum IncidentType {
+  RETURN
+  DAMAGE
+  LOSS
+  CLAIM
+  EXCHANGE
+}
+
+enum IncidentStatus {
+  OPEN
+  RESOLVED
+  CANCELLED
+}
+
+enum IncidentReturnDecision {
+  RESTOCK
+  CREDIT
+  REPLACE
+  DISCARDED
+  NONE
+}
+
 enum AuditAction {
   PAYMENT_VALIDATED
   PAYMENT_REJECTED
@@ -124,6 +193,27 @@ enum AuditAction {
   CREDIT_REFUNDED
   CREDIT_APPLIED
   SETTINGS_UPDATED
+  IMPORT_BATCH_CREATED
+  IMPORT_BATCH_UPDATED
+  IMPORT_BATCH_STATUS_CHANGED
+  IMPORT_BATCH_ITEM_ADDED
+  IMPORT_BATCH_ITEM_REMOVED
+  IMPORT_BATCH_RECALCULATED
+  ORDER_BATCH_ALLOCATED
+  ORDER_BATCH_ALLOCATION_RELEASED
+  ORDER_PROFIT_RECOGNIZED
+  EXPENSE_CREATED
+  EXPENSE_UPDATED
+  EXPENSE_VOIDED
+  INCIDENT_CREATED
+  INCIDENT_RESOLVED
+  INCIDENT_CANCELLED
+}
+
+enum OrderItemCostSource {
+  BATCH
+  LEGACY
+  NONE
 }
 
 model User {
@@ -146,6 +236,11 @@ model User {
   createdShipments        Shipment[]         @relation("ShipmentCreator")
   updatedShipments        Shipment[]         @relation("ShipmentUpdater")
   auditLogs               AuditLog[]         @relation("AuditActor")
+  createdImportBatches    ImportBatch[]      @relation("ImportBatchCreator")
+  createdExpenses        Expense[]          @relation("ExpenseCreator")
+  voidedExpenses         Expense[]          @relation("ExpenseVoider")
+  createdIncidents       Incident[]         @relation("IncidentCreator")
+  resolvedIncidents      Incident[]         @relation("IncidentResolver")
 
   @@index([email])
   @@index([role])
@@ -162,20 +257,29 @@ model Session {
 }
 
 model BusinessSettings {
-  id                     String   @id @default("default")
-  reservationDays        Int      @default(5)
-  minimumAdvance         Decimal  @default(50) @db.Decimal(12, 2)
-  currency               String   @default("PEN") @db.VarChar(3)
-  freeShippingEnabled    Boolean  @default(true)
-  freeShippingThreshold  Decimal  @default(150) @db.Decimal(12, 2)
-  productCodePrefix      String   @default("CART") @db.VarChar(6)
-  allowOverpaymentCredit Boolean  @default(true)
-  allowRefund            Boolean  @default(true)
-  enabledPaymentMethods  PaymentMethod[]    @default([YAPE, PLIN])
-  enabledShippingMethods ShippingMethod[]   @default([DELIVERY_PROPIO, OLVA, SHALOM, MOTORIZADO, RECOJO])
-  paymentValidatorRoles  Role[]             @default([ADMIN, SELLER])
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  id                            String   @id @default("default")
+  reservationDays               Int      @default(5)
+  minimumAdvance                Decimal  @default(50) @db.Decimal(12, 2)
+  currency                      String   @default("PEN") @db.VarChar(3)
+  freeShippingEnabled           Boolean  @default(true)
+  freeShippingThreshold         Decimal  @default(150) @db.Decimal(12, 2)
+  productCodePrefix             String   @default("CART") @db.VarChar(6)
+  allowOverpaymentCredit        Boolean  @default(true)
+  allowRefund                   Boolean  @default(true)
+  enabledPaymentMethods         PaymentMethod[]    @default([YAPE, PLIN])
+  enabledShippingMethods        ShippingMethod[]   @default([DELIVERY_PROPIO, OLVA, SHALOM, MOTORIZADO, RECOJO])
+  paymentValidatorRoles         Role[]             @default([ADMIN, SELLER])
+  defaultExchangeRate           Decimal  @default(3.75) @db.Decimal(10, 4)
+  minimumTargetMarginBps        Int      @default(1500)
+  objectiveTargetMarginBps      Int      @default(3000)
+  defaultCostAllocationMethod   CostAllocationMethod @default(MIXED)
+  mixedValueAllocationPercent   Int      @default(50)
+  mixedWeightAllocationPercent  Int      @default(50)
+  standardPackagingCostPen      Decimal  @default(2) @db.Decimal(12, 2)
+  paymentMethodFees             Json     @default("{\"YAPE\":0,\"PLIN\":0,\"CASH\":0,\"OTHER\":0}")
+  enabledSalesChannels          SalesChannel[] @default([TIKTOK_LIVE, INSTAGRAM_LIVE, TIENDA, WHATSAPP_DIRECTO])
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
 }
 
 model Customer {
@@ -197,6 +301,7 @@ model Customer {
   payments   Payment[]
   credits    CustomerCredit[]
   shipments  Shipment[]
+  incidents  Incident[]
 
   @@index([searchName])
   @@index([whatsapp])
@@ -254,6 +359,8 @@ model ProductVariant {
   images        ProductImage[]
   movements     InventoryMovement[]
   orderItems    OrderItem[]
+  batchItems    ImportBatchItem[]
+  incidents     Incident[]
 
   @@index([productId])
   @@index([status])
@@ -324,6 +431,14 @@ model Order {
   balance        Decimal      @db.Decimal(12, 2)
   expiresAt      DateTime
   notes          String?
+  // Sprint 21
+  salesChannel    SalesChannel  @default(WHATSAPP_DIRECTO)
+  productCostPen  Decimal       @default(0) @db.Decimal(12, 2)
+  grossProfitPen  Decimal       @default(0) @db.Decimal(12, 2)
+  paymentFeePen   Decimal       @default(0) @db.Decimal(12, 2)
+  packagingCostPen Decimal      @default(0) @db.Decimal(12, 2)
+  netProfitPen    Decimal       @default(0) @db.Decimal(12, 2)
+  profitCalculatedAt DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -335,6 +450,7 @@ model Order {
   expiredById  String?
   expiredBy    User?      @relation("OrderExpirer", fields: [expiredById], references: [id], onDelete: SetNull)
   expiredAt    DateTime?
+  incidents    Incident[]
 
   @@index([customerId])
   @@index([liveSessionId])
@@ -344,6 +460,7 @@ model Order {
   @@index([status, expiresAt])
   @@index([customerId, status, createdAt])
   @@index([status, expiresAt, customerId])
+  @@index([salesChannel])
 }
 
 model OrderItem {
@@ -355,9 +472,37 @@ model OrderItem {
   quantity  Int
   unitPrice Decimal        @db.Decimal(12, 2)
   lineTotal Decimal        @db.Decimal(12, 2)
+  // Sprint 21 — snapshots financieros
+  costSource       OrderItemCostSource @default(NONE)
+  unitCostPen      Decimal             @default(0) @db.Decimal(12, 4)
+  totalCostPen     Decimal             @default(0) @db.Decimal(12, 2)
+  netLineRevenuePen Decimal            @default(0) @db.Decimal(12, 2)
+  lineDiscountPen  Decimal             @default(0) @db.Decimal(12, 2)
+  grossProfitPen   Decimal             @default(0) @db.Decimal(12, 2)
   createdAt DateTime       @default(now())
+  allocations      OrderItemBatchAllocation[]
+  incidents        Incident[]
 
   @@index([orderId])
+  @@index([variantId])
+}
+
+model OrderItemBatchAllocation {
+  id          String         @id @default(cuid())
+  orderItemId String
+  orderItem   OrderItem      @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  batchItemId String
+  batchItem   ImportBatchItem @relation(fields: [batchItemId], references: [id], onDelete: Restrict)
+  batchId     String
+  variantId   String
+  quantity    Int
+  unitCostPen Decimal        @db.Decimal(12, 4)
+  subtotalCostPen Decimal    @db.Decimal(12, 2)
+  createdAt   DateTime       @default(now())
+
+  @@index([orderItemId])
+  @@index([batchItemId])
+  @@index([batchId])
   @@index([variantId])
 }
 
@@ -441,6 +586,7 @@ model CustomerCredit {
   updatedAt       DateTime     @updatedAt
 
   applications CustomerCreditApplication[]
+  incidents    Incident[]
 
   @@index([customerId])
   @@index([paymentId])
@@ -510,6 +656,137 @@ model ShipmentOrder {
 
   @@index([shipmentId])
   @@index([orderId])
+}
+
+model ImportBatch {
+  id                    String             @id @default(cuid())
+  code                  String             @unique
+  purchaseDate          DateTime
+  shopper               String
+  agency                String
+  totalCostUsd          Decimal            @db.Decimal(12, 2)
+  totalAdditionalCostsUsd Decimal           @db.Decimal(12, 2) @default(0)
+  totalAdditionalCostsPen Decimal           @db.Decimal(12, 2) @default(0)
+  exchangeRate          Decimal            @db.Decimal(10, 4)
+  totalInvestmentPen    Decimal            @db.Decimal(12, 2)
+  status                ImportBatchStatus  @default(PURCHASED)
+  distributionMethod    CostAllocationMethod @default(MIXED)
+  distributionBreakdown  Json?
+  lastRecalculatedAt    DateTime?
+  notes                 String?
+  createdById           String?
+  createdBy             User?              @relation("ImportBatchCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  items ImportBatchItem[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([status, createdAt])
+}
+
+model ImportBatchItem {
+  id               String         @id @default(cuid())
+  batchId          String
+  batch            ImportBatch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  variantId        String
+  variant          ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  quantityPurchased Int           @default(0)
+  quantityReceived  Int           @default(0)
+  quantityAvailable Int           @default(0)
+  unitCostUsd      Decimal        @db.Decimal(12, 4)
+  unitCostPen      Decimal        @db.Decimal(12, 4)
+  weight           Decimal        @db.Decimal(10, 4) @default(0)
+  subtotalUsd      Decimal        @db.Decimal(12, 2)
+  subtotalPen      Decimal        @db.Decimal(12, 2)
+  // Costos aterrizados (Sprint 20)
+  additionalCostPen       Decimal     @default(0) @db.Decimal(12, 4)
+  additionalSubtotalPen   Decimal     @default(0) @db.Decimal(12, 2)
+  landedUnitCostPen       Decimal     @default(0) @db.Decimal(12, 4)
+  landedSubtotalPen       Decimal     @default(0) @db.Decimal(12, 2)
+  distributionBreakdown   Json?
+  calculatedAt             DateTime?
+  createdAt        DateTime       @default(now())
+  allocations      OrderItemBatchAllocation[]
+
+  @@unique([batchId, variantId])
+  @@index([batchId])
+  @@index([variantId])
+  @@index([variantId, quantityAvailable])
+  @@index([batchId, calculatedAt])
+}
+
+model Expense {
+  id            String         @id @default(cuid())
+  expenseDate   DateTime
+  category      ExpenseCategory
+  expenseType   ExpenseType    @default(VARIABLE)
+  status        ExpenseStatus  @default(ACTIVE)
+  description   String
+  amount        Decimal        @db.Decimal(12, 2)
+  paymentMethod String?
+  notes         String?
+  createdById   String?
+  createdBy     User?          @relation("ExpenseCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  voidedAt      DateTime?
+  voidedById    String?
+  voidedBy      User?          @relation("ExpenseVoider", fields: [voidedById], references: [id], onDelete: SetNull)
+  voidReason    String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([expenseDate])
+  @@index([category])
+  @@index([status])
+  @@index([expenseType])
+  @@index([status, expenseDate])
+  @@index([expenseDate, category])
+}
+
+model Incident {
+  id              String                  @id @default(cuid())
+  incidentDate    DateTime
+  type            IncidentType
+  status          IncidentStatus          @default(OPEN)
+  decision        IncidentReturnDecision  @default(NONE)
+  orderId         String?
+  order           Order?                  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderItemId     String?
+  orderItem       OrderItem?              @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  variantId       String?
+  variant         ProductVariant?         @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  customerId      String?
+  customer        Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  quantity        Int                     @default(1)
+  description     String
+  recoveredAmount Decimal                 @default(0) @db.Decimal(12, 2)
+  lostAmount      Decimal                 @default(0) @db.Decimal(12, 2)
+  restockQuantity Int                     @default(0)
+  creditId        String?
+  credit          CustomerCredit?         @relation(fields: [creditId], references: [id], onDelete: SetNull)
+  notes           String?
+  createdById     String?
+  createdBy       User?                   @relation("IncidentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  resolvedAt      DateTime?
+  resolvedById    String?
+  resolvedBy      User?                   @relation("IncidentResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolutionNotes String?
+  cancelledAt     DateTime?
+  cancelledById   String?
+  cancelledReason String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@index([incidentDate])
+  @@index([type])
+  @@index([status])
+  @@index([orderId])
+  @@index([orderItemId])
+  @@index([variantId])
+  @@index([customerId])
+  @@index([status, incidentDate])
+  @@index([type, incidentDate])
 }
 
 model AuditLog {

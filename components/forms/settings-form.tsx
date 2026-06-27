@@ -1,7 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
-import { useEffect } from "react";
+import { useActionState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 
 import { Input } from "@/components/ui/input";
@@ -16,9 +15,19 @@ import {
   type SettingsActionState,
 } from "@/actions/settings";
 import {
+  COST_ALLOCATION_METHOD_LABELS,
   PAYMENT_METHOD_LABELS,
+  SALES_CHANNEL_LABELS,
   SHIPPING_METHOD_LABELS,
+  type PaymentMethodFees,
 } from "@/lib/settings-defaults";
+import type {
+  CostAllocationMethod,
+  PaymentMethod,
+  Role,
+  SalesChannel,
+  ShippingMethod,
+} from "@prisma/client";
 
 type SettingsFormProps = {
   initial: {
@@ -30,13 +39,22 @@ type SettingsFormProps = {
     productCodePrefix: string;
     allowOverpaymentCredit: boolean;
     allowRefund: boolean;
-    enabledPaymentMethods: string[];
-    enabledShippingMethods: string[];
-    paymentValidatorRoles: string[];
+    enabledPaymentMethods: PaymentMethod[];
+    enabledShippingMethods: ShippingMethod[];
+    paymentValidatorRoles: Role[];
+    defaultExchangeRate: string;
+    minimumTargetMarginBps: number;
+    objectiveTargetMarginBps: number;
+    defaultCostAllocationMethod: CostAllocationMethod;
+    mixedValueAllocationPercent: number;
+    mixedWeightAllocationPercent: number;
+    standardPackagingCostPen: string;
+    paymentMethodFees: PaymentMethodFees;
+    enabledSalesChannels: SalesChannel[];
   };
 };
 
-const ROLE_LABELS: Record<string, string> = {
+const ROLE_LABELS: Record<Role, string> = {
   ADMIN: "Administrador",
   SELLER: "Vendedora",
   DISPATCH: "Despacho",
@@ -87,6 +105,10 @@ function CheckboxRow({
   );
 }
 
+function bpsToPercentLabel(bps: number): string {
+  return `${(bps / 100).toFixed(2)}%`;
+}
+
 export function SettingsForm({ initial }: SettingsFormProps) {
   const [state, formAction] = useActionState<SettingsActionState, FormData>(
     updateSettingsAction,
@@ -100,6 +122,14 @@ export function SettingsForm({ initial }: SettingsFormProps) {
       toast.error(state.message);
     }
   }, [state.ok, state.message, state.fieldErrors]);
+
+  const costMethodOptions = useMemo(
+    () =>
+      Object.entries(COST_ALLOCATION_METHOD_LABELS) as Array<
+        [CostAllocationMethod, string]
+      >,
+    [],
+  );
 
   return (
     <form action={formAction} className="flex flex-col gap-6" noValidate>
@@ -232,7 +262,7 @@ export function SettingsForm({ initial }: SettingsFormProps) {
                 name="enabledShippingMethods"
                 value={value}
                 label={label}
-                defaultChecked={initial.enabledShippingMethods.includes(value)}
+                defaultChecked={initial.enabledShippingMethods.includes(value as ShippingMethod)}
               />
             ))}
           </div>
@@ -253,11 +283,54 @@ export function SettingsForm({ initial }: SettingsFormProps) {
                 name="enabledPaymentMethods"
                 value={value}
                 label={label}
-                defaultChecked={initial.enabledPaymentMethods.includes(value)}
+                defaultChecked={initial.enabledPaymentMethods.includes(value as PaymentMethod)}
               />
             ))}
           </div>
           <FieldError message={state.fieldErrors?.enabledPaymentMethods} />
+        </div>
+        <Separator />
+        <div>
+          <p className="mb-2 text-sm font-medium">Comisión por medio de pago (%)</p>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Porcentaje que se descuenta de la utilidad cuando el pedido se paga
+            con cada medio (0% = sin comisión).
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => {
+              const bps = initial.paymentMethodFees[value as PaymentMethod] ?? 0;
+              return (
+                <div
+                  key={value}
+                  className="flex flex-col gap-1.5 rounded-md border border-border bg-card px-3 py-2"
+                >
+                  <label
+                    htmlFor={`paymentMethodFee.${value}`}
+                    className="text-xs font-medium text-muted-foreground"
+                  >
+                    {label}
+                  </label>
+                  <Input
+                    id={`paymentMethodFee.${value}`}
+                    name={`paymentMethodFee.${value}`}
+                    type="number"
+                    min={0}
+                    max={10000}
+                    step={1}
+                    defaultValue={bps}
+                    className="h-8"
+                    aria-invalid={Boolean(
+                      state.fieldErrors?.paymentMethodFees,
+                    )}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Actual: {bpsToPercentLabel(bps)}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+          <FieldError message={state.fieldErrors?.paymentMethodFees} />
         </div>
         <Separator />
         <div>
@@ -269,7 +342,7 @@ export function SettingsForm({ initial }: SettingsFormProps) {
                 name="paymentValidatorRoles"
                 value={value}
                 label={label}
-                defaultChecked={initial.paymentValidatorRoles.includes(value)}
+                defaultChecked={initial.paymentValidatorRoles.includes(value as Role)}
               />
             ))}
           </div>
@@ -297,6 +370,217 @@ export function SettingsForm({ initial }: SettingsFormProps) {
           </label>
         </div>
       </SectionCard>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SectionCard
+          title="Tipo de cambio"
+          description="Conversión USD → PEN usada como base para costos importados."
+        >
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="defaultExchangeRate" className="text-sm font-medium">
+              Tipo de cambio predeterminado (S/ por USD)
+            </label>
+            <Input
+              id="defaultExchangeRate"
+              name="defaultExchangeRate"
+              type="text"
+              inputMode="decimal"
+              defaultValue={initial.defaultExchangeRate}
+              required
+              aria-invalid={Boolean(state.fieldErrors?.defaultExchangeRate)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Cada lote puede sobreescribirlo al registrar la compra.
+            </p>
+            <FieldError message={state.fieldErrors?.defaultExchangeRate} />
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Canales de venta"
+          description="Canales disponibles al registrar un pedido."
+        >
+          <div>
+            <p className="mb-2 text-sm font-medium">Canales habilitados</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {Object.entries(SALES_CHANNEL_LABELS).map(([value, label]) => (
+                <CheckboxRow
+                  key={value}
+                  name="enabledSalesChannels"
+                  value={value}
+                  label={label}
+                  defaultChecked={initial.enabledSalesChannels.includes(value as SalesChannel)}
+                />
+              ))}
+            </div>
+            <FieldError message={state.fieldErrors?.enabledSalesChannels} />
+          </div>
+        </SectionCard>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SectionCard
+          title="Márgenes objetivo"
+          description="Mínimo aceptable y objetivo recomendado (en porcentaje)."
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="minimumTargetMarginBps" className="text-sm font-medium">
+                Margen mínimo (%)
+              </label>
+              <Input
+                id="minimumTargetMarginBps"
+                name="minimumTargetMarginBps"
+                type="number"
+                min={0}
+                max={10000}
+                step={1}
+                defaultValue={initial.minimumTargetMarginBps}
+                required
+                aria-invalid={Boolean(state.fieldErrors?.minimumTargetMarginBps)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Actual: {bpsToPercentLabel(initial.minimumTargetMarginBps)}
+              </p>
+              <FieldError message={state.fieldErrors?.minimumTargetMarginBps} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="objectiveTargetMarginBps" className="text-sm font-medium">
+                Margen objetivo (%)
+              </label>
+              <Input
+                id="objectiveTargetMarginBps"
+                name="objectiveTargetMarginBps"
+                type="number"
+                min={0}
+                max={10000}
+                step={1}
+                defaultValue={initial.objectiveTargetMarginBps}
+                required
+                aria-invalid={Boolean(state.fieldErrors?.objectiveTargetMarginBps)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Actual: {bpsToPercentLabel(initial.objectiveTargetMarginBps)}
+              </p>
+              <FieldError message={state.fieldErrors?.objectiveTargetMarginBps} />
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Costos estándar"
+          description="Costos fijos por empaque y método de asignación de costos adicionales."
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="standardPackagingCostPen"
+                className="text-sm font-medium"
+              >
+                Costo estándar de empaque (S/)
+              </label>
+              <Input
+                id="standardPackagingCostPen"
+                name="standardPackagingCostPen"
+                type="text"
+                inputMode="decimal"
+                defaultValue={initial.standardPackagingCostPen}
+                aria-invalid={Boolean(
+                  state.fieldErrors?.standardPackagingCostPen,
+                )}
+              />
+              <FieldError
+                message={state.fieldErrors?.standardPackagingCostPen}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="defaultCostAllocationMethod"
+                className="text-sm font-medium"
+              >
+                Método de asignación por defecto
+              </label>
+              <select
+                id="defaultCostAllocationMethod"
+                name="defaultCostAllocationMethod"
+                defaultValue={initial.defaultCostAllocationMethod}
+                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/30"
+                required
+                aria-invalid={Boolean(
+                  state.fieldErrors?.defaultCostAllocationMethod,
+                )}
+              >
+                {costMethodOptions.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <FieldError
+                message={state.fieldErrors?.defaultCostAllocationMethod}
+              />
+            </div>
+          </div>
+          <Separator />
+          <div>
+            <p className="mb-2 text-sm font-medium">
+              Porcentajes del método mixto
+            </p>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Se aplican sólo cuando el método seleccionado es Mixto. La suma
+              debe ser 100.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="mixedValueAllocationPercent"
+                  className="text-sm font-medium"
+                >
+                  Por valor de items (%)
+                </label>
+                <Input
+                  id="mixedValueAllocationPercent"
+                  name="mixedValueAllocationPercent"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  defaultValue={initial.mixedValueAllocationPercent}
+                  aria-invalid={Boolean(
+                    state.fieldErrors?.mixedValueAllocationPercent,
+                  )}
+                />
+                <FieldError
+                  message={state.fieldErrors?.mixedValueAllocationPercent}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="mixedWeightAllocationPercent"
+                  className="text-sm font-medium"
+                >
+                  Por peso de items (%)
+                </label>
+                <Input
+                  id="mixedWeightAllocationPercent"
+                  name="mixedWeightAllocationPercent"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  defaultValue={initial.mixedWeightAllocationPercent}
+                  aria-invalid={Boolean(
+                    state.fieldErrors?.mixedWeightAllocationPercent,
+                  )}
+                />
+                <FieldError
+                  message={state.fieldErrors?.mixedWeightAllocationPercent}
+                />
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+      </div>
 
       <div className="flex items-center justify-between gap-3">
         <FormMessage ok={state.ok} message={state.message} />

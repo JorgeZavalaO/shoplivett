@@ -4,7 +4,7 @@ import { AuthError } from "next-auth";
 import { z } from "zod";
 
 import { signIn, signOut } from "@/lib/auth";
-import { LoginSchema } from "@/lib/validations";
+import { LoginSchema } from "@/lib/validations/auth";
 
 export type LoginActionState = {
   ok: boolean;

@@ -10,11 +10,50 @@ import {
   DashboardQuickList,
   type DashboardQuickItem,
 } from "@/components/dashboard/dashboard-quick-list";
+import {
+  FinancialFilters,
+  type FinancialFilterValues,
+} from "@/components/dashboard/financial-filters";
+import {
+  BatchProfitabilitySection,
+  FinancialOverviewCards,
+  OpenBatchCapitalCards,
+  ProductProfitabilitySection,
+  StockValuationByCategory,
+  StockValuationCards,
+} from "@/components/dashboard/financial-overview-cards";
+import {
+  FinancialAlertsList,
+  LowRotationSection,
+} from "@/components/dashboard/financial-alerts";
 import { canManageShipments, canValidatePayments, requireUser } from "@/lib/permissions";
 import { getDashboardMetrics } from "@/lib/dashboard";
 import { SHIPPING_METHOD_LABELS } from "@/lib/settings-defaults";
 import { PAYMENT_METHOD_LABELS } from "@/lib/settings-defaults";
 import type { Role } from "@/lib/permissions";
+import {
+  getBatchProfitability,
+  getFinancialAlerts,
+  getFinancialOverview,
+  getLowRotationProducts,
+  getOpenBatchCapital,
+  getProductProfitability,
+  getStockValuation,
+  listBatchOptions,
+  listCategoryOptionsForFilter,
+  safeAllString,
+  safeSalesChannel,
+  safeYearMonth,
+  SALES_CHANNEL_FILTER_OPTIONS,
+  type FinancialDashboardFilter,
+} from "@/lib/financial-dashboard";
+import {
+  DEFAULT_BATCH_PROFITABILITY_LIMIT,
+  DEFAULT_LOW_ROTATION_LIMIT,
+  DEFAULT_TOP_PRODUCTS_LIMIT,
+  LOW_ROTATION_THRESHOLD_DAYS,
+} from "@/lib/financial-dashboard-shared";
+import { SALES_CHANNEL_LABELS } from "@/lib/settings-defaults";
 
 
 const DATE_FORMATTER = new Intl.DateTimeFormat("es-PE", {
@@ -40,7 +79,7 @@ const ROUTES = {
   ordersReserved: "/pedidos?status=RESERVED" as Route,
   ordersPartially: "/pedidos?status=PARTIALLY_PAID" as Route,
   ordersValidation: "/pedidos?status=PAYMENT_VALIDATION_PENDING" as Route,
-  ordersPaid: "/pedidos?status=PAID" as Route,
+  ordersPaid: "/pedidos" as Route,
   customersAll: "/clientes" as Route,
   shipmentsPreparing: "/envios?status=PREPARING" as Route,
   shipmentsReady: "/envios?status=READY" as Route,
@@ -49,14 +88,94 @@ const ROUTES = {
   shipmentsNew: "/envios/nuevo" as Route,
   liveOpen: "/lives" as Route,
   sales: "/ventas" as Route,
+  lotsAll: "/lotes" as Route,
+  expensesAll: "/gastos" as Route,
+  incidentsAll: "/incidencias" as Route,
+  inventoryAll: "/inventario" as Route,
 };
 
-export default async function DashboardPage() {
+type SearchParams = Record<string, string | string[] | undefined>;
+
+function first(sp: SearchParams, key: string): string | undefined {
+  const v = sp[key];
+  return Array.isArray(v) ? v[0] : v;
+}
+
+const MONTH_LABELS = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+];
+
+function yearOptions(currentYear: number): Array<{ value: string; label: string }> {
+  const out: Array<{ value: string; label: string }> = [];
+  for (let y = currentYear - 3; y <= currentYear + 1; y += 1) {
+    out.push({ value: String(y), label: String(y) });
+  }
+  return out;
+}
+
+function monthOptions(): Array<{ value: string; label: string }> {
+  return MONTH_LABELS.map((label, idx) => ({
+    value: String(idx + 1),
+    label,
+  }));
+}
+
+function channelOptionsWithLabels(): Array<{ value: string; label: string }> {
+  return SALES_CHANNEL_FILTER_OPTIONS.map((o) => {
+    if (o.value === "ALL") return o;
+    const label = SALES_CHANNEL_LABELS[o.value as keyof typeof SALES_CHANNEL_LABELS] ?? o.label;
+    return { value: o.value, label };
+  });
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
   const user = await requireUser();
+  const sp = await searchParams;
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const { year, month } = safeYearMonth(
+    first(sp, "year"),
+    first(sp, "month"),
+  );
+  const salesChannel = safeSalesChannel(first(sp, "salesChannel"));
+  const batchId = safeAllString(first(sp, "batchId"));
+  const categoryId = safeAllString(first(sp, "categoryId"));
+
+  const filter: FinancialDashboardFilter = {
+    year,
+    month,
+    salesChannel,
+    batchId,
+    categoryId,
+  };
+
   const metrics = await getDashboardMetrics();
   const canValidate = await canValidatePayments(user.role);
   const canManageShipment = canManageShipments(user.role);
   const role = user.role as Role;
+
+  const filterValues: FinancialFilterValues = {
+    year: String(year),
+    month: String(month),
+    salesChannel,
+    batchId,
+    categoryId,
+  };
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -78,6 +197,9 @@ export default async function DashboardPage() {
           metrics={metrics}
           canValidate={canValidate}
           canManageShipment={canManageShipment}
+          filter={filter}
+          filterValues={filterValues}
+          yearOptions={yearOptions(currentYear)}
         />
       ) : role === "SELLER" ? (
         <SellerDashboard
@@ -98,10 +220,16 @@ function AdminDashboard({
   metrics,
   canValidate,
   canManageShipment,
+  filter,
+  filterValues,
+  yearOptions,
 }: {
   metrics: Awaited<ReturnType<typeof getDashboardMetrics>>;
   canValidate: boolean;
   canManageShipment: boolean;
+  filter: FinancialDashboardFilter;
+  filterValues: FinancialFilterValues;
+  yearOptions: Array<{ value: string; label: string }>;
 }) {
   return (
     <>
@@ -164,6 +292,12 @@ function AdminDashboard({
         />
       </div>
 
+      <AdminFinancialSection
+        filter={filter}
+        filterValues={filterValues}
+        yearOptions={yearOptions}
+      />
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <DashboardQuickList
           title="Pagos pendientes"
@@ -217,6 +351,131 @@ function AdminDashboard({
 
       <AccessSection canValidate={canValidate} canManageShipment={canManageShipment} />
     </>
+  );
+}
+
+async function AdminFinancialSection({
+  filter,
+  filterValues,
+  yearOptions,
+}: {
+  filter: FinancialDashboardFilter;
+  filterValues: FinancialFilterValues;
+  yearOptions: Array<{ value: string; label: string }>;
+}) {
+  const [
+    overview,
+    stockValuation,
+    openBatchCapital,
+    topProducts,
+    lowProducts,
+    lowRotation,
+    alerts,
+    batchProfitability,
+    batchOptions,
+    categoryOptions,
+  ] = await Promise.all([
+    getFinancialOverview(filter),
+    getStockValuation(),
+    getOpenBatchCapital(),
+    getProductProfitability({
+      year: filter.year,
+      month: filter.month,
+      salesChannel: filter.salesChannel,
+      categoryId: filter.categoryId,
+      order: "TOP",
+      limit: DEFAULT_TOP_PRODUCTS_LIMIT,
+    }),
+    getProductProfitability({
+      year: filter.year,
+      month: filter.month,
+      salesChannel: filter.salesChannel,
+      categoryId: filter.categoryId,
+      order: "BOTTOM",
+      limit: DEFAULT_TOP_PRODUCTS_LIMIT,
+    }),
+    getLowRotationProducts(LOW_ROTATION_THRESHOLD_DAYS, DEFAULT_LOW_ROTATION_LIMIT),
+    getFinancialAlerts(filter),
+    getBatchProfitability({
+      year: filter.year,
+      month: filter.month,
+      limit: DEFAULT_BATCH_PROFITABILITY_LIMIT,
+    }),
+    listBatchOptions(),
+    listCategoryOptionsForFilter(),
+  ]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <FinancialFilters
+        values={filterValues}
+        baseHref={"/dashboard" as Route}
+        yearOptions={yearOptions}
+        monthOptions={monthOptions()}
+        channelOptions={channelOptionsWithLabels()}
+        batchOptions={batchOptions}
+        categoryOptions={categoryOptions}
+      />
+
+      <FinancialOverviewCards overview={overview} />
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <DashboardMetricCard
+          title="Ventas del mes (filtro)"
+          value={fmtMoney(overview.revenue)}
+          hint={`${overview.ordersCount} pedido(s) PAID`}
+          href={ROUTES.ordersPaid}
+        />
+        <DashboardMetricCard
+          title="Margen real del mes"
+          value={`${(overview.marginBps / 100).toFixed(1)}%`}
+          tone={overview.marginBps < 0 ? "destructive" : "default"}
+          hint="Utilidad neta real / ventas"
+        />
+        <DashboardMetricCard
+          title="Costo de empaque aplicado"
+          value={fmtMoney(overview.packagingCost)}
+          hint="Configuracion del negocio"
+        />
+      </div>
+
+      <FinancialAlertsList alerts={alerts} />
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <StockValuationCards valuation={stockValuation} />
+      </div>
+
+      <StockValuationByCategory valuation={stockValuation} />
+
+      <OpenBatchCapitalCards capital={openBatchCapital} />
+
+      <BatchProfitabilitySection rows={batchProfitability.rows} />
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <ProductProfitabilitySection
+          title="Top productos rentables"
+          description="Mayor utilidad bruta en el periodo seleccionado."
+          rows={topProducts.rows}
+          viewAllHref={ROUTES.lotsAll}
+          viewAllLabel="Ver reportes"
+        />
+        <ProductProfitabilitySection
+          title="Productos con menor margen"
+          description="Variantes con menor utilidad bruta en el periodo."
+          rows={lowProducts.rows}
+          viewAllHref={ROUTES.lotsAll}
+          viewAllLabel="Ver reportes"
+        />
+      </div>
+
+      <LowRotationSection rows={lowRotation.rows} />
+
+      <p className="text-xs text-muted-foreground">
+        Aplican los filtros: año {filter.year}, mes {filter.month}, canal{" "}
+        {filter.salesChannel}, lote {filter.batchId}, categoría{" "}
+        {filter.categoryId}. Usa el boton Limpiar para reiniciar.
+      </p>
+    </div>
   );
 }
 

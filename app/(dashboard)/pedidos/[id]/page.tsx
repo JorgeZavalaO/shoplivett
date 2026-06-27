@@ -18,7 +18,7 @@ import { Separator } from "@/components/ui/separator";
 import { CancelUnpaidOrderForm } from "@/components/forms/cancel-unpaid-order-form";
 import { requireRole, requireUser } from "@/lib/permissions";
 import { formatWhatsAppDisplay } from "@/lib/phone";
-import { PAYMENT_METHOD_LABELS } from "@/lib/settings-defaults";
+import { PAYMENT_METHOD_LABELS, SALES_CHANNEL_LABELS } from "@/lib/settings-defaults";
 import {
   WhatsAppActions,
 } from "@/components/whatsapp/whatsapp-actions";
@@ -40,6 +40,12 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
     (user.role === "ADMIN" || user.role === "DISPATCH") &&
     order.status === "PAID" &&
     (!order.shipmentOrder || order.shipmentOrder.shipment.status === "CANCELLED");
+
+  const canSeeCosts = user.role === "ADMIN";
+  const isPaid = order.status === "PAID";
+  const channelLabel =
+    SALES_CHANNEL_LABELS[order.salesChannel as keyof typeof SALES_CHANNEL_LABELS] ??
+    order.salesChannel;
 
   const canCancelUnpaid =
     order.status === "PAYMENT_VALIDATION_PENDING" ||
@@ -125,6 +131,8 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
           <Link href={`/clientes/${order.customer.id}`} className="hover:underline">
             {order.customer.name}
           </Link>
+          {" · Canal: "}
+          <span className="font-medium">{channelLabel}</span>
           {" · "}
           <a
             href={whatsappLink ?? `https://wa.me/${order.customer.whatsapp.replace(/[^\d]/g, "")}`}
@@ -239,6 +247,57 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
         </Card>
       </div>
 
+      {canSeeCosts && isPaid ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Utilidad reconocida</CardTitle>
+            <CardDescription>
+              Snapshots congelados al pasar el pedido a pagado.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Costo de productos</p>
+                <p className="font-mono text-sm">
+                  S/ {order.productCostPen.toString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Utilidad bruta</p>
+                <p className="font-mono text-sm text-emerald-600">
+                  S/ {order.grossProfitPen.toString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">
+                  Comisión de pago + empaque
+                </p>
+                <p className="font-mono text-sm text-amber-600">
+                  S/ {Number(order.paymentFeePen.toString()) +
+                    Number(order.packagingCostPen.toString())}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Utilidad neta</p>
+                <p className="font-mono text-base font-semibold">
+                  S/ {order.netProfitPen.toString()}
+                </p>
+              </div>
+            </div>
+            {order.profitCalculatedAt ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Calculado el{" "}
+                {new Intl.DateTimeFormat("es-PE", {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                }).format(new Date(order.profitCalculatedAt))}
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
@@ -252,21 +311,54 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
                 {order.items.map((item) => (
                   <div
                     key={item.id}
-                    className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
+                    className="flex flex-col gap-1 rounded-lg border border-border px-3 py-2"
                   >
-                    <div>
-                      <p className="text-sm font-medium">
-                        {item.variant.product.name}
-                        {item.variant.color ? ` · ${item.variant.color}` : ""}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {item.variant.code} · S/ {item.unitPrice.toString()} x{" "}
-                        {item.quantity}
-                      </p>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">
+                          {item.variant.product.name}
+                          {item.variant.color ? ` · ${item.variant.color}` : ""}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.variant.code} · S/ {item.unitPrice.toString()} x{" "}
+                          {item.quantity}
+                        </p>
+                      </div>
+                      <span className="font-mono text-sm">
+                        S/ {item.lineTotal.toString()}
+                      </span>
                     </div>
-                    <span className="font-mono text-sm">
-                      S/ {item.lineTotal.toString()}
-                    </span>
+                    {canSeeCosts ? (
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                        <span>
+                          Costo unit: S/ {Number(item.unitCostPen.toString()).toFixed(4)}
+                        </span>
+                        <span>
+                          Costo total: S/ {item.totalCostPen.toString()}
+                        </span>
+                        <span>
+                          Utilidad: S/ {item.grossProfitPen.toString()}
+                        </span>
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">
+                          {item.costSource === "BATCH"
+                            ? "Lote"
+                            : item.costSource === "LEGACY"
+                              ? "Legado"
+                              : "Sin costo"}
+                        </span>
+                        {item.allocations.length > 0 ? (
+                          <span>
+                            Lotes:{" "}
+                            {item.allocations
+                              .map(
+                                (a) =>
+                                  `${a.quantity}× S/ ${Number(a.unitCostPen.toString()).toFixed(4)}`,
+                              )
+                              .join(" · ")}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
                 <Separator />
