@@ -5,6 +5,9 @@ import { ArrowLeft, PackageIcon, Calculator } from "lucide-react";
 
 import { requireRole } from "@/lib/permissions";
 import { getBatchDetailAction } from "@/actions/import-batches";
+import { BatchHealthBadge } from "@/components/financial/batch-health-badge";
+import { MarginBadge } from "@/components/financial/margin-badge";
+import { StockHealthBadge } from "@/components/financial/stock-health-badge";
 import { BatchStatusBadge } from "@/components/tables/batch-status-badge";
 import { Button } from "@/components/ui/button";
 import { RecalculateBatchButton } from "@/components/forms/recalculate-batch-button";
@@ -101,6 +104,28 @@ export default async function LoteDetailPage({
     ? COST_ALLOCATION_METHOD_LABELS[batch.distributionMethod as keyof typeof COST_ALLOCATION_METHOD_LABELS] ?? batch.distributionMethod
     : null;
   const distributionLabel = batch.lastRecalculatedAt ? methodLabel : "Pendiente de recálculo";
+  const pricedItems = isCalculated
+    ? items.map((item: BatchItem) => {
+        const landingCost = Number(item.landedUnitCostPen.toString());
+        const currentPrice = Number(item.variant.price.toString());
+        const pricing = getItemPricing(landingCost, currentPrice, margins);
+        return {
+          item,
+          pricing,
+          revenue: currentPrice * item.quantityReceived,
+          cost: landingCost * item.quantityReceived,
+        };
+      })
+    : [];
+  const lowMarginItems = pricedItems.filter(
+    (entry) => entry.pricing.currentMarginPercent < settings.minimumTargetMarginBps / 100,
+  );
+  const batchRevenueEstimate = pricedItems.reduce((sum, entry) => sum + entry.revenue, 0);
+  const batchCostEstimate = pricedItems.reduce((sum, entry) => sum + entry.cost, 0);
+  const batchMarginBps =
+    batchRevenueEstimate > 0
+      ? Math.round(((batchRevenueEstimate - batchCostEstimate) * 10000) / batchRevenueEstimate)
+      : 0;
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -120,6 +145,9 @@ export default async function LoteDetailPage({
               {batch.code}
             </h1>
             <BatchStatusBadge status={batch.status as "PURCHASED" | "IN_TRANSIT" | "COMPLETE" | "CLOSED"} />
+            {isCalculated ? (
+              <BatchHealthBadge status={batch.status} marginBps={batchMarginBps} />
+            ) : null}
           </div>
           <p className="text-sm text-muted-foreground">
             {batch.shopper} · {batch.agency}
@@ -195,13 +223,28 @@ export default async function LoteDetailPage({
         </div>
       )}
 
+      {isCalculated && lowMarginItems.length > 0 ? (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+          <Calculator className="mt-0.5 size-5 text-amber-600 dark:text-amber-400" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+              Lote con rentabilidad baja
+            </p>
+            <p className="text-xs text-amber-800 dark:text-amber-300">
+              {lowMarginItems.length} producto(s) del lote tienen precio actual por debajo del margen mínimo objetivo de {settings.minimumTargetMarginBps / 100}%.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <div>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold">Productos del lote</h2>
           {isCalculated && (
-            <span className="text-xs text-muted-foreground">
-              Márgenes: mín {settings.minimumTargetMarginBps / 100}% · obj {settings.objectiveTargetMarginBps / 100}%
-            </span>
+            <div className="flex flex-wrap gap-1.5">
+              <MarginBadge bps={settings.minimumTargetMarginBps} />
+              <MarginBadge bps={settings.objectiveTargetMarginBps} />
+            </div>
           )}
         </div>
 
@@ -240,15 +283,6 @@ export default async function LoteDetailPage({
                   const pricing = isCalculated
                     ? getItemPricing(landingCost, currentPrice, margins)
                     : null;
-                  const marginTone =
-                    !pricing
-                      ? ""
-                      : pricing.currentMarginPercent >= 30
-                      ? "text-emerald-600"
-                      : pricing.currentMarginPercent >= 15
-                      ? "text-amber-600"
-                      : "text-destructive";
-
                   return (
                     <tr key={item.id} className="border-b border-border/50">
                       <td className="p-3">
@@ -268,9 +302,12 @@ export default async function LoteDetailPage({
                         {item.variant.code}
                       </td>
                       <td className="p-3">
-                        <span className="text-xs">
-                          {item.quantityPurchased}p · {item.quantityReceived}r · {item.quantityAvailable}d
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs">
+                            {item.quantityPurchased}p · {item.quantityReceived}r · {item.quantityAvailable}d
+                          </span>
+                          <StockHealthBadge availableUnits={item.quantityAvailable} />
+                        </div>
                       </td>
                       <td className="p-3 font-mono text-xs">
                         S/ {Number(item.unitCostPen.toString()).toFixed(4)}
@@ -292,8 +329,8 @@ export default async function LoteDetailPage({
                           <td className="p-3 font-mono text-xs">
                             {formatPen(pricing.suggestedPrice)}
                           </td>
-                          <td className={`p-3 font-mono text-xs font-semibold ${marginTone}`}>
-                            {pricing.currentMarginPercent.toFixed(1)}%
+                          <td className="p-3">
+                            <MarginBadge percent={pricing.currentMarginPercent} />
                           </td>
                         </>
                       )}

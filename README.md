@@ -140,6 +140,90 @@ Cada sección incluye un botón **Descargar CSV** que apunta a `app/api/reportes
 
 Los tests de dominio viven en `scripts/test-financial-reports.ts` (11/11). Se ejecutan con `pnpm tsx scripts/_with-env.ts scripts/test-financial-reports.ts`.
 
+### Sprint 26 — UX, alertas, badges y responsive financiero (versión 0.27.0)
+
+El sistema ahora expone el riesgo financiero con un lenguaje visual consistente y reutilizable, sin romper la UI existente.
+
+Base reutilizable:
+
+- `lib/financial-ui.ts` concentra la clasificación visual de margen, lote, stock, rotación e impacto de incidencias.
+- `components/financial/` agrega badges compactos para margen, salud del lote, salud del stock, rotación e impacto financiero.
+
+Integraciones principales:
+
+- **Venta rápida**:
+  - la búsqueda de variantes ahora incluye costo real estimado, precio mínimo, precio sugerido, margen actual y origen del costo;
+  - el carrito recalcula el precio unitario efectivo después del descuento y avisa si una línea queda por debajo del precio mínimo;
+  - el submit queda deshabilitado mientras falten clienta, carrito o adelanto.
+- **Lotes**:
+  - el detalle `/lotes/[id]` muestra badge de salud del lote junto al estado;
+  - aparece un banner si el precio vigente deja productos por debajo del margen mínimo objetivo;
+  - la tabla usa badges de margen y stock en lugar de solo color de texto.
+- **Dashboard y reportes**:
+  - tablas de rentabilidad usan badges de margen y lote;
+  - stock y baja rotación usan badges de stock/rotación;
+  - devoluciones e incidencias muestran badge de impacto;
+  - los reportes financieros incluyen avisos contextuales ligeros cuando detectan margen bajo, rentabilidad baja, stock legado o productos sin rotación.
+
+Responsive:
+
+- Se mantiene el lenguaje visual actual (`Card`, `Badge`, `Table`, `overflow-x-auto`, `flex-wrap`) sin crear layouts paralelos.
+- Los badges compactos mejoran la lectura en móvil en `/ventas`, `/lotes/[id]`, `/dashboard` y `/reportes`.
+
+Los tests puros de esta capa viven en `scripts/test-financial-ui.ts` (8/8). Se ejecutan con `pnpm tsx scripts/test-financial-ui.ts`.
+
+### Sprint 27 — Seed financiero, pruebas y cierre (versión 0.28.0)
+
+El Sprint 27 deja la fase financiera verificable, reproducible y documentada. Cierra el plan con un seed financiero idempotente y cobertura de los 7 escenarios financieros obligatorios.
+
+Seed financiero (`prisma/seed.ts`):
+
+- 4 lotes: `LOTE-FIN-2025-001-OLD/NEW` (rentable, costos aterrizados), `LOTE-FIN-2025-002` (margen bajo), `LOTE-FIN-2025-003` (parcial COMPLETE) y `LOTE-FIN-2025-004` (cerrado CLOSED).
+- 12 productos/variantes en 5 categorías (Carteras de mano, Mochilas, Accesorios, Billeteras, Riñoneras).
+- 3 clientas (`+51915000001`, `+51916000002`, `+51917000003`).
+- 5 ventas PAID con `profitCalculatedAt` y snapshots de costo congelado en PEN (cubre rentable, margen bajo, descuento, delivery asumido y venta de paquete).
+- 5 gastos operativos del mes (publicidad, alquiler, internet, empaque, envíos).
+- 2 incidencias (DAMAGE con movimiento ADJUSTMENT y RETURN con emisión de crédito al cliente).
+- 1 live demo cerrado y settings financieros recalibrados para que los márgenes del demo reflejen la realidad.
+- Ejecución idempotente: volver a correr `pnpm db:seed` no duplica filas y reporta los elementos ya existentes.
+
+Pruebas del Sprint 27 (`scripts/test-financial-sprint27.ts`, 7/7):
+
+1. Lote rentable `LOTE-FIN-2025-001-OLD` con margen > 50% en la venta asignada (FIN27-0001).
+2. Margen bajo `LOTE-FIN-2025-002` con margen < 15% en la venta asignada (FIN27-0004).
+3. Descuento en FIN27-0002 con `lineDiscountPen` poblado y `grossProfitPen` = neto - costo.
+4. Delivery asumido en FIN27-0002 con `shippingAmount` sumado al total y a la línea de pedido.
+5. Lote parcial `LOTE-FIN-2025-003` en COMPLETE con `quantityAvailable` > 0 y `quantityReceived` > `quantityAvailable`.
+6. Lote cerrado `LOTE-FIN-2025-004` en CLOSED sin allocations.
+7. Incidencia DAMAGE con movimiento ADJUSTMENT negativo y reducción de stock de la variante.
+
+Los tests previos (`test-costing`, `test-order-batch-fifo`, `test-expenses`, `test-incidents`, `test-financial-dashboard`, `test-financial-reports`, `test-financial-ui`) se ajustaron para ser resilientes al seed compartido y siguen pasando: 68/68. Sumando los 7 del Sprint 27, la suite total de tests de dominio es **75/75** cubriendo costeo, FIFO, utilidad mensual por PAID, gastos mensuales, dashboard financiero, reportes financieros, UX financiero y los 7 escenarios de cierre.
+
+Para correr todo el bloque:
+
+```bash
+pnpm db:push && pnpm db:seed
+pnpm tsx scripts/_with-env.ts scripts/test-financial-sprint27.ts
+pnpm verify
+```
+
+El sistema responde las preguntas clave del negocio a través de `/dashboard` y `/reportes` (cuánto gané este mes, qué lote fue más rentable, qué producto dejó más utilidad, qué producto se vende con poco margen, cuánto dinero hay en stock, cuánto capital está detenido, qué productos no están rotando, cuánto se gasta en publicidad mensual, cuánto cuestan realmente los envíos, cuál es el margen neto por canal, qué clientes compran más).
+
+### Auditoría técnica (versión 0.29.0)
+
+Auditoría completa de los 27 sprints del proyecto. Documentación en [`docs/auditoria/`](./docs/auditoria/) con 8 archivos:
+
+- `README.md`: índice con reglas de uso, convención de IDs y nivel de riesgo.
+- `01-resumen-ejecutivo.md`: resumen del sistema, stack, módulos y blockers críticos.
+- `02-hallazgos.md`: 40+ hallazgos con IDs únicos (`AUD-SEC-*`, `AUD-DATA-*`, etc.), severidad, evidencia y criterios de aceptación.
+- `03-plan-accion.md`: plan de corrección en 6 fases ordenadas por impacto.
+- `04-backlog-correcciones.md`: backlog técnico priorizado con 74+ items.
+- `05-plan-pruebas.md`: matriz de pruebas obligatorias por hallazgo crítico.
+- `06-riesgos-produccion.md`: riesgos bloqueantes, checklist de deploy y plan de rollback.
+- `07-registro-decisiones.md`: registro de decisiones técnicas con alternativas evaluadas.
+
+Nivel de riesgo actual: **Crítico** — el sistema no está listo para producción con usuarios reales hasta resolver los hallazgos P0.
+
 ## Deploy en Vercel
 
 1. Crea un proyecto nuevo en Vercel y enlázalo a este repositorio.
@@ -202,7 +286,7 @@ components/            UI, layout, forms, tables, dashboard
 lib/                   auth, prisma, validations, permissions, settings, phone, customer-helpers, blob, utils
 prisma/                schema.prisma y seed
 types/                 Enums compartidos del dominio
-docs/                  Planes de sprints, roadmap financiero, requisitos funcionales/no funcionales y flujos
+docs/                  Planes de sprints, roadmap financiero, requisitos funcionales/no funcionales, flujos y auditoría técnica
 CHANGELOG.md           Historial de versiones
 ```
 
@@ -506,6 +590,11 @@ Extensión del módulo `/configuracion` con los parámetros financieros que gobe
 - ✅ Sprint 21 — Integración lote, stock y venta FIFO
 - ✅ Sprint 22 — Gastos operativos mensuales (`/gastos`)
 - ✅ Sprint 23 — Incidencias, devoluciones, daños y pérdidas (`/incidencias`)
+- ✅ Sprint 24 — Dashboard financiero
+- ✅ Sprint 25 — Reportes financieros y exportación CSV
+- ✅ Sprint 26 — UX, alertas, badges y responsive financiero
+- ✅ Sprint 27 — Seed financiero, pruebas y cierre
+- ✅ Auditoría técnica completa (`docs/auditoria/`)
 
 ### Sprint 15 — Pulido, pruebas y despliegue
 

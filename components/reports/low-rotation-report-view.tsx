@@ -15,6 +15,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CsvDownloadButton } from "@/components/reports/csv-download-button";
+import { RotationBadge } from "@/components/financial/rotation-badge";
+import { StockHealthBadge } from "@/components/financial/stock-health-badge";
 import type { LowRotationReport } from "@/lib/financial-reports";
 
 function fmtMoney(value: string): string {
@@ -47,6 +49,12 @@ export function LowRotationReportView({
           tone="warning"
         />
       </div>
+
+      {data.rows.length > 0 ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+          Estos productos mantienen capital inmovilizado sin ventas recientes. Prioriza rotacion, rebundles o ajuste de precio.
+        </div>
+      ) : null}
 
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -93,7 +101,11 @@ export function LowRotationReportView({
                       <TableCell className="font-mono text-xs">
                         {r.variantCode}
                       </TableCell>
-                      <TableCell className="text-right">{r.stock}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end">
+                          <StockHealthBadge availableUnits={r.stock - r.reservedStock} />
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right">{r.reservedStock}</TableCell>
                       <TableCell className="text-right">{r.soldStock}</TableCell>
                       <TableCell className="text-right">
@@ -104,10 +116,13 @@ export function LowRotationReportView({
                           ? r.lastSoldAt.toISOString().slice(0, 10)
                           : "Nunca"}
                       </TableCell>
-                      <TableCell className="text-right text-xs">
-                        {r.daysSinceLastSale === null
-                          ? "Nunca"
-                          : `${r.daysSinceLastSale} dias`}
+                      <TableCell className="text-right">
+                        <div className="flex justify-end">
+                          <RotationBadge
+                            daysSinceLastSale={r.daysSinceLastSale}
+                            thresholdDays={data.thresholdDays}
+                          />
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

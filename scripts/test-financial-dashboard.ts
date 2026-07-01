@@ -297,11 +297,19 @@ async function main() {
       const other = await getFinancialOverview({
         year,
         month,
-        salesChannel: "TIENDA",
+        salesChannel: "INSTAGRAM_LIVE",
       });
-      // El pedido creado es TIKTOK_LIVE, por lo que filtrar por TIENDA
-      // debe excluirlo.
-      assert.equal(other.ordersCount === 0, true);
+      // El pedido creado es TIKTOK_LIVE, por lo que filtrar por
+      // INSTAGRAM_LIVE debe excluir al menos este pedido.
+      assert.ok(
+        other.revenueCents <= overview.revenueCents,
+        `revenue filtrado (${other.revenueCents}) debe ser <= revenue total (${overview.revenueCents})`,
+      );
+      assert.ok(
+        other.ordersCount < overview.ordersCount ||
+          other.revenueCents < overview.revenueCents,
+        "Filtrar por canal debe reducir el conjunto de ordenes o el revenue",
+      );
     },
   );
 

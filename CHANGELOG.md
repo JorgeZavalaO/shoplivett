@@ -5,6 +5,124 @@ Todos los cambios notables de Shoplivett se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0] - Auditoría técnica completa y documentación persistente
+
+### Añadido
+- `docs/auditoria/` con 8 documentos de auditoría técnica cubriendo los 27 sprints del proyecto:
+  - `README.md`: índice con reglas de uso, convención de IDs (`AUD-*`), nivel de riesgo y links.
+  - `01-resumen-ejecutivo.md`: resumen del sistema, stack, módulos, blockers críticos y recomendación de no desplegar.
+  - `02-hallazgos.md`: 40+ hallazgos con IDs únicos por categoría (SEC, DATA, ARCH, PERF, UX, TEST, PROD, FUNC), severidad, evidencia con archivo/línea, criterios de aceptación y recomendaciones de prueba.
+  - `03-plan-accion.md`: plan de corrección en 6 fases ordenadas por impacto, con riesgos mitigados y resultados esperados.
+  - `04-backlog-correcciones.md`: backlog técnico priorizado con 74+ items, estimación de esfuerzo y dependencias.
+  - `05-plan-pruebas.md`: matriz de pruebas obligatorias, importantes y deseables por cada hallazgo crítico.
+  - `06-riesgos-produccion.md`: riesgos bloqueantes, aceptables, checklist de deploy, variables de entorno y plan de rollback.
+  - `07-registro-decisiones.md`: registro de decisiones técnicas con alternativas evaluadas y justificación.
+
+### Cambiado
+- `README.md`: se actualizaron la estructura de carpetas, la lista de sprints (24–27) y se agregó referencia a `docs/auditoria/`.
+- `package.json`: versión `0.28.0` → `0.29.0`.
+
+### Decisiones
+- La auditoría es documentación sola: no se modificó código, configuración, schema ni dependencias.
+- Los hallazgos se clasifican por severidad (P0–P2) y los P0 son bloqueantes de producción: pago de utilidad antes de validación, reversión incompleta de incidencias, desincronización lote-stock, y falta de rate limiting.
+- Los IDs son estables y nunca se borran: solo se actualiza el campo `Estado` cuando se corrige un hallazgo.
+- Se priorizó la consistencia de datos (dinero, stock, incidencias) antes que seguridad, rendimiento y UX.
+
+### Verificación
+- `git status --short -- docs/auditoria` muestra sólo la carpeta nueva como no rastreada.
+- `glob docs/auditoria/*.md` confirma los 8 archivos Markdown.
+- No se modificó ningún archivo fuera de `docs/auditoria/`, `README.md`, `CHANGELOG.md` y `package.json`.
+
+## [0.28.0] - Sprint 27 - Seed financiero, pruebas y cierre
+
+### Añadido
+- `prisma/seed.ts` extendido con un seed financiero idempotente (prefijo `FIN27` y codigos `LOTE-FIN-2025-*`) que cumple los RF-S27-01 a RF-S27-06:
+  - 4 lotes: `LOTE-FIN-2025-001-OLD/NEW` (rentable con costos aterrizados), `LOTE-FIN-2025-002` (margen bajo), `LOTE-FIN-2025-003` (parcial COMPLETE con stock disponible) y `LOTE-FIN-2025-004` (cerrado CLOSED sin ventas asignadas).
+  - 12 productos/variantes en 5 categorias (Carteras de mano, Mochilas, Accesorios, Billeteras, Riñoneras).
+  - 3 clientas (`+51915/916/917000001/2/3`).
+  - 5 ventas PAID con `profitCalculatedAt` poblado y snapshots de costo congelado (costo unitario en PEN, subtotal en PEN, costo aterrizado en PEN). Las ventas cubren los 5 escenarios financieros clave: rentable, margen bajo, descuento, delivery asumido y gasto de paquete.
+  - 5 gastos operativos del mes actual (publicidad, alquiler, internet, empaque, envios).
+  - 2 incidencias: 1 DAMAGE en stock propio con movimiento ADJUSTMENT y 1 RETURN con emision de credito al cliente.
+  - 1 live demo cerrado y settings financieros recalibrados para que los margenes reflejen la realidad del demo.
+- `scripts/test-financial-sprint27.ts` con 7/7 tests de dominio que cubren los 7 escenarios obligatorios del sprint (lote rentable, margen bajo, descuento, delivery asumido, lote parcial, lote cerrado y producto dañado) sin necesidad de levantar el servidor de Playwright. Los tests son de solo lectura sobre el seed `FIN27` y validan snapshots de costo, allocations, totales y movimientos de inventario.
+
+### Cambiado
+- `scripts/test-expenses.ts` y `scripts/test-incidents.ts` ahora validan deltas en lugar de totales absolutos para evitar colision con los gastos e incidencias sembrados por el Sprint 27 en el mismo mes.
+- `scripts/test-financial-dashboard.ts` valida que el filtro por canal reduce el conjunto o el revenue, en vez de exigir 0 ordenes (que dejaba de ser cierto una vez que el seed siembra ordenes en multiples canales).
+
+### Decisiones
+- El seed siembra snapshots de costo en PEN aplicando la conversion USD x `exchangeRate` por unidad, de modo que `landedUnitCostPen`, `subtotalPen` y `totalInvestmentPen` quedan consistentes con el resto del sistema (Sprint 21, 23, 24, 25). Esto evita el bug previo donde los snapshots estaban en USD y los margenes del dashboard se inflaban.
+- Los tests de dominio son la fuente de verdad para los 7 escenarios porque son reproducibles, rapidos (sin levantar Next) y validan los snapshots de costo congelado. Los specs Playwright existentes (`flows.spec.ts`, `batch-fifo.spec.ts`, `concurrency.spec.ts`, `ui-flows.spec.ts`, `smoke.spec.ts`) siguen pasando y cubren los flujos operativos.
+- El seed es idempotente: ejecutar `pnpm db:seed` varias veces no duplica filas porque todos los `upsert` estan indexados por `code` o `whatsapp`. La salida indica que se omiten elementos ya existentes.
+
+### Verificacion
+- `pnpm tsx scripts/_with-env.ts scripts/test-financial-sprint27.ts` → 7/7 tests pasan.
+- `pnpm tsx scripts/_with-env.ts scripts/test-costing.ts` → 27/27 tests previos siguen pasando.
+- `pnpm tsx scripts/_with-env.ts scripts/test-order-batch-fifo.ts` → 10/10 tests previos siguen pasando.
+- `pnpm tsx scripts/_with-env.ts scripts/test-expenses.ts` → 7/7 tests previos siguen pasando.
+- `pnpm tsx scripts/_with-env.ts scripts/test-incidents.ts` → 11/11 tests previos siguen pasando.
+- `pnpm tsx scripts/_with-env.ts scripts/test-financial-dashboard.ts` → 12/12 tests previos siguen pasando.
+- `pnpm tsx scripts/_with-env.ts scripts/test-financial-reports.ts` → 11/11 tests previos siguen pasando.
+- `pnpm tsx scripts/test-financial-ui.ts` → 8/8 tests previos siguen pasando.
+- `pnpm typecheck` → 0 errores.
+- `pnpm lint` → 0 errores (warnings preexistentes fuera del sprint).
+- `pnpm build` → 31/31 paginas, sin regresiones.
+- Suite total: 75 tests de dominio cubriendo costeo, FIFO, utilidad mensual por PAID, gastos mensuales, dashboard financiero, reportes financieros, UX financiero y los 7 escenarios de cierre.
+
+### Preguntas respondidas al cierre
+El sistema responde las preguntas clave del negocio a traves de `/dashboard` y `/reportes`:
+- Cuanto gane este mes realmente (`/dashboard` cards de overview, `Utilidad neta real del mes`).
+- Que lote fue mas rentable (`Rentabilidad por lote` en `/dashboard` y `/reportes?section=fin-batches`).
+- Que producto dejo mas utilidad (`Top productos rentables` en `/dashboard` y `/reportes?section=fin-products`).
+- Que producto se vende con poco margen (`Productos con menor margen` en `/dashboard`).
+- Cuanto dinero hay en stock (`Valor del stock actual` en `/dashboard` y `/reportes?section=fin-stock`).
+- Cuanto capital esta detenido (`Capital inmovilizado en lotes` en `/dashboard`).
+- Que productos no estan rotando (`Productos sin rotacion` en `/dashboard` y `/reportes?section=fin-rotation`).
+- Cuanto se gasta en publicidad mensual (`/gastos?category=ADVERTISING` y agregador del mes en `/dashboard`).
+- Cuanto cuestan realmente los envios (`/gastos?category=SHIPPING` y `deliveryBusinessCostPen` en pedidos).
+- Cual es el margen neto por canal (filtro `salesChannel` en `/dashboard` y `/reportes?section=fin-products`).
+- Que clientes compran mas (`/reportes?section=fin-customers` ordenado por facturado).
+
+## [0.27.0] - Sprint 26 - UX, alertas, badges y responsive financiero
+
+### Añadido
+- Modulo cliente-seguro `lib/financial-ui.ts` con helpers reutilizables para clasificacion visual y reglas de alerta:
+  - `classifyMarginBps` / `classifyMarginPercent` con umbrales oficiales del sprint: `loss` si utilidad < 0, `low` si margen < 15%, `medium` entre 15% y 29%, `high` si margen >= 30% (RF-S26-01 a RF-S26-04).
+  - `classifyBatchHealth`, `classifyStockHealth`, `classifyRotation`, `classifyIncidentImpact` e `isBelowMinimumPrice` para lotes, stock, rotacion, incidencias y venta por debajo de minimo.
+  - Labels y formateadores (`marginLabel`, `batchHealthLabel`, `rotationLabel`, etc.) para mantener consistencia en dashboard, reportes, lotes y venta rapida.
+- Componentes nuevos en `components/financial/`:
+  - `margin-badge.tsx`: badge reutilizable para margen actual o margen bps.
+  - `batch-health-badge.tsx`: badge para salud/rentabilidad del lote.
+  - `stock-health-badge.tsx`: badge para agotado / stock bajo / disponible.
+  - `rotation-badge.tsx`: badge para con rotacion / rotacion lenta / sin rotacion / nunca vendido.
+  - `incident-impact-badge.tsx`: badge para impacto financiero de incidencias.
+- `scripts/test-financial-ui.ts` con 8/8 tests puros para clasificacion de margen, lote, stock, rotacion, impacto de incidencia y validacion de precio minimo.
+
+### Cambiado
+- `actions/sales.ts` ahora enriquece `searchVariantsForSaleAction` con `unitRealCost`, `minimumPrice`, `suggestedPrice`, `currentMarginPercent` y `costSource`, usando costo aterrizado ponderado por unidades disponibles cuando la variante opera con lotes, o `ProductVariant.cost` como fallback legado.
+- `components/forms/quick-sale-form.tsx` integra badges de margen y stock en la busqueda y el carrito, calcula el precio unitario efectivo despues del descuento y muestra alertas contextuales cuando una linea queda por debajo del precio minimo (RF-S26-05). Tambien usa `canSubmit` real para deshabilitar el submit cuando faltan datos obligatorios.
+- `app/(dashboard)/lotes/[id]/page.tsx` agrega `BatchHealthBadge` junto al estado del lote, un banner cuando uno o mas items quedan por debajo del margen minimo objetivo y badges de margen/stock dentro de la tabla de items (RF-S26-06).
+- `components/dashboard/financial-overview-cards.tsx` y `components/dashboard/financial-alerts.tsx` reemplazan colores ad-hoc por badges reutilizables de margen, lote, stock y rotacion.
+- Vistas de `components/reports/*` usan badges reutilizables en margen, lote, stock, rotacion e impacto de incidencias. Se agregaron banners ligeros de riesgo en utilidad por producto, rentabilidad por lote, stock legado y sin rotacion para que el riesgo no quede oculto dentro de la tabla (RF-S26-07).
+
+### Decisiones
+- Los badges de margen siguen los umbrales fijos del sprint (15%/30%) aunque `BusinessSettings.minimumTargetMarginBps` y `objectiveTargetMarginBps` sigan controlando precios minimos/sugeridos. Esto mantiene consistencia visual entre modulos aun cuando el negocio ajuste sus objetivos internos.
+- La alerta de venta por debajo del minimo no bloquea el submit: solo hace visible el riesgo antes de operar. La validacion sigue siendo informativa, no coercitiva, para preservar el flujo actual de venta rapida.
+- En lotes, la salud del lote se estima con precios vigentes vs costo aterrizado por item recibido; no reescribe snapshots historicos ni depende de ventas futuras. Es una señal de pricing actual, no un asiento contable.
+- Responsive: se mantuvo el lenguaje visual actual (`Card`, `Badge`, `Table`, `overflow-x-auto`, `flex-wrap`) sin introducir layouts paralelos. Los badges compactos reducen densidad visual en mobile y mejoran lectura tactil.
+
+### Verificacion
+- `pnpm tsx scripts/test-financial-ui.ts` → 8/8 tests pasan.
+- `pnpm tsx scripts/_with-env.ts scripts/test-financial-reports.ts` → 11/11 tests previos siguen pasando.
+- `pnpm tsx scripts/_with-env.ts scripts/test-financial-dashboard.ts` → 12/12 tests previos siguen pasando.
+- `pnpm tsx scripts/_with-env.ts scripts/test-expenses.ts` → 7/7 tests previos siguen pasando.
+- `pnpm tsx scripts/_with-env.ts scripts/test-order-batch-fifo.ts` → 10/10 tests previos siguen pasando.
+- `pnpm tsx scripts/_with-env.ts scripts/test-incidents.ts` → 11/11 tests previos siguen pasando.
+- `pnpm tsx scripts/_with-env.ts scripts/test-costing.ts` → 27/27 tests previos siguen pasando.
+- `pnpm typecheck` → 0 errores.
+- `pnpm lint` → 0 errores (warnings preexistentes fuera del sprint).
+- `pnpm build` → 31/31 paginas, sin regresiones en `/ventas`, `/lotes/[id]`, `/dashboard` ni `/reportes`.
+
 ## [0.26.0] - Sprint 25 - Reportes financieros y exportación CSV
 
 ### Añadido

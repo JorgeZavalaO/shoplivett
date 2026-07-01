@@ -15,14 +15,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CsvDownloadButton } from "@/components/reports/csv-download-button";
+import { BatchHealthBadge } from "@/components/financial/batch-health-badge";
+import { MarginBadge } from "@/components/financial/margin-badge";
+import { StockHealthBadge } from "@/components/financial/stock-health-badge";
 import type { BatchProfitabilityReport } from "@/lib/financial-reports";
 
 function fmtMoney(value: string): string {
   return `S/ ${value}`;
-}
-
-function fmtPct(bps: number): string {
-  return `${(bps / 100).toFixed(1)}%`;
 }
 
 export function BatchProfitabilityReportView({
@@ -32,6 +31,9 @@ export function BatchProfitabilityReportView({
   data: BatchProfitabilityReport;
   csvHref: string;
 }) {
+  const lowProfitRows = data.rows.filter(
+    (row) => row.marginBps < 1500 || row.roiBps < 0,
+  );
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-3 md:grid-cols-4">
@@ -55,6 +57,12 @@ export function BatchProfitabilityReportView({
           tone={data.totals.grossProfitCents < 0 ? "destructive" : "default"}
         />
       </div>
+
+      {lowProfitRows.length > 0 ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+          {lowProfitRows.length} lote(s) del reporte muestran rentabilidad baja o negativa.
+        </div>
+      ) : null}
 
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -105,7 +113,14 @@ export function BatchProfitabilityReportView({
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-xs">{r.status}</TableCell>
+                      <TableCell>
+                        <BatchHealthBadge
+                          status={r.status}
+                          marginBps={r.marginBps}
+                          roiBps={r.roiBps}
+                          availableUnits={r.availableUnits}
+                        />
+                      </TableCell>
                       <TableCell className="text-right">{r.soldUnits}</TableCell>
                       <TableCell className="text-right">
                         {fmtMoney(r.investment)}
@@ -125,25 +140,21 @@ export function BatchProfitabilityReportView({
                       >
                         {fmtMoney(r.grossProfit)}
                       </TableCell>
-                      <TableCell
-                        className={`text-right ${
-                          r.marginBps < 0
-                            ? "text-destructive"
-                            : r.marginBps < 1500
-                              ? "text-amber-600"
-                              : ""
-                        }`}
-                      >
-                        {fmtPct(r.marginBps)}
+                      <TableCell className="text-right">
+                        <div className="flex justify-end">
+                          <MarginBadge bps={r.marginBps} />
+                        </div>
                       </TableCell>
-                      <TableCell
-                        className={`text-right ${
-                          r.roiBps < 0 ? "text-destructive" : ""
-                        }`}
-                      >
-                        {fmtPct(r.roiBps)}
+                      <TableCell className="text-right">
+                        <div className="flex justify-end">
+                          <BatchHealthBadge roiBps={r.roiBps} />
+                        </div>
                       </TableCell>
-                      <TableCell className="text-right">{r.availableUnits}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end">
+                          <StockHealthBadge availableUnits={r.availableUnits} />
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

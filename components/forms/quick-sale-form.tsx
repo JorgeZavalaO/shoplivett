@@ -10,8 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AsyncSearchList } from "@/components/ui/async-search-list";
-import { cn } from "@/lib/utils";
+import { MarginBadge } from "@/components/financial/margin-badge";
+import { StockHealthBadge } from "@/components/financial/stock-health-badge";
 import { formatWhatsAppDisplay } from "@/lib/phone";
+import { isBelowMinimumPrice } from "@/lib/financial-ui";
 import {
   createQuickSaleAction,
   searchVariantsForSaleAction,
@@ -30,12 +32,17 @@ type CartItem = {
   quantity: number;
   unitPrice: string;
   max: number;
+  unitRealCost?: string | null;
+  minimumPrice?: string | null;
+  suggestedPrice?: string | null;
+  currentMarginPercent?: number | null;
+  costSource?: "BATCH" | "LEGACY" | "NONE";
 };
 
-function SubmitButton() {
+function SubmitButton({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" disabled={pending} className="w-full text-base">
+    <Button type="submit" disabled={pending || disabled} className="w-full text-base">
       {pending ? (
         <>
           <Loader2 className="size-4 animate-spin" /> Creando pedido…
@@ -128,6 +135,11 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOpt
         quantity: 1,
         unitPrice: v.price,
         max: v.available,
+        unitRealCost: v.unitRealCost ?? null,
+        minimumPrice: v.minimumPrice ?? null,
+        suggestedPrice: v.suggestedPrice ?? null,
+        currentMarginPercent: v.currentMarginPercent ?? null,
+        costSource: v.costSource ?? "NONE",
       }];
     });
     setVariantQuery("");
@@ -162,7 +174,28 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOpt
     salesChannelOptions[0]?.value ?? "WHATSAPP_DIRECTO",
   );
 
-  const canSubmit = customerId && cart.length > 0 && advanceAmount && Number(advanceAmount) > 0;
+  const canSubmit = Boolean(
+    customerId && cart.length > 0 && advanceAmount && Number(advanceAmount) > 0,
+  );
+  const cartFinancials = useMemo(() => {
+    const subtotal = cart.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0);
+    const discountValue = Number(discount) || 0;
+    return cart.map((item) => {
+      const lineSubtotal = Number(item.unitPrice) * item.quantity;
+      const discountShare = subtotal > 0 ? (discountValue * lineSubtotal) / subtotal : 0;
+      const effectiveLineTotal = Math.max(0, lineSubtotal - discountShare);
+      const effectiveUnitPrice = item.quantity > 0 ? effectiveLineTotal / item.quantity : 0;
+      const minimumPrice = Number(item.minimumPrice ?? "0") || 0;
+      return {
+        variantId: item.variantId,
+        effectiveUnitPrice,
+        effectiveLineTotal,
+        minimumPrice,
+        isBelowMinimum: isBelowMinimumPrice({ effectiveUnitPrice, minimumPrice }),
+      };
+    });
+  }, [cart, discount]);
+  const belowMinimumWarnings = cartFinancials.filter((item) => item.isBelowMinimum);
 
   return (
     <form action={formAction} className="flex flex-col gap-4 lg:flex-row" noValidate>
@@ -264,16 +297,25 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOpt
             onSelectItem={(v) => addToCart(v)}
             renderItem={(v) => (
               <div className="flex w-full items-center justify-between gap-2">
-                <div>
+                <div className="min-w-0">
                   <p className="font-medium">{v.productName}</p>
                   <p className="text-xs text-muted-foreground">
-                    {v.code} · {v.color || "—"} · S/ {v.price} · Disponible:{" "}
-                    <span className={v.available > 0 ? "text-emerald-600" : "text-destructive"}>
-                      {v.available}
-                    </span>
+                    {v.code} · {v.color || "—"} · S/ {v.price}
                   </p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    <StockHealthBadge availableUnits={v.available} />
+                    {typeof v.currentMarginPercent === "number" ? (
+                      <MarginBadge percent={v.currentMarginPercent} />
+                    ) : null}
+                    <Badge variant="secondary" className="shrink-0">{v.categoryName}</Badge>
+                  </div>
+                  {v.minimumPrice ? (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Mín. S/ {v.minimumPrice}
+                      {v.suggestedPrice ? ` · Sug. S/ ${v.suggestedPrice}` : ""}
+                    </p>
+                  ) : null}
                 </div>
-                <Badge variant="secondary" className="shrink-0">{v.categoryName}</Badge>
               </div>
             )}
           />
@@ -296,10 +338,27 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOpt
               <p className="text-sm font-medium">Carrito ({cart.length})</p>
             </div>
             {cart.map((item) => (
-              <div key={item.variantId} className="flex items-center gap-2 border-b border-border px-3 py-2 last:border-b-0">
-                <div className="flex-1 min-w-0">
+              <div key={item.variantId} className="flex items-start gap-2 border-b border-border px-3 py-2 last:border-b-0">
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{item.name}</p>
                   <p className="text-xs text-muted-foreground">{item.code} · S/ {item.unitPrice}</p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    <StockHealthBadge availableUnits={item.max - item.quantity} />
+                    {typeof item.currentMarginPercent === "number" ? (
+                      <MarginBadge percent={item.currentMarginPercent} />
+                    ) : null}
+                  </div>
+                  {item.minimumPrice ? (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Mín. S/ {item.minimumPrice}
+                      {item.suggestedPrice ? ` · Sug. S/ ${item.suggestedPrice}` : ""}
+                    </p>
+                  ) : null}
+                  {belowMinimumWarnings.some((warning) => warning.variantId === item.variantId) ? (
+                    <p className="mt-1 text-[11px] font-medium text-destructive">
+                      El descuento deja esta línea por debajo del precio mínimo.
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <button type="button" onClick={() => updateQty(item.variantId, -1)} className="rounded p-0.5 hover:bg-muted">
@@ -358,6 +417,23 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOpt
               <span>Total</span>
               <span>S/ {totals.total}</span>
             </div>
+
+            {belowMinimumWarnings.length > 0 ? (
+              <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                <p className="font-medium">Venta por debajo del precio mínimo</p>
+                <ul className="mt-1 space-y-1">
+                  {belowMinimumWarnings.map((warning) => {
+                    const item = cart.find((cartItem) => cartItem.variantId === warning.variantId);
+                    if (!item) return null;
+                    return (
+                      <li key={warning.variantId}>
+                        {item.name}: efectiva S/ {warning.effectiveUnitPrice.toFixed(2)} · mín. S/ {warning.minimumPrice.toFixed(2)}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
 
             <div className="flex flex-col gap-1">
               <label htmlFor="advance" className="text-xs font-medium text-muted-foreground">
@@ -438,7 +514,7 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOpt
               <p className="rounded-md bg-destructive/10 px-3 py-1.5 text-xs text-destructive">{state.message}</p>
             ) : null}
 
-            <SubmitButton />
+            <SubmitButton disabled={!canSubmit} />
           </CardContent>
         </Card>
       </div>

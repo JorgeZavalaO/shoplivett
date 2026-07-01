@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CsvDownloadButton } from "@/components/reports/csv-download-button";
+import { StockHealthBadge } from "@/components/financial/stock-health-badge";
 import type { StockValuationReport } from "@/lib/financial-reports";
 
 function fmtMoney(value: string): string {
@@ -54,6 +55,12 @@ export function StockValuationReportView({
           tone="warning"
         />
       </div>
+
+      {data.totals.variantsWithoutBatches > 0 ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+          Hay {data.totals.variantsWithoutBatches} variante(s) usando costo legado. El valor total puede cambiar cuando migren a lotes.
+        </div>
+      ) : null}
 
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -102,7 +109,11 @@ export function StockValuationReportView({
                       </TableCell>
                       <TableCell className="text-xs">{r.categoryName}</TableCell>
                       <TableCell className="text-right">{r.stock}</TableCell>
-                      <TableCell className="text-right">{r.available}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end">
+                          <StockHealthBadge availableUnits={r.available} />
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <span
                           className={

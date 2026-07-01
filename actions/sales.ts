@@ -10,8 +10,9 @@ import { CreateOrderSchema, type CreateOrderInput } from "@/lib/validations";
 import { createQuickSale, OrderError } from "@/lib/sales";
 import { getOpenLive } from "@/lib/live";
 import { isSalesChannel } from "@/lib/order-batch-allocation";
-import { getEnabledSalesChannels } from "@/lib/settings";
+import { getEnabledSalesChannels, getSettings } from "@/lib/settings";
 import { SALES_CHANNEL_LABELS } from "@/lib/settings-defaults";
+import { getItemPricing } from "@/lib/import-batch-costing";
 
 export type OrderActionResult = {
   ok: boolean;
@@ -131,6 +132,11 @@ export type VariantSearchResult = {
   productName: string;
   categoryName: string;
   operatesWithBatches?: boolean;
+  unitRealCost?: string | null;
+  minimumPrice?: string | null;
+  suggestedPrice?: string | null;
+  currentMarginPercent?: number | null;
+  costSource?: "BATCH" | "LEGACY" | "NONE";
 };
 
 export async function searchVariantsForSaleAction(
@@ -139,6 +145,7 @@ export async function searchVariantsForSaleAction(
   await requireRole(["ADMIN", "SELLER"]);
   if (!query.trim()) return [];
   const prisma = getPrisma();
+  const settings = await getSettings();
   const rows = await prisma.productVariant.findMany({
     where: {
       status: "ACTIVE",
@@ -156,6 +163,7 @@ export async function searchVariantsForSaleAction(
       color: true,
       size: true,
       price: true,
+      cost: true,
       stock: true,
       reservedStock: true,
       soldStock: true,
@@ -167,23 +175,54 @@ export async function searchVariantsForSaleAction(
         },
       },
       batchItems: {
-        select: { id: true },
-        take: 1,
+        where: { calculatedAt: { not: null } },
+        select: {
+          id: true,
+          landedUnitCostPen: true,
+          quantityAvailable: true,
+        },
       },
     },
   });
 
-  return rows.map((v) => ({
-    id: v.id,
-    code: v.code,
-    color: v.color,
-    size: v.size,
-    price: v.price.toString(),
-    available: Math.max(0, v.stock - v.reservedStock - v.soldStock),
-    productName: v.product.name,
-    categoryName: v.product.category.name,
-    operatesWithBatches: v.batchItems.length > 0,
-  }));
+  return rows.map((v) => {
+    const available = Math.max(0, v.stock - v.reservedStock - v.soldStock);
+    const totalAvailable = v.batchItems.reduce(
+      (acc, item) => acc + item.quantityAvailable,
+      0,
+    );
+    const unitRealCost = totalAvailable > 0
+      ? v.batchItems.reduce((acc, item) => {
+          return acc + Number(item.landedUnitCostPen.toString()) * item.quantityAvailable;
+        }, 0) / totalAvailable
+      : v.cost
+        ? Number(v.cost.toString())
+        : null;
+    const costSource = totalAvailable > 0 ? "BATCH" : v.cost ? "LEGACY" : "NONE";
+    const pricing = unitRealCost !== null
+      ? getItemPricing(unitRealCost, Number(v.price.toString()), {
+          minimumTargetMarginBps: settings.minimumTargetMarginBps,
+          objectiveTargetMarginBps: settings.objectiveTargetMarginBps,
+        })
+      : null;
+
+    return {
+      id: v.id,
+      code: v.code,
+      color: v.color,
+      size: v.size,
+      price: v.price.toString(),
+      available,
+      productName: v.product.name,
+      categoryName: v.product.category.name,
+      operatesWithBatches: v.batchItems.length > 0,
+      unitRealCost: unitRealCost !== null ? unitRealCost.toFixed(4) : null,
+      minimumPrice: pricing ? pricing.minimumPrice.toFixed(2) : null,
+      suggestedPrice: pricing ? pricing.suggestedPrice.toFixed(2) : null,
+      currentMarginPercent: pricing ? pricing.currentMarginPercent : null,
+      costSource,
+    };
+  });
 }
 
 export async function searchCustomersForSaleAction(

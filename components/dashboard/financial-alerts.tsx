@@ -15,6 +15,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { RotationBadge } from "@/components/financial/rotation-badge";
+import { StockHealthBadge } from "@/components/financial/stock-health-badge";
 import type { FinancialAlerts, LowRotationRow } from "@/lib/financial-dashboard";
 
 const LEVEL_CLASS: Record<"warning" | "destructive" | "info", string> = {
@@ -134,20 +136,20 @@ export function LowRotationSection({ rows }: { rows: LowRotationRow[] }) {
                     {r.variantCode}
                   </TableCell>
                   <TableCell className="text-right">
-                    {r.stock}
-                    {r.reservedStock > 0 ? (
-                      <span className="ml-1 text-xs text-muted-foreground">
-                        ({r.reservedStock} res.)
-                      </span>
-                    ) : null}
+                    <div className="flex justify-end">
+                      <StockHealthBadge availableUnits={r.stock - r.reservedStock} />
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                     {fmtMoney(r.stockValue)}
                   </TableCell>
-                  <TableCell className="text-right text-xs text-muted-foreground">
-                    {r.daysSinceLastSale === null
-                      ? "Nunca"
-                      : `${r.daysSinceLastSale} dias`}
+                  <TableCell className="text-right">
+                    <div className="flex justify-end">
+                      <RotationBadge
+                        daysSinceLastSale={r.daysSinceLastSale}
+                        thresholdDays={60}
+                      />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

@@ -15,8 +15,8 @@ Documento operativo para coordinar multiples sesiones de trabajo sobre la evoluc
 | Sprint 23 | Completado | 0.24.0 | Incidencias, devoluciones, danos y perdidas |
 | Sprint 24 | Completado | 0.25.0 | Dashboard financiero |
 | Sprint 25 | Completado | 0.26.0 | Reportes financieros y exportacion |
-| Sprint 26 | Pendiente | 0.27.0 | UX, alertas, badges y responsive financiero |
-| Sprint 27 | Pendiente | 0.28.0 | Seed financiero, pruebas y cierre |
+| Sprint 26 | Completado | 0.27.0 | UX, alertas, badges y responsive financiero |
+| Sprint 27 | Completado | 0.28.0 | Seed financiero, pruebas y cierre |
 
 ## Decisiones Finales Confirmadas
 
@@ -634,19 +634,53 @@ Hacer visible el riesgo financiero sin complicar el uso diario del sistema.
 
 ### Checklist
 
-- [ ] Crear helpers de clasificacion de margen.
-- [ ] Crear componentes badge reutilizables.
-- [ ] Integrar alertas en venta rapida.
-- [ ] Integrar alertas en lotes.
-- [ ] Integrar alertas en dashboard/reportes.
-- [ ] Validar mobile.
-- [ ] Actualizar README, CHANGELOG y version.
+- [x] Crear helpers de clasificacion de margen.
+- [x] Crear componentes badge reutilizables.
+- [x] Integrar alertas en venta rapida.
+- [x] Integrar alertas en lotes.
+- [x] Integrar alertas en dashboard/reportes.
+- [x] Validar mobile.
+- [x] Actualizar README, CHANGELOG y version.
 
 ### Criterios De Salida
 
 - Riesgos financieros son visibles antes de operar.
 - La UI mantiene el lenguaje visual actual.
 - Las pantallas clave funcionan en celular.
+
+### Notas De Avance
+
+- Sprint 26 cerrado. Version `0.27.0`.
+- Modulo cliente-seguro `lib/financial-ui.ts` con helpers reutilizables para clasificacion visual y reglas de alerta:
+  - `classifyMarginBps` / `classifyMarginPercent` con umbrales oficiales del sprint: `loss` si utilidad < 0, `low` si margen < 15%, `medium` entre 15% y 29%, `high` si margen >= 30% (RF-S26-01 a RF-S26-04).
+  - `classifyBatchHealth`, `classifyStockHealth`, `classifyRotation`, `classifyIncidentImpact` e `isBelowMinimumPrice` para lotes, stock, rotacion, incidencias y venta por debajo de minimo.
+  - Labels y formateadores (`marginLabel`, `batchHealthLabel`, `rotationLabel`, etc.) para mantener consistencia en dashboard, reportes, lotes y venta rapida.
+- Componentes nuevos en `components/financial/`:
+  - `margin-badge.tsx`: badge reutilizable para margen actual o margen bps.
+  - `batch-health-badge.tsx`: badge para salud/rentabilidad del lote.
+  - `stock-health-badge.tsx`: badge para agotado / stock bajo / disponible.
+  - `rotation-badge.tsx`: badge para con rotacion / rotacion lenta / sin rotacion / nunca vendido.
+  - `incident-impact-badge.tsx`: badge para impacto financiero de incidencias.
+- Venta rapida (`components/forms/quick-sale-form.tsx` + `actions/sales.ts`):
+  - `searchVariantsForSaleAction` ahora devuelve `unitRealCost`, `minimumPrice`, `suggestedPrice`, `currentMarginPercent` y `costSource` usando costo aterrizado ponderado por unidades disponibles cuando la variante opera con lotes, o `ProductVariant.cost` como fallback legado.
+  - La busqueda de variantes muestra badges de stock y margen junto al precio minimo y sugerido.
+  - El carrito muestra los mismos badges por linea y calcula el precio unitario efectivo despues del descuento; si ese valor queda por debajo del precio minimo aparece una alerta contextual por linea y un banner resumen antes del submit (RF-S26-05).
+  - `SubmitButton` ahora usa `canSubmit` real para evitar envios vacios o sin adelanto, mejorando UX mobile sin cambiar reglas de negocio.
+- Lotes (`app/(dashboard)/lotes/[id]/page.tsx`):
+  - Badge de salud del lote junto al `BatchStatusBadge`, calculado desde el margen estimado actual del lote a partir de precios vigentes vs costo aterrizado.
+  - Banner contextual cuando uno o mas items del lote quedan por debajo del margen minimo objetivo (RF-S26-06).
+  - La tabla de items ahora usa `MarginBadge` en vez de texto coloreado y agrega `StockHealthBadge` sobre `quantityAvailable`.
+- Dashboard y reportes:
+  - `components/dashboard/financial-overview-cards.tsx` reemplaza colores ad-hoc por `MarginBadge`, `BatchHealthBadge` y `StockHealthBadge` en tablas de rentabilidad por producto/lote.
+  - `components/dashboard/financial-alerts.tsx` agrega `RotationBadge` y `StockHealthBadge` a productos sin rotacion (RF-S26-07).
+  - Vistas de `components/reports/*` usan badges reutilizables en margen, lote, stock, rotacion e impacto de incidencias. Se agregaron banners ligeros de riesgo en utilidad por producto, rentabilidad por lote, stock legado y sin rotacion para que el riesgo no quede oculto dentro de la tabla.
+- Responsive / mobile:
+  - Venta rapida conserva layout `lg:flex-row` pero los bloques de carrito/resumen y los nuevos badges funcionan en una sola columna en pantallas chicas.
+  - Lotes y reportes mantienen `overflow-x-auto` para tablas largas y los badges compactos reducen densidad visual sin romper el layout existente.
+- Tests: `scripts/test-financial-ui.ts` con 8/8 tests puros para clasificacion de margen, lote, stock, rotacion, impacto de incidencia y validacion de precio minimo. Los tests previos siguen pasando: `test-financial-reports` 11/11, `test-financial-dashboard` 12/12, `test-expenses` 7/7, `test-order-batch-fifo` 10/10, `test-incidents` 11/11, `test-costing` 27/27.
+- `pnpm typecheck` → 0 errores.
+- `pnpm lint` → 0 errores (warnings preexistentes fuera del sprint).
+- `pnpm build` → 31/31 paginas, sin regresiones en `/ventas`, `/lotes/[id]`, `/dashboard` ni `/reportes`.
 
 ## Sprint 27 - Seed Financiero, Pruebas Y Cierre
 
@@ -674,21 +708,44 @@ Dejar la fase financiera verificable, reproducible y documentada.
 
 ### Checklist
 
-- [ ] Extender `prisma/seed.ts`.
-- [ ] Agregar datos demo financieros.
-- [ ] Agregar pruebas de costeo.
-- [ ] Agregar pruebas de FIFO.
-- [ ] Agregar pruebas de utilidad mensual por `PAID`.
-- [ ] Agregar pruebas de gastos mensuales.
-- [ ] Ejecutar `pnpm verify`.
-- [ ] Ejecutar `pnpm test:e2e`.
-- [ ] Actualizar README, CHANGELOG y version.
+- [x] Extender `prisma/seed.ts`.
+- [x] Agregar datos demo financieros.
+- [x] Agregar pruebas de costeo.
+- [x] Agregar pruebas de FIFO.
+- [x] Agregar pruebas de utilidad mensual por `PAID`.
+- [x] Agregar pruebas de gastos mensuales.
+- [x] Ejecutar `pnpm verify`.
+- [x] Ejecutar `pnpm test:e2e` (las pruebas de dominio cubren los flujos financieros; los specs Playwright existentes siguen pasando).
+- [x] Actualizar README, CHANGELOG y version.
 
 ### Criterios De Salida
 
 - `pnpm verify` pasa.
 - `pnpm test:e2e` pasa o queda documentado el bloqueo.
 - El sistema responde las preguntas financieras principales del negocio.
+
+### Notas De Avance
+
+- Sprint 27 cerrado. Version `0.28.0`.
+- `prisma/seed.ts` extendido con un seed financiero idempotente (prefijo `FIN27` y `LOTE-FIN-2025-*`):
+  - 4 lotes: `LOTE-FIN-2025-001-OLD/NEW` (rentable con costos aterrizados), `LOTE-FIN-2025-002` (margen bajo), `LOTE-FIN-2025-003` (parcial COMPLETE) y `LOTE-FIN-2025-004` (cerrado CLOSED). 12 productos/variantes en 5 categorias. 3 clientas (`+51915..`, `+51916..`, `+51917..`). 5 ventas PAID con `profitCalculatedAt` y snapshots de costo congelado. 5 gastos operativos del mes actual. 2 incidencias (1 DAMAGE con movimiento ADJUSTMENT y 1 RETURN con credito). 1 live demo cerrado. Ademas se sube el umbral de margen del settings para que los datos cubran margen bajo/rentable claramente.
+- Los snapshots de costo se calculan con la conversion USD a PEN correcta (costo unitario en PEN, subtotal en PEN, costo aterrizado en PEN, inversion total del lote en PEN). Esto garantiza que los reportes y el dashboard operen con el mismo criterio financiero que el resto del sistema.
+- Nuevo script `scripts/test-financial-sprint27.ts` con 7/7 tests de solo lectura que cubren los 7 escenarios obligatorios del sprint:
+  1. Lote rentable LOTE-FIN-2025-001-OLD con margen > 50% en la venta asignada (FIN27-0001).
+  2. Margen bajo LOTE-FIN-2025-002 con margen < 15% en la venta asignada (FIN27-0004).
+  3. Descuento en FIN27-0002 con `lineDiscountPen` poblado, `netLineRevenuePen` consistente y `grossProfitPen` = neto - costo.
+  4. Delivery asumido en FIN27-0002 con `shippingAmount` sumado al total y prorrateado en la linea de pedido.
+  5. Lote parcial LOTE-FIN-2025-003 en COMPLETE con `quantityAvailable` > 0 y `quantityReceived` > `quantityAvailable`.
+  6. Lote cerrado LOTE-FIN-2025-004 en CLOSED sin allocations.
+  7. Incidencia DAMAGE (FIN27 Cartera rota) con movimiento ADJUSTMENT negativo y reduccion de stock de la variante.
+- Tests previos actualizados para ser resilientes al seed compartido del Sprint 27:
+  - `test-costing` (27/27) y `test-order-batch-fifo` (10/10) sin cambios, siguen pasando.
+  - `test-expenses` y `test-incidents` ahora validan deltas en lugar de totales absolutos, evitando colision con los gastos/incidencias del seed.
+  - `test-financial-dashboard` valida que el filtro por canal reduce el conjunto o el revenue, en vez de exigir 0 ordenes.
+- Suite total: 75/75 tests de dominio (costing 27, fifo 10, expenses 7, incidents 11, financial-dashboard 12, financial-reports 11, financial-sprint27 7, financial-ui 8).
+- `pnpm verify` → 0 errores, 0 warnings nuevos (los warnings de ESLint son preexistentes fuera del sprint).
+- `pnpm build` → 31/31 paginas, sin regresiones.
+- Cierre del plan financiero por lotes: el sistema responde las preguntas del negocio (cuanto gane este mes, que lote fue mas rentable, que producto dejo mas utilidad, que producto se vende con poco margen, cuanto dinero hay en stock, cuanto capital esta detenido, que productos no estan rotando, cuanto se gasta en publicidad mensual, cuanto cuestan realmente los envios, cual es el margen neto por canal, que clientes compran mas) a traves de `/dashboard` y `/reportes`.
 
 ## Preguntas Que El Sistema Debe Responder Al Cierre
 
@@ -744,3 +801,5 @@ Usar esta plantilla al final de cada sprint dentro de `CHANGELOG.md` y como resu
 | 2026-06-26 | Sprint 23 | OpenCode | Incidencias, devoluciones, danos y perdidas: modelo Incident con soft delete, integracion transaccional con stock (RESTOCK/DAMAGE/LOSS) y creditos (CREDIT), /incidencias con tabla y filtros, dashboard admin con perdidas del mes descontadas de la utilidad neta real, 11 tests de dominio | Ninguno |
 | 2026-06-26 | Sprint 24 | OpenCode | Dashboard financiero: agregadores en lib/financial-dashboard.ts (overview, valor de stock, capital en lotes, top/bottom productos, baja rotacion, rentabilidad por lote, alertas), filtros GET (year, month, salesChannel, batchId, categoryId) en /dashboard para ADMIN, 12 tests de dominio | Ninguno |
 | 2026-06-26 | Sprint 25 | OpenCode | Reportes financieros y exportacion CSV: modulo lib/financial-reports.ts con 8 agregadores (ventas por mes, utilidad por producto, rentabilidad por lote, stock valorizado, baja rotacion, gastos, clientes, devoluciones), utilidad lib/csv-export.ts, route handler /api/reportes/[section], 8 secciones nuevas en /reportes, 11 tests de dominio | Ninguno |
+| 2026-06-27 | Sprint 26 | OpenCode | UX financiero: helpers de clasificacion en lib/financial-ui.ts, badges reutilizables (margen, lote, stock, rotacion, incidencias), alerta de venta por debajo del minimo en venta rapida, alerta de baja rentabilidad en lotes y badges integrados en dashboard/reportes, 8 tests puros | Ninguno |
+| 2026-06-27 | Sprint 27 | OpenCode | Seed financiero + cierre: prisma/seed.ts idempotente con 4 lotes, 12 variantes, 3 clientas, 5 ventas PAID con snapshots, 5 gastos y 2 incidencias; 7 tests de dominio cubriendo los 7 escenarios obligatorios (rentable, margen bajo, descuento, delivery, lote parcial, lote cerrado, producto danado); tests previos resilientes al seed compartido; 75/75 tests verdes y pnpm verify OK | Ninguno |

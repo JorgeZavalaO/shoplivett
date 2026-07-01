@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CsvDownloadButton } from "@/components/reports/csv-download-button";
+import { MarginBadge } from "@/components/financial/margin-badge";
 import type { SalesByMonthReport } from "@/lib/financial-reports";
 
 function fmtMoney(value: string): string {
@@ -124,16 +125,10 @@ export function SalesByMonthView({
                       >
                         {fmtMoney(r.netProfit)}
                       </TableCell>
-                      <TableCell
-                        className={`text-right ${
-                          r.marginBps < 0
-                            ? "text-destructive"
-                            : r.marginBps < 1500
-                              ? "text-amber-600"
-                              : ""
-                        }`}
-                      >
-                        {fmtPct(r.marginBps)}
+                      <TableCell className="text-right">
+                        <div className="flex justify-end">
+                          <MarginBadge bps={r.marginBps} />
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

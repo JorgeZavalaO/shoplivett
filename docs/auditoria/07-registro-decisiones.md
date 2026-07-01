@@ -1,0 +1,19 @@
+# 07 - Registro de decisiones tecnicas
+
+Este archivo conserva decisiones tomadas durante y despues de la auditoria. No reemplaza ADRs formales si el equipo decide crearlos; funciona como registro inicial trazable.
+
+| Fecha | Decision | Contexto | Alternativas consideradas | Motivo de la decision | Impacto | Estado |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2026-07-01 | Crear documentacion persistente de auditoria | La auditoria inicial estaba en la conversacion y podia perderse o quedar desconectada del repo. | Mantener solo respuesta conversacional; crear issues externos; crear docs en repo. | El repositorio debe conservar diagnostico, plan y criterios de aceptacion. | La correccion futura puede referenciar IDs y archivos estables. | Aprobada |
+| 2026-07-01 | No modificar codigo durante la fase de documentacion | El objetivo actual es documentar, no corregir. | Corregir bloqueantes inmediatamente; documentar primero. | Separar diagnostico/documentacion de cambios funcionales reduce riesgo y facilita revision. | Solo se permiten archivos Markdown bajo `docs/auditoria/`. | Aprobada |
+| 2026-07-01 | Usar IDs unicos para trazabilidad de hallazgos | Los hallazgos cubren seguridad, datos, arquitectura, performance, UX, testing, produccion y funcionalidades faltantes. | IDs secuenciales globales; IDs por categoria; sin IDs. | Los IDs por categoria facilitan busqueda, backlog, tests y PRs. | Cada tarea y prueba puede referenciar un hallazgo concreto. | Aprobada |
+| 2026-07-01 | No eliminar hallazgos corregidos, solo cambiar estado | La auditoria debe conservar historial de riesgos y correcciones. | Borrar hallazgos al corregir; moverlos a changelog; mantenerlos con estado. | Mantenerlos permite auditoria posterior y evita perder contexto. | `02-hallazgos.md` debe actualizar `Estado`, no borrar secciones. | Aprobada |
+| 2026-07-01 | Priorizar consistencia financiera e inventario antes de nuevas funcionalidades | La auditoria encontro riesgos P0 en pagos, utilidad, stock, lotes e incidencias. | Completar UI pendiente primero; optimizar performance primero; corregir datos primero. | Los errores de datos pueden generar informacion financiera y operativa falsa. | El roadmap inicia por P0 de datos y seguridad. | Propuesta |
+| 2026-07-01 | Tratar produccion como bloqueada hasta resolver P0/P1 | El sistema contiene hallazgos criticos no corregidos. | Deploy parcial; beta interna; no deploy. | Un deploy con datos reales podria corromper stock/utilidad o exponer recibos. | Produccion requiere checklist y aceptacion explicita de riesgos. | Propuesta |
+
+## Reglas para futuras decisiones
+
+* Registrar decisiones que cambien prioridad, alcance o criterio de aceptacion de hallazgos.
+* Si se difiere un hallazgo P0 o P1, registrar decision con motivo, mitigacion y responsable.
+* Si se cambia el modelo de datos de stock, lotes, pagos o creditos, agregar decision antes de implementar.
+* Mantener fechas en formato `YYYY-MM-DD`.

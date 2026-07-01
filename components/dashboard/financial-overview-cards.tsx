@@ -1,4 +1,7 @@
 import { DashboardMetricCard } from "@/components/dashboard/dashboard-metric-card";
+import { BatchHealthBadge } from "@/components/financial/batch-health-badge";
+import { MarginBadge } from "@/components/financial/margin-badge";
+import { StockHealthBadge } from "@/components/financial/stock-health-badge";
 import {
   Card,
   CardContent,
@@ -21,7 +24,6 @@ import type {
   ProductProfitabilityRow,
   StockValuation,
 } from "@/lib/financial-dashboard";
-import { MARGIN_BPS_HIGH_THRESHOLD, MARGIN_BPS_LOW_THRESHOLD } from "@/lib/financial-dashboard-shared";
 
 function fmtMoney(value: string): string {
   return `S/ ${value}`;
@@ -29,13 +31,6 @@ function fmtMoney(value: string): string {
 
 function fmtPct(bps: number): string {
   return `${(bps / 100).toFixed(1)}%`;
-}
-
-function marginTone(bps: number): "destructive" | "warning" | "default" {
-  if (bps < 0) return "destructive";
-  if (bps < MARGIN_BPS_LOW_THRESHOLD) return "destructive";
-  if (bps < MARGIN_BPS_HIGH_THRESHOLD) return "warning";
-  return "default";
 }
 
 export function FinancialOverviewCards({
@@ -275,16 +270,10 @@ export function ProductProfitabilitySection({
                     >
                       {fmtMoney(r.grossProfit)}
                     </TableCell>
-                    <TableCell
-                      className={`text-right ${
-                        marginTone(r.marginBps) === "destructive"
-                          ? "text-destructive"
-                          : marginTone(r.marginBps) === "warning"
-                            ? "text-amber-600"
-                            : ""
-                      }`}
-                    >
-                      {fmtPct(r.marginBps)}
+                    <TableCell className="text-right">
+                      <div className="flex justify-end">
+                        <MarginBadge bps={r.marginBps} />
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -324,6 +313,7 @@ export function BatchProfitabilitySection({
                 <TableHead className="text-right">Utilidad</TableHead>
                 <TableHead className="text-right">Margen</TableHead>
                 <TableHead className="text-right">ROI</TableHead>
+                <TableHead className="text-right">Stock</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -337,7 +327,14 @@ export function BatchProfitabilitySection({
                       {r.batchCode}
                     </a>
                   </TableCell>
-                  <TableCell className="text-xs">{r.status}</TableCell>
+                  <TableCell>
+                    <BatchHealthBadge
+                      status={r.status}
+                      marginBps={r.marginBps}
+                      roiBps={r.roiBps}
+                      availableUnits={r.availableUnits}
+                    />
+                  </TableCell>
                   <TableCell className="text-right">{r.soldUnits}</TableCell>
                   <TableCell className="text-right">
                     {fmtMoney(r.allocatedRevenue)}
@@ -352,10 +349,19 @@ export function BatchProfitabilitySection({
                     {fmtMoney(r.grossProfit)}
                   </TableCell>
                   <TableCell className="text-right">
-                    {fmtPct(r.marginBps)}
+                    <div className="flex justify-end">
+                      <MarginBadge bps={r.marginBps} />
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
-                    {fmtPct(r.roiBps)}
+                    <div className="flex justify-end">
+                      <BatchHealthBadge roiBps={r.roiBps} />
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end">
+                      <StockHealthBadge availableUnits={r.availableUnits} />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

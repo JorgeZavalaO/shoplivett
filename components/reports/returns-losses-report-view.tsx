@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CsvDownloadButton } from "@/components/reports/csv-download-button";
+import { IncidentImpactBadge } from "@/components/financial/incident-impact-badge";
 import type { ReturnsLossesReport } from "@/lib/financial-reports";
 
 function fmtMoney(value: string): string {
@@ -71,6 +72,7 @@ export function ReturnsLossesReportView({
                     <TableHead>Fecha</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Estado</TableHead>
+                    <TableHead>Impacto</TableHead>
                     <TableHead>Decision</TableHead>
                     <TableHead>Pedido</TableHead>
                     <TableHead>Producto</TableHead>
@@ -89,6 +91,13 @@ export function ReturnsLossesReportView({
                       </TableCell>
                       <TableCell className="text-xs">{r.typeLabel}</TableCell>
                       <TableCell className="text-xs">{r.status}</TableCell>
+                      <TableCell>
+                        <IncidentImpactBadge
+                          status={r.status}
+                          lostCents={r.lostCents}
+                          recoveredCents={r.recoveredCents}
+                        />
+                      </TableCell>
                       <TableCell className="text-xs">{r.decisionLabel}</TableCell>
                       <TableCell className="font-mono text-xs">
                         {r.orderNumber ?? "—"}
