@@ -69,12 +69,27 @@ const getCachedSettings = unstable_cache(loadSettings, [SETTINGS_CACHE_TAG], {
   tags: [SETTINGS_CACHE_TAG],
 });
 
+function isMissingIncrementalCache(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("incrementalCache missing");
+}
+
+async function getSettingsWithRuntimeFallback(): Promise<PrismaBusinessSettings> {
+  try {
+    return await getCachedSettings();
+  } catch (error) {
+    // Scripts y pruebas de dominio corren fuera del runtime de Next, donde
+    // unstable_cache no tiene incrementalCache disponible.
+    if (isMissingIncrementalCache(error)) return loadSettings();
+    throw error;
+  }
+}
+
 export async function getSettings(): Promise<PrismaBusinessSettings> {
-  return getCachedSettings();
+  return getSettingsWithRuntimeFallback();
 }
 
 export async function requireSettings(): Promise<PrismaBusinessSettings> {
-  return getCachedSettings();
+  return getSettingsWithRuntimeFallback();
 }
 
 /**

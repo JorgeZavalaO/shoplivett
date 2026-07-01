@@ -8,7 +8,7 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 
 | Prueba | Que valida | Modulo afectado | Hallazgo cubierto | Tipo de test | Criterio de exito |
 | --- | --- | --- | --- | --- | --- |
-| Validacion de pago que cierra pedido | El pago actual se incluye en fees y utilidad neta. | Pagos, utilidad, reportes | `AUD-DATA-001` | Integracion/e2e | `paymentFeePen` y `netProfitPen` son correctos al quedar `PAID`. |
+| Validacion de pago que cierra pedido | El pago actual se incluye en fees y utilidad neta. | Pagos, utilidad, reportes | `AUD-DATA-001` | Integracion/e2e; regresion en `e2e/flows.spec.ts` | `paymentFeePen` y `netProfitPen` son correctos al quedar `PAID`. |
 | Pago parcial a pagado con credito/sobrepago | Excedentes no rompen utilidad ni aplicaciones. | Pagos, creditos | `AUD-DATA-001`, `AUD-FUNC-002` | Integracion | Excedente se registra segun tratamiento y utilidad queda correcta. |
 | Incidencia `RETURN + RESTOCK` | Disponibilidad aumenta exactamente por unidades devueltas. | Incidencias, inventario | `AUD-DATA-002`, `AUD-DATA-003` | Integracion | Stock disponible cambia en `+qty`, no en `+2qty`. |
 | Cancelacion de incidencia con stock | Cancelar incidencia no deja movimientos incoherentes. | Incidencias, inventario | `AUD-DATA-002` | Integracion | Se revierte efecto o se bloquea cancelacion segun regla. |
@@ -25,7 +25,7 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 | Matriz de rutas por rol | Cada rol puede abrir solo rutas autorizadas. | Autorizacion | `AUD-SEC-004`, `AUD-SEC-005`, `AUD-UX-002`, `AUD-UX-003` | E2E | ADMIN/SELLER/DISPATCH cumplen matriz esperada. |
 | Server actions por rol | Actions criticas rechazan roles no autorizados. | Actions | `AUD-SEC-005`, `AUD-TEST-004` | Integracion | Mutaciones protegidas no ejecutan para roles incorrectos. |
 | Acceso anonimo a recibo de pago | Capturas no son publicas. | Archivos, pagos | `AUD-SEC-003` | E2E/manual | URL o endpoint de recibo rechaza anonimos. |
-| CI E2E con base correcta | Workflow crea/apunta a DB existente. | CI, deploy | `AUD-PROD-001` | CI | `db:push`, seed y Playwright terminan exitosamente. |
+| CI E2E con base correcta | Workflow crea/apunta a DB existente. | CI, deploy | `AUD-PROD-001` | CI; workflow agregado, pendiente corrida real | `db:push`, seed y Playwright terminan exitosamente. |
 | Reenvio tras envio cancelado | Pedido puede incluirse en nuevo envio despues de cancelar anterior. | Envios | `AUD-DATA-008` | Integracion/e2e | No hay error de unique y no hay dos envios activos. |
 | Descuento en venta | Snapshots financieros reflejan descuento. | Ventas, reportes | `AUD-DATA-007` | Integracion | `lineDiscountPen` y utilidad por linea son correctos. |
 | Costo unitario 4 decimales | Costos aterrizados se redondean correctamente. | Lotes, utilidad | `AUD-DATA-009` | Unitario/integracion | Subtotal de costo coincide con regla definida. |
