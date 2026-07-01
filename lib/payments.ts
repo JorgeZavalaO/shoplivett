@@ -399,6 +399,20 @@ export async function validatePayment(
           }
         }
 
+        // El reconocimiento de utilidad consulta pagos VALIDATED; marcar el
+        // pago dentro de la misma transaccion antes de cerrar pedidos PAID.
+        await tx.payment.update({
+          where: { id: input.paymentId },
+          data: {
+            status: "VALIDATED",
+            validatedAt: new Date(),
+            validatedById: input.validatedById ?? null,
+            rejectedAt: null,
+            rejectedById: null,
+            rejectionReason: null,
+          },
+        });
+
         // Aplicar montos a pedidos respetando el balance real.
         for (const app of payment.applications) {
           const summary = await summarizeOrder(tx, app.orderId);
@@ -463,18 +477,6 @@ export async function validatePayment(
             },
           });
         }
-
-        await tx.payment.update({
-          where: { id: input.paymentId },
-          data: {
-            status: "VALIDATED",
-            validatedAt: new Date(),
-            validatedById: input.validatedById ?? null,
-            rejectedAt: null,
-            rejectedById: null,
-            rejectionReason: null,
-          },
-        });
 
         await auditInTx(tx, input.actorId ?? input.validatedById ?? null, {
           action: "PAYMENT_VALIDATED",

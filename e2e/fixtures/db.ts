@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 
 // Las pruebas E2E deben correr contra una base de datos aislada para no
@@ -14,7 +15,14 @@ if (e2eDirect && !process.env.DIRECT_URL) {
   process.env.DIRECT_URL = e2eDirect;
 }
 
-export const prisma = new PrismaClient();
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error("DATABASE_URL no esta definida para las pruebas E2E.");
+}
+
+export const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString }),
+});
 
 const stamp = Date.now();
 const TEST_PREFIX = `E2E-${stamp}`;

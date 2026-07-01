@@ -14,6 +14,7 @@ import {
 } from "../lib/payments";
 import { createShipment } from "../lib/shipments";
 import { expireReservation } from "../lib/order-expiry";
+import { coercePaymentMethodFees } from "../lib/settings-defaults";
 
 test.afterAll(async () => {
   await cleanupTestData();
@@ -75,6 +76,52 @@ test.describe("Sprint 15 — Flujos obligatorios", () => {
       where: { id: variant2.id },
     });
     expect(Number(sold?.soldStock)).toBe(1);
+  });
+
+  test("AUD-DATA-001 — Validar pago completo incluye comisión del pago actual en utilidad", async () => {
+    const { user } = await getAdmin();
+    const customer = await createTestCustomer("AUD001");
+    const variant = await createTestProductWithStock("AUD001", 5);
+    const settings = await prisma.businessSettings.findUnique({ where: { id: "default" } });
+    const previousFees = coercePaymentMethodFees(settings?.paymentMethodFees);
+    const previousPackaging = settings?.standardPackagingCostPen?.toString() ?? "2.00";
+
+    try {
+      await prisma.businessSettings.update({
+        where: { id: "default" },
+        data: {
+          paymentMethodFees: { YAPE: 300, PLIN: 0, CASH: 0, OTHER: 0 },
+          standardPackagingCostPen: "2.00",
+        },
+      });
+
+      const order = await createQuickSale({
+        customerId: customer.id,
+        items: [{ variantId: variant.id, quantity: 1 }],
+        discount: "0",
+        shippingAmount: "0",
+        advanceAmount: "100",
+        paymentMethod: "YAPE",
+        actorId: user.id,
+      });
+
+      await validatePayment({ paymentId: order.paymentId, actorId: user.id });
+
+      const paidOrder = await prisma.order.findUnique({ where: { id: order.orderId } });
+      expect(paidOrder?.status).toBe("PAID");
+      expect(Number(paidOrder?.grossProfitPen.toString())).toBeCloseTo(60, 2);
+      expect(Number(paidOrder?.paymentFeePen.toString())).toBeCloseTo(3, 2);
+      expect(Number(paidOrder?.packagingCostPen.toString())).toBeCloseTo(2, 2);
+      expect(Number(paidOrder?.netProfitPen.toString())).toBeCloseTo(55, 2);
+    } finally {
+      await prisma.businessSettings.update({
+        where: { id: "default" },
+        data: {
+          paymentMethodFees: previousFees,
+          standardPackagingCostPen: previousPackaging,
+        },
+      });
+    }
   });
 
   test("RF-S15-03 — Pago aplicado a varios pedidos", async () => {

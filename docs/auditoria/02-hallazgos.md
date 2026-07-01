@@ -169,7 +169,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 * Titulo: `paymentFeePen` excluye el pago que esta validando.
 * Severidad: Critica.
 * Categoria: Datos.
-* Estado: Pendiente.
+* Estado: Corregido.
 * Archivo, ruta o modulo afectado: `lib/payments.ts`, `lib/order-batch-allocation.ts`.
 * Descripcion: la utilidad se reconoce antes de actualizar el pago a `VALIDATED`.
 * Evidencia encontrada: `lib/payments.ts:418-430`, `lib/payments.ts:467-477`, `lib/order-batch-allocation.ts:450-452`, `lib/order-batch-allocation.ts:469-488`.
@@ -178,7 +178,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 * Criterios de aceptacion: pedido que queda `PAID` incluye fees del pago actual; test de regresion cubre cierre por pago.
 * Tests recomendados: dominio/integracion de `validatePayment()` y reporte financiero.
 * Dependencias: ninguna.
-* Observaciones: P0.
+* Observaciones: P0. Corregido reordenando `validatePayment()` para marcar el pago como `VALIDATED` antes de reconocer utilidad en pedidos que pasan a `PAID`. Regresion agregada en `e2e/flows.spec.ts` y validada con script temporal de dominio (`paymentFeePen=3.00`, `netProfitPen=55.00`).
 
 ### AUD-DATA-002 - Cancelacion de incidencias no revierte efectos
 
@@ -1080,7 +1080,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 * Titulo: GitHub Actions crea `ci` pero E2E apunta a `ci_e2e`.
 * Severidad: Critica.
 * Categoria: Produccion.
-* Estado: Pendiente.
+* Estado: En progreso.
 * Archivo, ruta o modulo afectado: `.github/workflows/ci.yml`.
 * Descripcion: servicio Postgres crea una DB distinta a la del `DATABASE_URL` E2E.
 * Evidencia encontrada: `.github/workflows/ci.yml:45-50`, `.github/workflows/ci.yml:59-60`, `.github/workflows/ci.yml:79`.
@@ -1089,7 +1089,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 * Criterios de aceptacion: CI E2E corre schema, seed y tests contra DB existente.
 * Tests recomendados: ejecutar workflow.
 * Dependencias: ninguna.
-* Observaciones: P0/P1.
+* Observaciones: P0/P1. Se ajusto `.github/workflows/ci.yml` para que E2E use la misma base `ci` que crea Postgres y se agregaron URLs `E2E_*` alineadas. Tambien se ajusto el fixture E2E para Prisma 7 con `@prisma/adapter-pg` y `lib/settings.ts` para permitir pruebas de dominio fuera del runtime Next. Pendiente marcar `Corregido` cuando GitHub Actions ejecute el workflow completo.
 
 ### AUD-PROD-002 - No hay `vercel.json`
 
