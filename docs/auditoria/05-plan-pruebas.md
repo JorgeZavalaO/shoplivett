@@ -8,7 +8,7 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 
 | Prueba | Que valida | Modulo afectado | Hallazgo cubierto | Tipo de test | Criterio de exito |
 | --- | --- | --- | --- | --- | --- |
-| Validacion de pago que cierra pedido | El pago actual se incluye en fees y utilidad neta. | Pagos, utilidad, reportes | `AUD-DATA-001` | Integracion/e2e | `paymentFeePen` y `netProfitPen` son correctos al quedar `PAID`. |
+| Validacion de pago que cierra pedido | El pago actual se incluye en fees y utilidad neta. | Pagos, utilidad, reportes | `AUD-DATA-001` | Integracion/e2e; regresion en `e2e/flows.spec.ts` | `paymentFeePen` y `netProfitPen` son correctos al quedar `PAID`. |
 | Pago parcial a pagado con credito/sobrepago | Excedentes no rompen utilidad ni aplicaciones. | Pagos, creditos | `AUD-DATA-001`, `AUD-FUNC-002` | Integracion | Excedente se registra segun tratamiento y utilidad queda correcta. |
 | Incidencia `RETURN + RESTOCK` | Disponibilidad aumenta exactamente por unidades devueltas. | Incidencias, inventario | `AUD-DATA-002`, `AUD-DATA-003` | Integracion | Stock disponible cambia en `+qty`, no en `+2qty`. |
 | Cancelacion de incidencia con stock | Cancelar incidencia no deja movimientos incoherentes. | Incidencias, inventario | `AUD-DATA-002` | Integracion | Se revierte efecto o se bloquea cancelacion segun regla. |
