@@ -789,6 +789,19 @@ model Incident {
   @@index([type, incidentDate])
 }
 
+model LoginRateLimit {
+  id             String    @id @default(cuid())
+  key            String    @unique
+  failedAttempts Int       @default(0)
+  windowStart    DateTime
+  blockedUntil   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([blockedUntil])
+  @@index([updatedAt])
+}
+
 model AuditLog {
   id        String      @id @default(cuid())
   action    AuditAction

@@ -14,7 +14,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 * Titulo: Usuarios desactivados o con rol cambiado pueden conservar acceso por JWT.
 * Severidad: Alta.
 * Categoria: Seguridad.
-* Estado: Pendiente.
+* Estado: Corregido.
 * Archivo, ruta o modulo afectado: `auth.ts`.
 * Descripcion: el callback JWT solo reconsulta `role/isActive` en `trigger === "update"` o si falta rol en el token.
 * Evidencia encontrada: `auth.ts:75-87`.
@@ -39,8 +39,8 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 * Recomendacion: rate limit serverless por IP+email, backoff progresivo y auditoria de fallos.
 * Criterios de aceptacion: intentos repetidos quedan limitados; respuesta no revela si existe el email.
 * Tests recomendados: integracion/manual de multiples intentos fallidos; test de reset de ventana.
-* Dependencias: elegir backend de rate limit compatible con Vercel.
-* Observaciones: evitar rate limit solo en memoria.
+* Dependencias: resuelta con backend PostgreSQL via Prisma.
+* Observaciones: se agrego rate limit por hash de email+IP en `LoginRateLimit`, aplicado antes de lookup/bcrypt en `auth.ts`; la respuesta sigue siendo generica. Regresion agregada en `scripts/test-auth-rate-limit.ts`.
 
 ### AUD-SEC-003 - Capturas de pago publicas
 
@@ -1080,7 +1080,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 * Titulo: GitHub Actions crea `ci` pero E2E apunta a `ci_e2e`.
 * Severidad: Critica.
 * Categoria: Produccion.
-* Estado: Pendiente.
+* Estado: Corregido.
 * Archivo, ruta o modulo afectado: `.github/workflows/ci.yml`.
 * Descripcion: servicio Postgres crea una DB distinta a la del `DATABASE_URL` E2E.
 * Evidencia encontrada: `.github/workflows/ci.yml:45-50`, `.github/workflows/ci.yml:59-60`, `.github/workflows/ci.yml:79`.
@@ -1089,7 +1089,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 * Criterios de aceptacion: CI E2E corre schema, seed y tests contra DB existente.
 * Tests recomendados: ejecutar workflow.
 * Dependencias: ninguna.
-* Observaciones: P0/P1.
+* Observaciones: P0/P1. Se ajusto `.github/workflows/ci.yml` para que E2E use la misma base `ci` que crea Postgres y se agregaron URLs `E2E_*` alineadas. Tambien se ajusto el fixture E2E para Prisma 7 con `@prisma/adapter-pg` y `lib/settings.ts` para permitir pruebas de dominio fuera del runtime Next. Corregido tras confirmacion de workflow `CI` exitoso en GitHub Actions.
 
 ### AUD-PROD-002 - No hay `vercel.json`
 

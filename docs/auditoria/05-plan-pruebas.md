@@ -20,12 +20,12 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 | Validar pago contra pedido cerrado | Bloquea aplicaciones a `CANCELLED` o `EXPIRED`. | Pagos, pedidos | `AUD-DATA-014` | Integracion | La validacion falla con mensaje claro. |
 | Cierre de reserva con pago aplicado por `PaymentApplication` | Pagos pendientes aplicados se resuelven correctamente. | Reservas, pagos | `AUD-DATA-013` | Integracion | No quedan pagos pendientes huerfanos. |
 | Cliente bloqueado en venta rapida | El servidor impide venta o exige override aprobado. | Clientes, ventas | `AUD-UX-009` | Integracion/e2e | Venta a `BLOCKED` falla o requiere permiso especial. |
-| Login con multiples intentos fallidos | Rate limiting funciona por IP/email. | Autenticacion | `AUD-SEC-002` | Integracion/manual | Intentos repetidos son limitados sin revelar si el email existe. |
+| Login con multiples intentos fallidos | Rate limiting funciona por IP/email. | Autenticacion | `AUD-SEC-002` | Integracion con `scripts/test-auth-rate-limit.ts`; manual UI recomendado | Intentos repetidos son limitados sin revelar si el email existe. |
 | Usuario desactivado con sesion activa | Sesion queda invalidada segun politica. | Autenticacion, permisos | `AUD-SEC-001` | Integracion/e2e | Usuario desactivado no accede a dashboard ni actions. |
 | Matriz de rutas por rol | Cada rol puede abrir solo rutas autorizadas. | Autorizacion | `AUD-SEC-004`, `AUD-SEC-005`, `AUD-UX-002`, `AUD-UX-003` | E2E | ADMIN/SELLER/DISPATCH cumplen matriz esperada. |
 | Server actions por rol | Actions criticas rechazan roles no autorizados. | Actions | `AUD-SEC-005`, `AUD-TEST-004` | Integracion | Mutaciones protegidas no ejecutan para roles incorrectos. |
 | Acceso anonimo a recibo de pago | Capturas no son publicas. | Archivos, pagos | `AUD-SEC-003` | E2E/manual | URL o endpoint de recibo rechaza anonimos. |
-| CI E2E con base correcta | Workflow crea/apunta a DB existente. | CI, deploy | `AUD-PROD-001` | CI | `db:push`, seed y Playwright terminan exitosamente. |
+| CI E2E con base correcta | Workflow crea/apunta a DB existente. | CI, deploy | `AUD-PROD-001` | CI validado en GitHub Actions | `db:push`, seed y Playwright terminan exitosamente. |
 | Reenvio tras envio cancelado | Pedido puede incluirse en nuevo envio despues de cancelar anterior. | Envios | `AUD-DATA-008` | Integracion/e2e | No hay error de unique y no hay dos envios activos. |
 | Descuento en venta | Snapshots financieros reflejan descuento. | Ventas, reportes | `AUD-DATA-007` | Integracion | `lineDiscountPen` y utilidad por linea son correctos. |
 | Costo unitario 4 decimales | Costos aterrizados se redondean correctamente. | Lotes, utilidad | `AUD-DATA-009` | Unitario/integracion | Subtotal de costo coincide con regla definida. |

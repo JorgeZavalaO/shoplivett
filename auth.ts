@@ -6,6 +6,12 @@ import type { JWT } from "next-auth/jwt";
 import { prisma } from "@/lib/prisma";
 import { LoginSchema } from "@/lib/validations/auth";
 import type { Role } from "@/lib/permissions";
+import {
+  assertLoginAllowed,
+  clearLoginFailures,
+  LoginRateLimitError,
+  recordLoginFailure,
+} from "@/lib/rate-limit";
 
 declare module "next-auth" {
   interface Session {
@@ -42,18 +48,34 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         email: { label: "Correo", type: "email" },
         password: { label: "Contraseña", type: "password" },
       },
-      async authorize(rawCredentials) {
+      async authorize(rawCredentials, request) {
         const parsed = LoginSchema.safeParse(rawCredentials);
         if (!parsed.success) return null;
 
         const { email, password } = parsed.data;
+        let rateLimit;
+        try {
+          rateLimit = await assertLoginAllowed({ email, request });
+        } catch (error) {
+          if (error instanceof LoginRateLimitError) return null;
+          throw error;
+        }
+
         const user = await prisma.user.findUnique({
           where: { email: email.toLowerCase() },
         });
-        if (!user || !user.isActive) return null;
+        if (!user || !user.isActive) {
+          await recordLoginFailure(rateLimit);
+          return null;
+        }
 
         const passwordOk = await bcrypt.compare(password, user.passwordHash);
-        if (!passwordOk) return null;
+        if (!passwordOk) {
+          await recordLoginFailure(rateLimit);
+          return null;
+        }
+
+        await clearLoginFailures(rateLimit);
 
         return {
           id: user.id,
