@@ -1,8 +1,8 @@
 // Modulo de dominio para Incidents (Sprint 23).
 //
 // Casos soportados:
-//  - RETURN con RESTOCK: se devuelve mercaderia en buen estado a stock
-//    (incrementa `stock` y reduce `soldStock` si la venta ya estaba confirmada).
+//  - RETURN con RESTOCK: se devuelve mercaderia en buen estado a disponible
+//    reduciendo `soldStock` (stock total no cambia).
 //  - RETURN con CREDIT: se crea un CustomerCredit con origin MANUAL.
 //  - RETURN con REPLACE/DISCARDED: solo registro.
 //  - DAMAGE/LOSS en stock propio (sin pedido): se reduce `stock` y se registra
@@ -192,6 +192,7 @@ export class IncidentError extends Error {
       | "ALREADY_RESOLVED"
       | "ALREADY_CANCELLED"
       | "CREDIT_DISABLED"
+      | "CREDIT_ALREADY_USED"
       | "CONFLICT",
   ) {
     super(message);
@@ -439,56 +440,24 @@ export async function createIncident(
         if (input.decision === "RESTOCK" && variant && (input.restockQuantity ?? 0) > 0) {
           const qty = input.restockQuantity ?? 0;
           if (qty > variant.soldStock) {
-            // Si no hay unidades vendidas suficientes, devolvemos al stock
-            // total lo que se pueda.
-            const toSold = Math.min(qty, variant.soldStock);
-            const toStock = qty - toSold;
-            await tx.productVariant.update({
-              where: { id: variant.id },
-              data: {
-                stock: { increment: toStock },
-                soldStock: { decrement: toSold },
-              },
-            });
-            if (toSold > 0) {
-              await tx.inventoryMovement.create({
-                data: {
-                  variantId: variant.id,
-                  type: "IN",
-                  quantity: toSold,
-                  reason: `Incidencia ${incident.id} - devolucion a stock`,
-                },
-              });
-            }
-            if (toStock > 0) {
-              await tx.inventoryMovement.create({
-                data: {
-                  variantId: variant.id,
-                  type: "IN",
-                  quantity: toStock,
-                  reason: `Incidencia ${incident.id} - devolucion a stock`,
-                },
-              });
-            }
-            restockedUnits = qty;
-          } else {
-            await tx.productVariant.update({
-              where: { id: variant.id },
-              data: {
-                stock: { increment: qty },
-                soldStock: { decrement: qty },
-              },
-            });
-            await tx.inventoryMovement.create({
-              data: {
-                variantId: variant.id,
-                type: "IN",
-                quantity: qty,
-                reason: `Incidencia ${incident.id} - devolucion a stock`,
-              },
-            });
-            restockedUnits = qty;
+            throw new IncidentError(
+              `La variante solo tiene ${variant.soldStock} uds vendidas para devolver.`,
+              "INVALID_QUANTITY",
+            );
           }
+          await tx.productVariant.update({
+            where: { id: variant.id },
+            data: { soldStock: { decrement: qty } },
+          });
+          await tx.inventoryMovement.create({
+            data: {
+              variantId: variant.id,
+              type: "IN",
+              quantity: qty,
+              reason: `Incidencia ${incident.id} - devolucion a stock`,
+            },
+          });
+          restockedUnits = qty;
         } else if (
           (input.type === "DAMAGE" || input.type === "LOSS") &&
           variant &&
@@ -598,7 +567,25 @@ export async function resolveIncident(input: {
     return await prisma.$transaction(async (tx) => {
       const existing = await tx.incident.findUnique({
         where: { id: input.incidentId },
-        select: { id: true, status: true },
+        select: {
+          id: true,
+          status: true,
+          type: true,
+          decision: true,
+          orderId: true,
+          quantity: true,
+          restockQuantity: true,
+          variantId: true,
+          creditId: true,
+          credit: {
+            select: {
+              id: true,
+              amount: true,
+              availableAmount: true,
+              applications: { select: { id: true } },
+            },
+          },
+        },
       });
       if (!existing) {
         throw new IncidentError("La incidencia ya no existe.", "INCIDENT_NOT_FOUND");
@@ -654,7 +641,25 @@ export async function cancelIncident(input: {
     return await prisma.$transaction(async (tx) => {
       const existing = await tx.incident.findUnique({
         where: { id: input.incidentId },
-        select: { id: true, status: true },
+        select: {
+          id: true,
+          status: true,
+          type: true,
+          decision: true,
+          orderId: true,
+          quantity: true,
+          restockQuantity: true,
+          variantId: true,
+          creditId: true,
+          credit: {
+            select: {
+              id: true,
+              amount: true,
+              availableAmount: true,
+              applications: { select: { id: true } },
+            },
+          },
+        },
       });
       if (!existing) {
         throw new IncidentError("La incidencia ya no existe.", "INCIDENT_NOT_FOUND");
@@ -672,6 +677,81 @@ export async function cancelIncident(input: {
         );
       }
 
+      const metadata: Record<string, unknown> = { reason: input.reason };
+
+      if (existing.decision === "RESTOCK" && existing.variantId && existing.restockQuantity > 0) {
+        const variant = await tx.productVariant.findUnique({
+          where: { id: existing.variantId },
+          select: { stock: true, reservedStock: true, soldStock: true },
+        });
+        if (!variant) {
+          throw new IncidentError("La variante ya no existe.", "VARIANT_NOT_FOUND");
+        }
+        const available = variant.stock - variant.reservedStock - variant.soldStock;
+        if (available < existing.restockQuantity) {
+          throw new IncidentError(
+            `No hay stock disponible suficiente para revertir la devolucion (${available} < ${existing.restockQuantity}).`,
+            "INSUFFICIENT_STOCK",
+          );
+        }
+        await tx.productVariant.update({
+          where: { id: existing.variantId },
+          data: { soldStock: { increment: existing.restockQuantity } },
+        });
+        await tx.inventoryMovement.create({
+          data: {
+            variantId: existing.variantId,
+            type: "ADJUSTMENT",
+            quantity: -existing.restockQuantity,
+            reason: `Cancelacion incidencia ${existing.id} - reversa de devolucion`,
+          },
+        });
+        metadata.reversedRestockUnits = existing.restockQuantity;
+      }
+
+      if (
+        (existing.type === "DAMAGE" || existing.type === "LOSS") &&
+        existing.variantId &&
+        !existing.orderId &&
+        existing.quantity > 0
+      ) {
+        await tx.productVariant.update({
+          where: { id: existing.variantId },
+          data: { stock: { increment: existing.quantity } },
+        });
+        await tx.inventoryMovement.create({
+          data: {
+            variantId: existing.variantId,
+            type: "IN",
+            quantity: existing.quantity,
+            reason: `Cancelacion incidencia ${existing.id} - reversa de ${existing.type === "DAMAGE" ? "dano" : "perdida"}`,
+          },
+        });
+        metadata.reversedAdjustmentUnits = existing.quantity;
+      }
+
+      if (existing.creditId && existing.credit) {
+        const amountCents = toCents(existing.credit.amount.toString());
+        const availableCents = toCents(existing.credit.availableAmount.toString());
+        if (existing.credit.applications.length > 0 || availableCents !== amountCents) {
+          throw new IncidentError(
+            "No puedes cancelar una incidencia con credito ya aplicado.",
+            "CREDIT_ALREADY_USED",
+          );
+        }
+        await tx.customerCredit.update({
+          where: { id: existing.creditId },
+          data: {
+            status: "VOIDED",
+            availableAmount: "0.00",
+            refundReason: `Incidencia ${existing.id} cancelada`,
+            refundedAt: new Date(),
+            refundedById: input.actorId,
+          },
+        });
+        metadata.voidedCreditId = existing.creditId;
+      }
+
       await tx.incident.update({
         where: { id: input.incidentId },
         data: {
@@ -686,7 +766,7 @@ export async function cancelIncident(input: {
         action: "INCIDENT_CANCELLED",
         entity: "Incident",
         entityId: input.incidentId,
-        metadata: { reason: input.reason },
+        metadata,
       });
 
       return { incidentId: input.incidentId };

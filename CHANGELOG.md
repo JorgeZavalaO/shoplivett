@@ -5,6 +5,55 @@ Todos los cambios notables de Shoplivett se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0] - Corrección de incidencias y restock
+
+### Cambiado
+- `RETURN + RESTOCK` ahora reduce solo `soldStock` cuando una unidad vuelve desde venta; `ProductVariant.stock` no se incrementa simultáneamente, evitando duplicar disponibilidad (`AUD-DATA-003`).
+- `cancelIncident()` revierte efectos transaccionales (`AUD-DATA-002`):
+  - revierte restock incrementando `soldStock` si hay disponibilidad suficiente;
+  - revierte daño/perdida de inventario propio incrementando `stock`;
+  - anula créditos de incidencia no usados;
+  - bloquea cancelación si el crédito ya fue aplicado (`CREDIT_ALREADY_USED`).
+
+### Auditoría
+- `AUD-DATA-002` y `AUD-DATA-003` quedan marcados como `Corregido`.
+- Se registró la decisión funcional: cancelar incidencias revierte efectos salvo créditos ya usados.
+
+### Verificación
+- `pnpm typecheck`
+- `pnpm exec tsx scripts/_with-env.ts scripts/test-incidents.ts` → 14/14 tests pasan.
+
+## [0.30.0] - Correcciones iniciales de auditoría P0/P1
+
+### Añadido
+- Rate limiting de login persistido en PostgreSQL (`LoginRateLimit`) por hash de email+IP, compatible con despliegues multi-instancia en Vercel.
+- Workflow CI E2E corregido para usar la base PostgreSQL creada por GitHub Actions y variables `E2E_*` alineadas.
+- Regresiones de dominio:
+  - `scripts/test-auth-rate-limit.ts` para bloqueo y reset de intentos fallidos.
+  - `scripts/test-payment-reservation-closure.ts` para pagos contra pedidos cerrados y cierre de reservas con `PaymentApplication`.
+
+### Cambiado
+- `validatePayment()` marca el pago como `VALIDATED` antes de reconocer utilidad, de modo que `paymentFeePen` y `netProfitPen` incluyen el pago que cierra el pedido (`AUD-DATA-001`).
+- `validatePayment()` bloquea pagos aplicados a pedidos `CANCELLED` o `EXPIRED` (`AUD-DATA-014`).
+- `closeUnpaidReservation()` consulta pagos pendientes vinculados por `PaymentApplication`; rechaza pagos exclusivos del pedido cerrado y elimina solo la aplicacion del pedido cerrado en pagos multi-pedido (`AUD-DATA-013`).
+- `e2e/fixtures/db.ts` usa `@prisma/adapter-pg` para Prisma 7.
+- `lib/settings.ts` mantiene cache de Next en runtime y cae a lectura directa solo en scripts/E2E fuera de Next.
+- `package.json`: versión `0.29.0` → `0.30.0`.
+
+### Seguridad
+- El login limita intentos fallidos antes de repetir `bcrypt.compare` y mantiene respuestas genéricas sin revelar existencia de email (`AUD-SEC-002`).
+
+### Auditoría
+- `AUD-DATA-001`, `AUD-PROD-001`, `AUD-SEC-002`, `AUD-DATA-014` y `AUD-DATA-013` quedan marcados como `Corregido` en `docs/auditoria/`.
+- Se registraron decisiones técnicas para settings fuera del runtime Next, backend PostgreSQL de rate limiting y tratamiento de pagos pendientes multi-pedido.
+
+### Verificación
+- `pnpm db:generate`
+- `pnpm db:push`
+- `pnpm exec tsx scripts/_with-env.ts scripts/test-auth-rate-limit.ts`
+- `pnpm exec tsx scripts/_with-env.ts scripts/test-payment-reservation-closure.ts`
+- `pnpm typecheck`
+
 ## [0.29.0] - Auditoría técnica completa y documentación persistente
 
 ### Añadido

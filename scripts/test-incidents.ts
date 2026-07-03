@@ -196,13 +196,13 @@ async function main() {
   );
 
   await run(
-    "createIncident RETURN + RESTOCK devuelve unidades a stock y a soldStock",
+    "createIncident RETURN + RESTOCK aumenta disponible exactamente por unidades devueltas",
     async () => {
-      const variant = await ensureVariant(stamp + 2, 2);
+      const variant = await ensureVariant(stamp + 2, 5);
       // simulamos unidades vendidas
       await prisma.productVariant.update({
         where: { id: variant.id },
-        data: { stock: 2, soldStock: 3 },
+        data: { stock: 5, soldStock: 3 },
       });
       try {
         const result = await createIncident({
@@ -222,8 +222,10 @@ async function main() {
         const updated = await prisma.productVariant.findUnique({
           where: { id: variant.id },
         });
-        assert.equal(updated?.stock, 5, "stock debe haber subido en 3");
+        assert.equal(updated?.stock, 5, "stock total no debe cambiar");
         assert.equal(updated?.soldStock, 0, "soldStock debe haber bajado en 3");
+        const available = (updated?.stock ?? 0) - (updated?.reservedStock ?? 0) - (updated?.soldStock ?? 0);
+        assert.equal(available, 5, "disponible debe subir de 2 a 5, exactamente +3");
         const movement = await prisma.inventoryMovement.findFirst({
           where: { variantId: variant.id, reason: { contains: result.incidentId } },
         });
@@ -239,8 +241,45 @@ async function main() {
         });
         await prisma.productVariant.update({
           where: { id: variant.id },
-          data: { stock: 2, soldStock: 3 },
+          data: { stock: 5, soldStock: 3 },
         });
+      }
+    },
+  );
+
+  await run(
+    "cancelIncident revierte DAMAGE de inventario propio",
+    async () => {
+      const variant = await ensureVariant(stamp + 33, 5);
+      const result = await createIncident({
+        incidentDate: new Date().toISOString(),
+        type: "DAMAGE",
+        decision: "NONE",
+        variantId: variant.id,
+        quantity: 2,
+        description: "ST23 cancel damage reversal",
+        lostAmount: "80.00",
+        recoveredAmount: "0",
+        createdById: admin.id,
+      });
+      try {
+        let updated = await prisma.productVariant.findUnique({ where: { id: variant.id } });
+        assert.equal(updated?.stock, 3);
+
+        await cancelIncident({
+          incidentId: result.incidentId,
+          actorId: admin.id,
+          reason: "Reversa de test",
+        });
+
+        updated = await prisma.productVariant.findUnique({ where: { id: variant.id } });
+        assert.equal(updated?.stock, 5, "stock debe volver al valor inicial");
+        const cancelled = await prisma.incident.findUnique({ where: { id: result.incidentId } });
+        assert.equal(cancelled?.status, "CANCELLED");
+      } finally {
+        await prisma.inventoryMovement.deleteMany({ where: { variantId: variant.id } });
+        await prisma.incident.deleteMany({ where: { id: result.incidentId } });
+        await prisma.productVariant.deleteMany({ where: { id: variant.id } });
       }
     },
   );
@@ -287,6 +326,101 @@ async function main() {
         await prisma.productVariant.deleteMany({
           where: { id: variant.id },
         });
+      }
+    },
+  );
+
+  await run(
+    "cancelIncident anula credito de incidencia si no fue aplicado",
+    async () => {
+      const customer = await ensureCustomer(stamp + 34);
+      const variant = await ensureVariant(stamp + 35, 0);
+      const result = await createIncident({
+        incidentDate: new Date().toISOString(),
+        type: "RETURN",
+        decision: "CREDIT",
+        customerId: customer.id,
+        variantId: variant.id,
+        quantity: 1,
+        description: "ST23 cancel unused credit",
+        recoveredAmount: "50.00",
+        lostAmount: "0",
+        createdById: admin.id,
+      });
+      try {
+        assert.ok(result.creditId);
+        await cancelIncident({
+          incidentId: result.incidentId,
+          actorId: admin.id,
+          reason: "Reversa credito test",
+        });
+        const credit = await prisma.customerCredit.findUnique({ where: { id: result.creditId! } });
+        assert.equal(credit?.status, "VOIDED");
+        assert.equal(Number(credit?.availableAmount.toString()), 0);
+      } finally {
+        await prisma.incident.deleteMany({ where: { id: result.incidentId } });
+        if (result.creditId) await prisma.customerCredit.deleteMany({ where: { id: result.creditId } });
+        await prisma.productVariant.deleteMany({ where: { id: variant.id } });
+      }
+    },
+  );
+
+  await run(
+    "cancelIncident bloquea credito de incidencia ya aplicado",
+    async () => {
+      const customer = await ensureCustomer(stamp + 36);
+      const variant = await ensureVariant(stamp + 37, 0);
+      const order = await prisma.order.create({
+        data: {
+          orderNumber: `ST23-CREDIT-${stamp}`,
+          customerId: customer.id,
+          status: "RESERVED",
+          subtotal: "50.00",
+          discount: "0.00",
+          shippingAmount: "0.00",
+          total: "50.00",
+          validatedPaid: "0.00",
+          balance: "50.00",
+          expiresAt: new Date(Date.now() + 86_400_000),
+        },
+      });
+      const result = await createIncident({
+        incidentDate: new Date().toISOString(),
+        type: "RETURN",
+        decision: "CREDIT",
+        customerId: customer.id,
+        variantId: variant.id,
+        quantity: 1,
+        description: "ST23 cancel used credit",
+        recoveredAmount: "50.00",
+        lostAmount: "0",
+        createdById: admin.id,
+      });
+      try {
+        assert.ok(result.creditId);
+        await prisma.customerCredit.update({
+          where: { id: result.creditId! },
+          data: { availableAmount: "0.00", status: "USED" },
+        });
+        await prisma.customerCreditApplication.create({
+          data: { creditId: result.creditId!, orderId: order.id, amount: "50.00", createdById: admin.id },
+        });
+        await assert.rejects(
+          cancelIncident({
+            incidentId: result.incidentId,
+            actorId: admin.id,
+            reason: "No debe cancelar",
+          }),
+          (err) => err instanceof IncidentError && err.code === "CREDIT_ALREADY_USED",
+        );
+      } finally {
+        if (result.creditId) {
+          await prisma.customerCreditApplication.deleteMany({ where: { creditId: result.creditId } });
+        }
+        await prisma.incident.deleteMany({ where: { id: result.incidentId } });
+        if (result.creditId) await prisma.customerCredit.deleteMany({ where: { id: result.creditId } });
+        await prisma.order.deleteMany({ where: { id: order.id } });
+        await prisma.productVariant.deleteMany({ where: { id: variant.id } });
       }
     },
   );

@@ -103,6 +103,33 @@ Decisiones funcionales cerradas para esta fase:
 
 Regla de continuidad: al cerrar cada sprint financiero se debe actualizar el plan en `docs/`, este `README.md`, `CHANGELOG.md` y la versión en `package.json`.
 
+### Auditoría técnica — correcciones 0.30.0
+
+La versión 0.30.0 inicia la corrección de hallazgos P0/P1 de `docs/auditoria/`:
+
+- `AUD-DATA-001`: utilidad de pedidos pagados incluye el pago actual antes de congelar `paymentFeePen` y `netProfitPen`.
+- `AUD-PROD-001`: CI E2E usa la misma base PostgreSQL creada por GitHub Actions y el workflow fue validado en GitHub Actions.
+- `AUD-SEC-002`: login con rate limiting persistido en PostgreSQL por hash de email+IP, compatible con Vercel multi-instancia.
+- `AUD-DATA-014`: validación de pagos bloquea aplicaciones contra pedidos `CANCELLED` o `EXPIRED`.
+- `AUD-DATA-013`: cierre de reservas gestiona pagos pendientes vinculados por `PaymentApplication`.
+
+Scripts de regresión agregados:
+
+- `pnpm exec tsx scripts/_with-env.ts scripts/test-auth-rate-limit.ts`
+- `pnpm exec tsx scripts/_with-env.ts scripts/test-payment-reservation-closure.ts`
+
+### Auditoría técnica — correcciones 0.31.0
+
+La versión 0.31.0 cierra el bloque de incidencias P0:
+
+- `AUD-DATA-002`: cancelar incidencias revierte efectos transaccionales. `RESTOCK` revierte `soldStock`, `DAMAGE/LOSS` de inventario propio devuelve stock, y créditos de incidencia sin uso quedan anulados.
+- `AUD-DATA-003`: `RETURN + RESTOCK` aumenta la disponibilidad exactamente por las unidades devueltas; no incrementa simultáneamente `stock` y decrementa `soldStock`.
+- Regla funcional: una incidencia con crédito ya aplicado no puede cancelarse; se bloquea con `CREDIT_ALREADY_USED`.
+
+Regresión actualizada:
+
+- `pnpm exec tsx scripts/_with-env.ts scripts/test-incidents.ts`
+
 ### Sprint 24 — Dashboard financiero (versión 0.25.0)
 
 El panel `/dashboard` para ADMIN combina las métricas operativas del Sprint 11 con un nuevo bloque financiero. Los agregadores viven en `lib/financial-dashboard.ts` y operan con `select` mínimos, `Cents` enteros y sin cache persistente (cada request recalcula para mantener consistencia entre instancias serverless).

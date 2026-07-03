@@ -56,6 +56,18 @@ export async function closeUnpaidReservation(
     include: {
       items: { select: { id: true, variantId: true, quantity: true } },
       payments: { where: { status: "PENDING" }, select: { id: true } },
+      paymentApplications: {
+        where: { payment: { status: "PENDING" } },
+        select: {
+          paymentId: true,
+          payment: {
+            select: {
+              id: true,
+              applications: { select: { orderId: true } },
+            },
+          },
+        },
+      },
     },
   });
   if (!order) {
@@ -102,9 +114,40 @@ export async function closeUnpaidReservation(
     }
   }
 
-  for (const payment of order.payments) {
+  const directPaymentIds = order.payments.map((payment) => payment.id);
+  const appliedPaymentIds = order.paymentApplications.map((app) => app.paymentId);
+  const paymentIdsToReject = new Set(directPaymentIds);
+
+  for (const application of order.paymentApplications) {
+    const applications = application.payment.applications;
+    if (applications.length <= 1) {
+      paymentIdsToReject.add(application.paymentId);
+      continue;
+    }
+
+    await input.tx.paymentApplication.delete({
+      where: {
+        paymentId_orderId: {
+          paymentId: application.paymentId,
+          orderId: order.id,
+        },
+      },
+    });
+    await auditInTx(input.tx, input.actorId ?? null, {
+      action: "PAYMENT_APPLICATIONS_UPDATED",
+      entity: "Payment",
+      entityId: application.paymentId,
+      metadata: {
+        reason: "ORDER_CLOSED",
+        removedOrderId: order.id,
+        remainingApplications: applications.length - 1,
+      },
+    });
+  }
+
+  for (const paymentId of paymentIdsToReject) {
     await input.tx.payment.update({
-      where: { id: payment.id },
+      where: { id: paymentId },
       data: {
         status: "REJECTED",
         rejectedAt: new Date(),
@@ -114,6 +157,8 @@ export async function closeUnpaidReservation(
       },
     });
   }
+
+  const affectedPaymentIds = Array.from(new Set([...directPaymentIds, ...appliedPaymentIds]));
 
   const targetStatus: OrderStatus =
     input.reason === "CANCELLED" ? "CANCELLED" : "EXPIRED";
@@ -138,6 +183,7 @@ export async function closeUnpaidReservation(
     metadata: {
       orderNumber: order.orderNumber,
       trigger: input.notes ?? null,
+      affectedPaymentIds,
     },
   });
 

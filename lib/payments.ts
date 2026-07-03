@@ -29,6 +29,7 @@ export class PaymentError extends Error {
       | "INVALID_APPLICATION_SUM"
       | "ORDER_OVERPAYMENT"
       | "CUSTOMER_MISMATCH"
+      | "ORDER_CLOSED"
       | "ALREADY_VALIDATED"
       | "ALREADY_REJECTED"
       | "OVERPAYMENT_NOT_ALLOWED"
@@ -335,6 +336,7 @@ export async function validatePayment(
             total: true,
             validatedPaid: true,
             balance: true,
+            status: true,
           },
         });
         if (orders.length !== orderIds.length) {
@@ -350,6 +352,12 @@ export async function validatePayment(
         for (const app of payment.applications) {
           const order = orders.find((o) => o.id === app.orderId);
           if (!order) continue;
+          if (order.status === "CANCELLED" || order.status === "EXPIRED") {
+            throw new PaymentError(
+              `No puedes validar un pago aplicado a un pedido ${order.status === "CANCELLED" ? "cancelado" : "vencido"}.`,
+              "ORDER_CLOSED",
+            );
+          }
           const balance = paymentToCents(order.balance.toString());
           if (paymentToCents(app.amount.toString()) > balance) {
             throw new PaymentError(

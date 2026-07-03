@@ -31,7 +31,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Falta proteccion contra fuerza bruta en login.
 - Severidad: Alta.
 - Categoria: Seguridad.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `auth.ts`, `actions/auth.ts`.
 - Descripcion: el login credentials ejecuta busqueda de usuario y `bcrypt.compare` sin throttling por IP/email.
 - Evidencia encontrada: `auth.ts:45-56`, `actions/auth.ts:43-58`.
@@ -48,7 +48,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Recibos/capturas se almacenan con acceso publico.
 - Severidad: Alta.
 - Categoria: Seguridad.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/blob.ts`, `actions/payments.ts`, `lib/sales.ts`, `app/(dashboard)/pagos/[id]/page.tsx`.
 - Descripcion: `uploadImage()` usa `access: "public"` tambien para comprobantes de pago.
 - Evidencia encontrada: `lib/blob.ts:91-95`, `lib/sales.ts:147-157`.
@@ -194,8 +194,8 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Recomendacion: implementar reversas transaccionales o bloquear cancelacion de incidencias con efectos.
 - Criterios de aceptacion: cancelar no deja efectos inconsistentes; creditos ya usados tienen regla clara.
 - Tests recomendados: dominio para `RESTOCK`, `DAMAGE`, `LOSS`, `CREDIT` y cancelacion.
-- Dependencias: decision funcional sobre reversibilidad.
-- Observaciones: P0.
+- Dependencias: decision funcional resuelta: cancelar revierte efectos; creditos ya aplicados bloquean cancelacion.
+- Observaciones: P0. Corregido con reversas transaccionales en `cancelIncident()`: RESTOCK revierte `soldStock`, DAMAGE/LOSS de inventario propio devuelve stock y CREDIT anula credito si no fue aplicado; si ya fue usado, se bloquea con `CREDIT_ALREADY_USED`. Regresiones en `scripts/test-incidents.ts`.
 
 ### AUD-DATA-003 - Restock duplica disponibilidad
 
@@ -203,7 +203,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: `RETURN + RESTOCK` incrementa disponibilidad dos veces.
 - Severidad: Critica.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/incidents.ts`, `lib/inventory.ts`.
 - Descripcion: al devolver unidades, incrementa `stock` y decrementa `soldStock` simultaneamente cuando `qty <= soldStock`.
 - Evidencia encontrada: `lib/incidents.ts:475-480`; disponibilidad depende de `stock - reservedStock - soldStock`.
@@ -211,8 +211,8 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Recomendacion: definir modelo de inventario y aplicar una sola compensacion coherente.
 - Criterios de aceptacion: disponibilidad aumenta exactamente por unidades devueltas.
 - Tests recomendados: test de stock antes/despues de devolucion.
-- Dependencias: `AUD-DATA-002`.
-- Observaciones: P0.
+- Dependencias: `AUD-DATA-002` corregido.
+- Observaciones: P0. Corregido haciendo que `RETURN + RESTOCK` reduzca solo `soldStock`; `ProductVariant.stock` no se incrementa cuando la unidad vuelve desde venta, por lo que disponible sube exactamente por `qty`. Regresion en `scripts/test-incidents.ts`.
 
 ### AUD-DATA-004 - Lotes no sincronizan stock operativo
 
@@ -381,8 +381,8 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Recomendacion: consultar pagos pendientes aplicados y definir regla para multi-pedido.
 - Criterios de aceptacion: cerrar reserva gestiona todos los pagos pendientes vinculados.
 - Tests recomendados: pago pendiente aplicado a varios pedidos y expiracion de uno.
-- Dependencias: `AUD-DATA-014`.
-- Observaciones: requiere cuidado para no rechazar fondos validos.
+- Dependencias: `AUD-DATA-014` corregido.
+- Observaciones: corregido consultando pagos pendientes via `PaymentApplication`. Si el pago solo estaba aplicado al pedido cerrado, se rechaza; si era multi-pedido, se elimina solo la aplicacion del pedido cerrado y el pago queda pendiente para los demas pedidos. Regresion en `scripts/test-payment-reservation-closure.ts`.
 
 ### AUD-DATA-014 - Validacion de pago no valida estado de pedido
 
@@ -390,7 +390,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Pago puede validarse contra pedido cerrado si conserva saldo inconsistente.
 - Severidad: Media.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/payments.ts`.
 - Descripcion: al validar, trae pedidos sin `status` y solo compara balance/aplicacion.
 - Evidencia encontrada: `lib/payments.ts:330-339`, `lib/payments.ts:350-360`.
@@ -399,7 +399,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: pagos no se validan contra `CANCELLED` o `EXPIRED`.
 - Tests recomendados: dominio pago vs pedido expirado/cancelado.
 - Dependencias: ninguna.
-- Observaciones: P1.
+- Observaciones: P1. Corregido bloqueando validacion de pagos aplicados a pedidos `CANCELLED` o `EXPIRED` con error `ORDER_CLOSED`. Regresion en `scripts/test-payment-reservation-closure.ts`.
 
 ### AUD-DATA-015 - Recuperos de incidencias no suman a utilidad real
 
