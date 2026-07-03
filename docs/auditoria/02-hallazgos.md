@@ -150,7 +150,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: El workspace contiene `.env` con secretos reales o aparentes.
 - Severidad: Critica.
 - Categoria: Seguridad.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `.env` local no rastreado.
 - Descripcion: existe un `.env` ignorado por Git con credenciales/tokens reales o aparentes.
 - Evidencia encontrada: `.gitignore` ignora `.env`; `git ls-files` no lo rastrea. El contenido exacto no se replica en esta documentacion por seguridad.
@@ -237,7 +237,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: `adjustStock()` puede dejar stock menor a compromisos y perder updates.
 - Severidad: Alta.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/inventory.ts`.
 - Descripcion: solo valida `newStock < 0`; no valida `reservedStock + soldStock`; no usa aislamiento `Serializable`.
 - Evidencia encontrada: `lib/inventory.ts:327-339`.
@@ -246,7 +246,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: no se puede reducir por debajo de compromisos; ajustes concurrentes no se pisan.
 - Tests recomendados: concurrencia de ajustes e invariant tests.
 - Dependencias: `AUD-DATA-004`.
-- Observaciones: P1.
+- Observaciones: en 0.35.0 `adjustStock()` usa `Serializable`, maneja conflictos y valida que `stock >= reservedStock + soldStock` despues del ajuste.
 
 ### AUD-DATA-006 - Danos/perdidas consumen stock comprometido
 
@@ -254,7 +254,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Incidencias de dano/perdida validan stock total, no disponible.
 - Severidad: Alta.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/incidents.ts`.
 - Descripcion: para inventario propio valida `variant.stock < qty`, pero no `stock - reservedStock - soldStock`.
 - Evidencia encontrada: `lib/incidents.ts:497-508`.
@@ -263,7 +263,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: dano/perdida no afecta reservas/ventas existentes.
 - Tests recomendados: incidencia sobre variante con reservas activas.
 - Dependencias: `AUD-DATA-005`.
-- Observaciones: P1.
+- Observaciones: en 0.35.0 `DAMAGE`/`LOSS` sin pedido validan disponible real antes de decrementar `stock`; regresion agregada en `scripts/test-incidents.ts`.
 
 ### AUD-DATA-007 - Descuentos no reflejados en snapshots
 

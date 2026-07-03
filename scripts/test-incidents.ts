@@ -16,6 +16,7 @@ import {
   getMonthlyIncidentSummary,
   IncidentError,
 } from "../lib/incidents";
+import { adjustStock, InventoryError } from "../lib/inventory";
 
 let passed = 0;
 let failed = 0;
@@ -191,6 +192,65 @@ async function main() {
             data: { stock: 5 },
           });
         }
+      }
+    },
+  );
+
+  await run(
+    "createIncident DAMAGE sin pedido no consume stock reservado o vendido",
+    async () => {
+      const variant = await ensureVariant(stamp + 101, 5);
+      await prisma.productVariant.update({
+        where: { id: variant.id },
+        data: { stock: 5, reservedStock: 3, soldStock: 1 },
+      });
+      try {
+        await assert.rejects(
+          createIncident({
+            incidentDate: new Date().toISOString(),
+            type: "DAMAGE",
+            decision: "NONE",
+            variantId: variant.id,
+            quantity: 2,
+            description: "ST23 damage committed stock",
+            lostAmount: "80.00",
+            recoveredAmount: "0",
+            createdById: admin.id,
+          }),
+          (err) => err instanceof IncidentError && err.code === "INSUFFICIENT_STOCK",
+        );
+        const updated = await prisma.productVariant.findUnique({ where: { id: variant.id } });
+        assert.equal(updated?.stock, 5);
+        assert.equal(updated?.reservedStock, 3);
+        assert.equal(updated?.soldStock, 1);
+      } finally {
+        await prisma.incident.deleteMany({ where: { variantId: variant.id } });
+        await prisma.inventoryMovement.deleteMany({ where: { variantId: variant.id } });
+        await prisma.productVariant.deleteMany({ where: { id: variant.id } });
+      }
+    },
+  );
+
+  await run(
+    "adjustStock bloquea ajustes bajo unidades comprometidas",
+    async () => {
+      const variant = await ensureVariant(stamp + 102, 6);
+      await prisma.productVariant.update({
+        where: { id: variant.id },
+        data: { stock: 6, reservedStock: 2, soldStock: 2 },
+      });
+      try {
+        await assert.rejects(
+          adjustStock(variant.id, -3, "ST23 unsafe adjustment"),
+          (err) => err instanceof InventoryError && err.code === "INSUFFICIENT_STOCK",
+        );
+        const updated = await prisma.productVariant.findUnique({ where: { id: variant.id } });
+        assert.equal(updated?.stock, 6);
+        assert.equal(updated?.reservedStock, 2);
+        assert.equal(updated?.soldStock, 2);
+      } finally {
+        await prisma.inventoryMovement.deleteMany({ where: { variantId: variant.id } });
+        await prisma.productVariant.deleteMany({ where: { id: variant.id } });
       }
     },
   );

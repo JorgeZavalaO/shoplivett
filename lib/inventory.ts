@@ -324,29 +324,53 @@ export async function adjustStock(
     );
   }
   const prisma = getPrisma();
-  return prisma.$transaction(async (tx) => {
-    const v = await findVariantOrThrow(tx, variantId);
-    const newStock = v.stock + signedQuantity;
-    if (newStock < 0) {
+  try {
+    return await prisma.$transaction(
+      async (tx) => {
+        const v = await findVariantOrThrow(tx, variantId);
+        const newStock = v.stock + signedQuantity;
+        if (newStock < 0) {
+          throw new InventoryError(
+            `El ajuste dejaría el stock en ${newStock}. No se permite stock negativo.`,
+            "NEGATIVE_STOCK",
+          );
+        }
+        const committed = v.reservedStock + v.soldStock;
+        if (newStock < committed) {
+          throw new InventoryError(
+            `El ajuste dejaría stock total ${newStock}, menor que unidades comprometidas (${committed}).`,
+            "INSUFFICIENT_STOCK",
+          );
+        }
+        const updated = await tx.productVariant.update({
+          where: { id: variantId },
+          data: { stock: newStock },
+          select: { stock: true, reservedStock: true, soldStock: true },
+        });
+        await recordMovement(
+          tx,
+          variantId,
+          signedQuantity > 0 ? "IN" : "ADJUSTMENT",
+          signedQuantity,
+          reason,
+        );
+        return toStockSummary(updated);
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 10000 },
+    );
+  } catch (error) {
+    if (error instanceof InventoryError) throw error;
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === "P2034" || error.message.includes("serialization"))
+    ) {
       throw new InventoryError(
-        `El ajuste dejaría el stock en ${newStock}. No se permite stock negativo.`,
-        "NEGATIVE_STOCK",
+        "Conflicto de stock: intenta nuevamente.",
+        "CONFLICT",
       );
     }
-    const updated = await tx.productVariant.update({
-      where: { id: variantId },
-      data: { stock: newStock },
-      select: { stock: true, reservedStock: true, soldStock: true },
-    });
-    await recordMovement(
-      tx,
-      variantId,
-      signedQuantity > 0 ? "IN" : "ADJUSTMENT",
-      signedQuantity,
-      reason,
-    );
-    return toStockSummary(updated);
-  });
+    throw error;
+  }
 }
 
 // =====================================================================

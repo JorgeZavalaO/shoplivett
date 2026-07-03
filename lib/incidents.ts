@@ -465,9 +465,10 @@ export async function createIncident(
         ) {
           // Danio o perdida de inventario propio: ajustar stock hacia abajo.
           const qty = input.quantity;
-          if (variant.stock < qty) {
+          const available = variant.stock - variant.reservedStock - variant.soldStock;
+          if (available < qty) {
             throw new IncidentError(
-              `La variante solo tiene ${variant.stock} uds en stock.`,
+              `La variante solo tiene ${available} uds disponibles para ajustar.`,
               "INSUFFICIENT_STOCK",
             );
           }

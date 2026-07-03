@@ -7,7 +7,7 @@ Estado recomendado: no desplegar a produccion con usuarios reales hasta corregir
 ## Riesgos bloqueantes
 
 * Datos financieros incorrectos por `AUD-DATA-001`, `AUD-DATA-007` y `AUD-DATA-009`.
-* Stock incorrecto por `AUD-DATA-002`, `AUD-DATA-003`, `AUD-DATA-004`, `AUD-DATA-005` y `AUD-DATA-006`.
+* Stock incorrecto por `AUD-DATA-004`; los riesgos `AUD-DATA-002`, `AUD-DATA-003`, `AUD-DATA-005` y `AUD-DATA-006` ya tienen correcciones aplicadas.
 * Creditos inconsistentes por `AUD-DATA-002` y `AUD-FUNC-002`.
 * Pagos aplicados a pedidos cerrados o reservas mal cerradas por `AUD-DATA-013` y `AUD-DATA-014`.
 * Sesiones de usuarios desactivados o degradados por `AUD-SEC-001`.

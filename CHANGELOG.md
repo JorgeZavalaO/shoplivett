@@ -5,6 +5,20 @@ Todos los cambios notables de Shoplivett se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.35.0] - Invariantes de stock comprometido
+
+### Datos
+- `adjustStock()` ahora corre en transacción `Serializable`, captura conflictos de serialización y bloquea ajustes que dejarían `stock < reservedStock + soldStock` (`AUD-DATA-005`).
+- Las incidencias `DAMAGE`/`LOSS` sobre inventario propio validan disponibilidad real (`stock - reservedStock - soldStock`) antes de decrementar stock, evitando consumir unidades reservadas o vendidas (`AUD-DATA-006`).
+
+### Auditoría
+- `AUD-DATA-005` y `AUD-DATA-006` quedan marcados como `Corregido`.
+- Se registró la decisión de usar `stock >= reservedStock + soldStock` como invariante mínimo para ajustes manuales e incidencias de inventario propio.
+
+### Verificación
+- `pnpm typecheck`
+- `pnpm exec tsx scripts/_with-env.ts scripts/test-incidents.ts` → 16/16 tests pasan.
+
 ## [0.34.0] - Recibos protegidos y headers defensivos
 
 ### Seguridad

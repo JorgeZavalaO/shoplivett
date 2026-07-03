@@ -154,6 +154,14 @@ La versión 0.34.0 cierra `AUD-SEC-003` y `AUD-SEC-008`:
 - Las pantallas de pagos y pedidos ya no renderizan `PaymentReceipt.url` directo.
 - `next.config.ts` agrega CSP y headers defensivos globales compatibles con Next/Auth y Vercel Blob.
 
+### Auditoría técnica — correcciones 0.35.0
+
+La versión 0.35.0 cierra `AUD-DATA-005` y `AUD-DATA-006` reforzando invariantes de inventario:
+
+- `adjustStock()` impide que el stock total quede por debajo de `reservedStock + soldStock` y usa aislamiento `Serializable`.
+- `DAMAGE`/`LOSS` de inventario propio validan disponible real antes de descontar stock.
+- Regresión: `pnpm exec tsx scripts/_with-env.ts scripts/test-incidents.ts` con 16/16 tests.
+
 ### Sprint 24 — Dashboard financiero (versión 0.25.0)
 
 El panel `/dashboard` para ADMIN combina las métricas operativas del Sprint 11 con un nuevo bloque financiero. Los agregadores viven en `lib/financial-dashboard.ts` y operan con `select` mínimos, `Cents` enteros y sin cache persistente (cada request recalcula para mantener consistencia entre instancias serverless).
