@@ -271,7 +271,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: `lineDiscountPen` siempre queda en cero.
 - Severidad: Alta.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/order-batch-allocation.ts`, `lib/sales.ts`.
 - Descripcion: snapshots por linea usan subtotal bruto y no prorratean descuento del pedido.
 - Evidencia encontrada: `lib/order-batch-allocation.ts:603-617`, `lib/sales.ts:127-128`.
@@ -280,7 +280,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: pedido con descuento reduce margen por linea y total.
 - Tests recomendados: dominio financiero con descuento.
 - Dependencias: `AUD-DATA-001`.
-- Observaciones: P1.
+- Observaciones: en 0.36.0 `persistQuickSaleLine()` recibe `lineDiscountCents` y `shippingAllocationCents`; `lib/sales.ts` reparte descuento/envío con `distributeOrderDiscount` antes de persistir. Regresion en `scripts/test-order-batch-fifo.ts`.
 
 ### AUD-DATA-008 - Reenvio bloqueado por constraint
 

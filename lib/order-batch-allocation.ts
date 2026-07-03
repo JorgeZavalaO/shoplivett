@@ -554,17 +554,29 @@ export async function persistQuickSaleLine(args: {
   tx: Tx;
   orderId: string;
   item: QuickSaleItemInput;
+  lineDiscountCents?: Cents;
+  shippingAllocationCents?: Cents;
 }): Promise<QuickSaleAllocationResult> {
   const { tx, orderId, item } = args;
+  const lineDiscountCents: Cents = Math.max(0, args.lineDiscountCents ?? 0);
+  const shippingAllocationCents: Cents = Math.max(
+    0,
+    args.shippingAllocationCents ?? 0,
+  );
+  const lineSubtotalCents =
+    toCents(item.unitPrice, { allowNegative: true }) * item.quantity;
+  const lineNetCents = Math.max(
+    0,
+    lineSubtotalCents - lineDiscountCents + shippingAllocationCents,
+  );
+
   const orderItem = await tx.orderItem.create({
     data: {
       orderId,
       variantId: item.variantId,
       quantity: item.quantity,
       unitPrice: item.unitPrice,
-      lineTotal: centsToDecimalString(
-        toCents(item.unitPrice, { allowNegative: true }) * item.quantity,
-      ),
+      lineTotal: centsToDecimalString(lineSubtotalCents),
     },
     select: { id: true },
   });
@@ -600,10 +612,8 @@ export async function persistQuickSaleLine(args: {
     }
   }
 
-  const lineSubtotalCents =
-    toCents(item.unitPrice, { allowNegative: true }) * item.quantity;
   const totalCostCentsRounded = Math.round(totalCostCents);
-  const grossProfitCents = lineSubtotalCents - totalCostCentsRounded;
+  const grossProfitCents = lineNetCents - totalCostCentsRounded;
 
   await tx.orderItem.update({
     where: { id: orderItem.id },
@@ -611,8 +621,8 @@ export async function persistQuickSaleLine(args: {
       costSource,
       unitCostPen,
       totalCostPen: centsToDecimalString(totalCostCentsRounded),
-      netLineRevenuePen: centsToDecimalString(lineSubtotalCents),
-      lineDiscountPen: "0.00",
+      netLineRevenuePen: centsToDecimalString(lineNetCents),
+      lineDiscountPen: centsToDecimalString(lineDiscountCents),
       grossProfitPen: centsToDecimalString(grossProfitCents),
     },
   });
@@ -620,8 +630,8 @@ export async function persistQuickSaleLine(args: {
   return {
     orderItemId: orderItem.id,
     lineTotal: centsToDecimalString(lineSubtotalCents),
-    lineDiscountPen: "0.00",
-    netLineRevenuePen: centsToDecimalString(lineSubtotalCents),
+    lineDiscountPen: centsToDecimalString(lineDiscountCents),
+    netLineRevenuePen: centsToDecimalString(lineNetCents),
     costSource,
     unitCostPen,
     totalCostPen: centsToDecimalString(totalCostCentsRounded),

@@ -19,6 +19,7 @@ import { toCents, centsToDecimalString } from "@/lib/money";
 import {
   BatchAllocationError,
   checkBatchStock,
+  distributeOrderDiscount,
   persistQuickSaleLine,
 } from "@/lib/order-batch-allocation";
 
@@ -126,6 +127,28 @@ export async function createQuickSale(
 
   const totals = calculateOrderTotals(lineItems, input.discount, input.shippingAmount);
   const totalCents = toCents(totals.total, { allowNegative: true });
+  const discountCents = toCents(input.discount || "0", { allowNegative: true });
+  const shippingCents = toCents(input.shippingAmount || "0", {
+    allowNegative: true,
+  });
+  const discountByVariant = distributeOrderDiscount(
+    lineItems.map((l) => ({
+      variantId: l.variantId,
+      quantity: l.quantity,
+      lineSubtotalCents:
+        toCents(l.unitPrice, { allowNegative: true }) * l.quantity,
+    })),
+    discountCents,
+  );
+  const shippingByVariant = distributeOrderDiscount(
+    lineItems.map((l) => ({
+      variantId: l.variantId,
+      quantity: l.quantity,
+      lineSubtotalCents:
+        toCents(l.unitPrice, { allowNegative: true }) * l.quantity,
+    })),
+    shippingCents,
+  );
   const settings = await getSettings();
   const minimumAdvanceCents = toCents(settings.minimumAdvance.toString(), {
     allowNegative: true,
@@ -209,6 +232,8 @@ export async function createQuickSale(
               unitPrice: li.unitPrice,
               variant: { cost: variant.cost },
             },
+            lineDiscountCents: discountByVariant.get(li.variantId) ?? 0,
+            shippingAllocationCents: shippingByVariant.get(li.variantId) ?? 0,
           });
           await auditInTx(tx, input.actorId ?? null, {
             action: "ORDER_BATCH_ALLOCATED",

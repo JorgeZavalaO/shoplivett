@@ -162,6 +162,14 @@ La versión 0.35.0 cierra `AUD-DATA-005` y `AUD-DATA-006` reforzando invariantes
 - `DAMAGE`/`LOSS` de inventario propio validan disponible real antes de descontar stock.
 - Regresión: `pnpm exec tsx scripts/_with-env.ts scripts/test-incidents.ts` con 16/16 tests.
 
+### Auditoría técnica — correcciones 0.36.0
+
+La versión 0.36.0 cierra `AUD-DATA-007` prorrateando descuento y envío en los snapshots de venta:
+
+- `persistQuickSaleLine()` persiste `lineDiscountPen` y `netLineRevenuePen` reales en `OrderItem` usando `distributeOrderDiscount` (`largest remainder`).
+- `lib/sales.ts` calcula el reparto del descuento/envío del pedido antes de persistir cada línea, alineando la utilidad bruta/neta con `Order.total`.
+- Regresión: `pnpm exec tsx scripts/_with-env.ts scripts/test-order-batch-fifo.ts` con 11/11 tests.
+
 ### Sprint 24 — Dashboard financiero (versión 0.25.0)
 
 El panel `/dashboard` para ADMIN combina las métricas operativas del Sprint 11 con un nuevo bloque financiero. Los agregadores viven en `lib/financial-dashboard.ts` y operan con `select` mínimos, `Cents` enteros y sin cache persistente (cada request recalcula para mantener consistencia entre instancias serverless).

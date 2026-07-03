@@ -355,6 +355,61 @@ async function main() {
     assert.ok(result.allocations.length >= 1);
   });
 
+  await run(
+    "persistQuickSaleLine prorratea descuento y envio en snapshots",
+    async () => {
+      const result = await prisma.$transaction(async (tx) => {
+        const order = await tx.order.create({
+          data: {
+            orderNumber: `FIFO-DISCOUNT-${Date.now()}`,
+            customerId: customer.id,
+            status: "PAYMENT_VALIDATION_PENDING",
+            subtotal: "0",
+            total: "0",
+            balance: "0",
+            expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+          },
+          select: { id: true },
+        });
+        return persistQuickSaleLine({
+          tx,
+          orderId: order.id,
+          item: {
+            variantId: variant.id,
+            quantity: 1,
+            unitPrice: "100.00",
+            variant: { cost: null },
+          },
+          lineDiscountCents: 1000,
+          shippingAllocationCents: 200,
+        });
+      });
+      assert.equal(result.lineDiscountPen, "10.00");
+      assert.equal(result.netLineRevenuePen, "92.00");
+      const orderId = result.orderItemId;
+      const item = await prisma.orderItem.findUnique({
+        where: { id: orderId },
+        select: {
+          lineDiscountPen: true,
+          netLineRevenuePen: true,
+          grossProfitPen: true,
+        },
+      });
+      assert.ok(item, "item persistido debe existir");
+      assert.equal(Number(item!.lineDiscountPen), 10);
+      assert.equal(Number(item!.netLineRevenuePen), 92);
+      const expectedGross =
+        9200 -
+        Math.round(
+          Number(result.totalCostPen.replace(",", ".")) * 100,
+        );
+      assert.equal(
+        Math.round(Number(item!.grossProfitPen) * 100),
+        expectedGross,
+      );
+    },
+  );
+
   await run("recognizeOrderProfit es idempotente", async () => {
     // Crea un pedido PAID ad-hoc para esta prueba.
     const order = await prisma.order.create({

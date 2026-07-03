@@ -5,6 +5,21 @@ Todos los cambios notables de Shoplivett se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.36.0] - Prorrateo de descuento y envío en snapshots
+
+### Datos
+- `persistQuickSaleLine()` ahora acepta `lineDiscountCents` y `shippingAllocationCents` para persistir `lineDiscountPen`, `netLineRevenuePen` y `grossProfitPen` prorrateados por línea (`AUD-DATA-007`).
+- `lib/sales.ts` reparte el descuento y el envío del pedido entre líneas con `distributeOrderDiscount` (`largest remainder`) antes de iterar `persistQuickSaleLine`, manteniendo la suma coherente con `Order.total`.
+- `lineTotal` sigue siendo el subtotal bruto para preservar cálculos posteriores; la utilidad bruta y neta se calculan contra el `netLineRevenuePen` real.
+
+### Auditoría
+- `AUD-DATA-007` queda marcado como `Corregido`.
+- Se registró la decisión de prorratear descuento/envío en la creación de la venta y no solo en `recognizeOrderProfit`, evitando utilidad sobreestimada en `PAYMENT_VALIDATION_PENDING`.
+
+### Verificación
+- `pnpm typecheck`
+- `pnpm exec tsx scripts/_with-env.ts scripts/test-order-batch-fifo.ts` → 11/11 tests pasan.
+
 ## [0.35.0] - Invariantes de stock comprometido
 
 ### Datos
