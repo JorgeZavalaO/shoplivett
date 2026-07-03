@@ -297,14 +297,14 @@ export default async function PagoDetallePage({ params }: { params: Params }) {
                 {payment.receipts.map((r) => (
                   <a
                     key={r.id}
-                    href={r.url}
+                    href={`/api/payment-receipts/${r.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="group relative"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={r.url}
+                      src={`/api/payment-receipts/${r.id}`}
                       alt="Captura"
                       className="aspect-square w-full rounded-md border border-border object-cover"
                     />

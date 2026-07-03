@@ -176,7 +176,7 @@ export async function getOrderDetailAction(orderId: string) {
           validatedAt: true,
           createdAt: true,
           receipts: {
-            select: { id: true, url: true, pathname: true, createdAt: true },
+            select: { id: true, createdAt: true },
           },
           applications: {
             select: {

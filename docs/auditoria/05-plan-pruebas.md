@@ -24,7 +24,7 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 | Usuario desactivado con sesion activa | Sesion queda invalidada segun politica. | Autenticacion, permisos | `AUD-SEC-001` | Integracion/e2e; politica de 15 minutos definida en `auth.ts` | Usuario desactivado no accede a dashboard ni actions tras expirar la ventana definida. |
 | Matriz de rutas por rol | Cada rol puede abrir solo rutas autorizadas. | Autorizacion | `AUD-SEC-004`, `AUD-SEC-005`, `AUD-UX-002`, `AUD-UX-003` | E2E; `pnpm typecheck` aplicado para 0.33.0 | ADMIN/SELLER/DISPATCH cumplen matriz esperada. |
 | Server actions por rol | Actions criticas rechazan roles no autorizados. | Actions | `AUD-SEC-005`, `AUD-TEST-004` | Integracion; `pnpm typecheck` aplicado para 0.33.0 | Mutaciones protegidas no ejecutan para roles incorrectos. |
-| Acceso anonimo a recibo de pago | Capturas no son publicas. | Archivos, pagos | `AUD-SEC-003` | E2E/manual | URL o endpoint de recibo rechaza anonimos. |
+| Acceso anonimo a recibo de pago | Capturas no son publicas. | Archivos, pagos | `AUD-SEC-003` | E2E/manual; `pnpm typecheck` aplicado para 0.34.0 | URL o endpoint de recibo rechaza anonimos. |
 | CI E2E con base correcta | Workflow crea/apunta a DB existente. | CI, deploy | `AUD-PROD-001` | CI validado en GitHub Actions | `db:push`, seed y Playwright terminan exitosamente. |
 | Reenvio tras envio cancelado | Pedido puede incluirse en nuevo envio despues de cancelar anterior. | Envios | `AUD-DATA-008` | Integracion/e2e | No hay error de unique y no hay dos envios activos. |
 | Descuento en venta | Snapshots financieros reflejan descuento. | Ventas, reportes | `AUD-DATA-007` | Integracion | `lineDiscountPen` y utilidad por linea son correctos. |
@@ -36,7 +36,7 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 | --- | --- | --- | --- | --- | --- |
 | CSV injection | Valores que empiezan con formula se exportan como texto. | Reportes CSV | `AUD-SEC-006` | Unitario | `=`, `+`, `-`, `@` quedan neutralizados. |
 | Upload invalido | Archivo no imagen o lote excesivo se rechaza. | Blob, pagos, productos | `AUD-SEC-007` | Integracion/manual | MIME falso, tamano total excesivo o cantidad excesiva fallan. |
-| Headers de seguridad | Respuestas incluyen headers definidos. | Produccion web | `AUD-SEC-008` | Manual/integracion | CSP y headers no rompen app. |
+| Headers de seguridad | Respuestas incluyen headers definidos. | Produccion web | `AUD-SEC-008` | Manual/integracion; `pnpm typecheck` aplicado para 0.34.0 | CSP y headers no rompen app. |
 | Baja rotacion con dataset grande | No hay N+1 ni timeout. | Dashboard, reportes | `AUD-PERF-001`, `AUD-PERF-005` | Performance/integracion | Query count/tiempo se mantienen acotados. |
 | Rentabilidad por lote grande | No carga todo el grafo historico. | Reportes financieros | `AUD-PERF-003` | Performance/integracion | Reporte responde bajo limite definido. |
 | Export CSV grande | Export no trunca silenciosamente ni consume memoria excesiva. | Reportes | `AUD-PERF-002`, `AUD-PERF-006` | Performance/manual | Usuario recibe export completo o aviso de limite. |

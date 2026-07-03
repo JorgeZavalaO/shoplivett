@@ -153,6 +153,7 @@ export async function createQuickSale(
           file,
           `payments/receipts`,
           `quick-sale-${Date.now()}`,
+          { access: "private" },
         );
         uploadedReceipts.push({ url: uploaded.url, pathname: uploaded.pathname });
       } catch (error) {

@@ -57,7 +57,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: un recibo no es accesible sin sesion autorizada; productos siguen mostrando imagenes publicas si aplica.
 - Tests recomendados: E2E/manual de acceso anonimo a recibo; test de permiso por rol.
 - Dependencias: politica de almacenamiento privado y posible migracion de recibos existentes.
-- Observaciones: revisar tambien URLs ya guardadas en BD.
+- Observaciones: en 0.34.0 los recibos nuevos se suben como privados y la UI usa `/api/payment-receipts/[id]` autenticado para `ADMIN`/`SELLER`. URLs publicas historicas ya filtradas requieren rotacion/reupload si existieran fuera del sistema.
 
 ### AUD-SEC-004 - RBAC incompleto en paginas de lives
 
@@ -116,7 +116,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Uploads validan MIME declarado y no limitan cantidad total.
 - Severidad: Media.
 - Categoria: Seguridad.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/blob.ts`, `actions/payments.ts`, `actions/sales.ts`.
 - Descripcion: se valida `File.type` y 5MB por archivo, pero no magic bytes, cantidad ni tamano agregado por accion.
 - Evidencia encontrada: `lib/blob.ts:69-76`, `actions/payments.ts`, `actions/sales.ts`.
@@ -133,7 +133,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: No hay politica explicita de headers defensivos.
 - Severidad: Baja.
 - Categoria: Seguridad.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `next.config.ts` o plataforma Vercel.
 - Descripcion: no se observaron CSP, `frame-ancestors`, `X-Content-Type-Options` ni `Referrer-Policy` configurados explicitamente.
 - Evidencia encontrada: revision de config actual.
@@ -142,7 +142,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: respuestas incluyen headers esperados y no rompen assets ni auth.
 - Tests recomendados: verificacion manual/curl y smoke UI.
 - Dependencias: definir politica de blobs privados/publicos.
-- Observaciones: no sustituye sanitizacion ni permisos.
+- Observaciones: en 0.34.0 se agregaron CSP, `frame-ancestors`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` y `Permissions-Policy` en `next.config.ts`.
 
 ### AUD-SEC-009 - Secretos reales o aparentes en `.env` local
 

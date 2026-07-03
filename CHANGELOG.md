@@ -5,6 +5,22 @@ Todos los cambios notables de Shoplivett se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.0] - Recibos protegidos y headers defensivos
+
+### Seguridad
+- Los comprobantes de pago nuevos se suben a Vercel Blob con `access: "private"` desde `actions/payments.ts` y `lib/sales.ts` (`AUD-SEC-003`).
+- Se agregó `/api/payment-receipts/[id]`, una route autenticada que solo permite `ADMIN`/`SELLER` y streaméa el blob sin exponer la URL directa.
+- Las vistas de pago y pedido usan `/api/payment-receipts/[id]` para thumbnails/enlaces, y las actions dejan de seleccionar `PaymentReceipt.url` donde no se usa.
+- `next.config.ts` define CSP y headers defensivos globales: `Content-Security-Policy`, `Referrer-Policy`, `X-Content-Type-Options`, `X-Frame-Options` y `Permissions-Policy` (`AUD-SEC-008`).
+
+### Auditoría
+- `AUD-SEC-003` queda alineado con la implementación real de recibos privados/autorizados.
+- `AUD-SEC-008` queda marcado como `Corregido`.
+- Se registró la decisión de mantener imágenes de producto públicas y servir recibos mediante endpoint autenticado.
+
+### Verificación
+- `pnpm typecheck`
+
 ## [0.33.0] - Despacho alineado con permisos
 
 ### Seguridad

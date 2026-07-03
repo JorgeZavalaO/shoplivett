@@ -427,7 +427,7 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
                             key={r.id}
-                            src={r.url}
+                            src={`/api/payment-receipts/${r.id}`}
                             alt="Captura"
                             className="aspect-square rounded-md border border-border object-cover"
                           />

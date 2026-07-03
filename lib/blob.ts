@@ -1,5 +1,5 @@
 // Helper para Vercel Blob. Sprint 4 introduce uploadImage con validación.
-import { put, del } from "@vercel/blob";
+import { put, del, get } from "@vercel/blob";
 
 export const BLOB_ACCEPTED_TYPES = [
   "image/png",
@@ -20,6 +20,10 @@ export type UploadedImage = {
   pathname: string;
   size: number;
   contentType: string;
+};
+
+type UploadImageOptions = {
+  access?: "public" | "private";
 };
 
 export class ImageUploadError extends Error {
@@ -56,6 +60,7 @@ export async function uploadImage(
   file: File | Blob,
   folder: string,
   filenameHint?: string,
+  options?: UploadImageOptions,
 ): Promise<UploadedImage> {
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     throw new ImageUploadError(
@@ -89,7 +94,7 @@ export async function uploadImage(
 
   try {
     const result = await put(pathname, file, {
-      access: "public",
+      access: options?.access ?? "public",
       addRandomSuffix: false,
       contentType,
       token: process.env.BLOB_READ_WRITE_TOKEN,
@@ -107,6 +112,17 @@ export async function uploadImage(
       "UPLOAD_FAILED",
     );
   }
+}
+
+export async function getImage(
+  pathname: string,
+  access: "public" | "private",
+) {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) return null;
+  return get(pathname, {
+    access,
+    token: process.env.BLOB_READ_WRITE_TOKEN,
+  });
 }
 
 export async function deleteImage(pathname: string): Promise<void> {

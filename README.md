@@ -146,6 +146,14 @@ La versión 0.33.0 cierra `AUD-SEC-005`, `AUD-UX-002` y `AUD-UX-003` alineando d
 - El dashboard de despacho ya no enlaza a módulos no autorizados; los pedidos listos abren `/envios/nuevo?orderId=...`.
 - `/envios/nuevo` usa un loader de envíos permitido para `ADMIN`/`DISPATCH` y precarga solo pedidos pagados elegibles.
 
+### Auditoría técnica — correcciones 0.34.0
+
+La versión 0.34.0 cierra `AUD-SEC-003` y `AUD-SEC-008`:
+
+- Los recibos de pago nuevos se suben a Blob como privados y se sirven por `/api/payment-receipts/[id]` con sesión `ADMIN`/`SELLER`.
+- Las pantallas de pagos y pedidos ya no renderizan `PaymentReceipt.url` directo.
+- `next.config.ts` agrega CSP y headers defensivos globales compatibles con Next/Auth y Vercel Blob.
+
 ### Sprint 24 — Dashboard financiero (versión 0.25.0)
 
 El panel `/dashboard` para ADMIN combina las métricas operativas del Sprint 11 con un nuevo bloque financiero. Los agregadores viven en `lib/financial-dashboard.ts` y operan con `select` mínimos, `Cents` enteros y sin cache persistente (cada request recalcula para mantener consistencia entre instancias serverless).

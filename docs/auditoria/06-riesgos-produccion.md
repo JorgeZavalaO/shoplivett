@@ -12,7 +12,7 @@ Estado recomendado: no desplegar a produccion con usuarios reales hasta corregir
 * Pagos aplicados a pedidos cerrados o reservas mal cerradas por `AUD-DATA-013` y `AUD-DATA-014`.
 * Sesiones de usuarios desactivados o degradados por `AUD-SEC-001`.
 * Login sin rate limiting por `AUD-SEC-002`.
-* Capturas de pago publicas por `AUD-SEC-003`.
+* URLs publicas historicas de capturas de pago por `AUD-SEC-003` si ya fueron filtradas antes de 0.34.0; recibos nuevos usan endpoint autenticado.
 * CI E2E potencialmente roto por `AUD-PROD-001`.
 * Reenvio de pedidos bloqueado por `AUD-DATA-008` si despacho opera cancelaciones reales.
 

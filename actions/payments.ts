@@ -132,6 +132,7 @@ export async function createPaymentAction(
           file,
           "payments/receipts",
           `manual-${result.paymentId}`,
+          { access: "private" },
         );
         await prisma.paymentReceipt.create({
           data: {
@@ -452,7 +453,7 @@ export async function getPaymentDetailAction(paymentId: string) {
       validatedBy: { select: { id: true, name: true } },
       rejectedBy: { select: { id: true, name: true } },
       receipts: {
-        select: { id: true, url: true, pathname: true, createdAt: true },
+        select: { id: true, createdAt: true },
         orderBy: { createdAt: "asc" },
       },
       applications: {
