@@ -65,7 +65,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Paginas de lives consultan datos sin guard de rol.
 - Severidad: Media.
 - Categoria: Seguridad.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `app/(dashboard)/lives/nuevo/page.tsx`, `app/(dashboard)/lives/[id]/editar/page.tsx`.
 - Descripcion: el layout solo exige sesion y estas paginas consultan usuarios responsables sin `requireRole`.
 - Evidencia encontrada: `app/(dashboard)/layout.tsx:11`, `app/(dashboard)/lives/nuevo/page.tsx:6-11`, `app/(dashboard)/lives/[id]/editar/page.tsx:10-21`.
@@ -82,7 +82,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Matriz de permisos y guards por rol no son fuente unica.
 - Severidad: Media.
 - Categoria: Seguridad.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/authorization.ts`, `lib/permissions.ts`, `actions/*`, `components/layout/sidebar.tsx`.
 - Descripcion: `authorization.ts` declara no usarse en produccion y difiere de guards reales en credito/inventario/despacho.
 - Evidencia encontrada: `lib/authorization.ts:3-6`, `lib/authorization.ts:43-70`, `actions/credits.ts`, `actions/inventory.ts`.
@@ -91,7 +91,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: matriz por rol testeada; no hay acciones o enlaces inconsistentes.
 - Tests recomendados: suite de permisos por rol.
 - Dependencias: decision funcional sobre permisos de `DISPATCH`.
-- Observaciones: este hallazgo tambien aparece como deuda arquitectonica.
+- Observaciones: en 0.33.0 se alineo `DISPATCH` para no declarar lectura general de clientes/pedidos; el flujo de envios usa loaders acotados y enlaces autorizados. Queda pendiente migrar mas guards a `assertPermission` en lotes futuros.
 
 ### AUD-SEC-006 - CSV injection
 
@@ -99,7 +99,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Exportaciones CSV no neutralizan formulas.
 - Severidad: Media.
 - Categoria: Seguridad.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/csv-export.ts`, `app/api/reportes/[section]/route.ts`.
 - Descripcion: `escapeCell()` escapa comillas/comas/saltos, pero no valores que empiezan con `=`, `+`, `-` o `@`.
 - Evidencia encontrada: `lib/csv-export.ts:15-35`.
@@ -753,7 +753,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: `DISPATCH` ve links a modulos que no puede abrir.
 - Severidad: Alta.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `app/(dashboard)/dashboard/page.tsx`, `actions/orders.ts`, `components/layout/sidebar.tsx`.
 - Descripcion: dashboard usa links a pedidos, pagos, ventas y lives aunque sidebar/guards no los permiten.
 - Evidencia encontrada: `app/(dashboard)/dashboard/page.tsx:620-639`, `app/(dashboard)/dashboard/page.tsx:681`, `app/(dashboard)/dashboard/page.tsx:714-731`.
@@ -762,7 +762,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: todos los links visibles para `DISPATCH` son navegables.
 - Tests recomendados: E2E dashboard dispatch.
 - Dependencias: `AUD-SEC-005`.
-- Observaciones: tambien seguridad de permisos.
+- Observaciones: en 0.33.0 el dashboard de `DISPATCH` deja de enlazar a pagos, pedidos, clientes, lives y ventas; los pedidos listos apuntan a `/envios/nuevo?orderId=...`.
 
 ### AUD-UX-003 - Preseleccion de envio falla para despacho
 
@@ -770,7 +770,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: `/envios/nuevo?customerId&orderId` usa actions no permitidas para `DISPATCH`.
 - Severidad: Alta.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `app/(dashboard)/envios/nuevo/page.tsx`, `actions/customers.ts`, `actions/orders.ts`.
 - Descripcion: pagina permite `ADMIN|DISPATCH`, pero preseleccion llama acciones que requieren `ADMIN|SELLER`.
 - Evidencia encontrada: auditoria de permisos y pagina de nuevo envio.
@@ -779,7 +779,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: `DISPATCH` puede abrir nuevo envio preseleccionado.
 - Tests recomendados: E2E dispatch crear envio desde pedido elegible.
 - Dependencias: `AUD-SEC-005`.
-- Observaciones: pendiente de confirmar alcance de lectura de pedidos.
+- Observaciones: en 0.33.0 `/envios/nuevo` usa `getShipmentDraftDefaultsAction`, permitido para `ADMIN`/`DISPATCH`, y solo precarga pedidos `PAID` elegibles para envio.
 
 ### AUD-UX-004 - Ajuste de inventario visible para roles no autorizados
 

@@ -5,6 +5,24 @@ Todos los cambios notables de Shoplivett se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.0] - Despacho alineado con permisos
+
+### Seguridad
+- `lib/authorization.ts` ya no declara lectura amplia de clientes ni pedidos para `DISPATCH`; el rol queda limitado a lectura/escritura de envíos y permisos operativos no sensibles (`AUD-SEC-005`).
+- Las actions auxiliares de envíos restringen la búsqueda de clientas a clientas con pedidos pagados elegibles para envío y reservan historiales/enlaces de cliente-pedido a `ADMIN`/`SELLER`.
+
+### UX
+- `/dashboard` para `DISPATCH` elimina enlaces a `/pagos`, `/pedidos`, `/clientes`, `/lives` y `/ventas`; los pedidos listos apuntan a `/envios/nuevo?orderId=...` o a rutas de envíos navegables (`AUD-UX-002`).
+- `/envios/nuevo` carga preselección con `getShipmentDraftDefaultsAction`, permitida para `ADMIN`/`DISPATCH`, sin depender de actions de `clientes` o `pedidos` bloqueadas para despacho (`AUD-UX-003`).
+- `/envios/[id]` evita enlaces de `DISPATCH` hacia detalle de cliente/pedido no autorizado; `ADMIN` conserva el enlace al pedido.
+
+### Auditoría
+- `AUD-SEC-005`, `AUD-UX-002` y `AUD-UX-003` quedan marcados como `Corregido`.
+- Se registró la decisión de mantener a `DISPATCH` sin lectura general de clientes/pedidos y exponer solo loaders acotados al flujo de envíos.
+
+### Verificación
+- `pnpm typecheck`
+
 ## [0.32.0] - Ventana corta de sesión JWT
 
 ### Seguridad

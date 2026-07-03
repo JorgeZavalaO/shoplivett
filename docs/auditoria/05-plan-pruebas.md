@@ -22,8 +22,8 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 | Cliente bloqueado en venta rapida | El servidor impide venta o exige override aprobado. | Clientes, ventas | `AUD-UX-009` | Integracion/e2e | Venta a `BLOCKED` falla o requiere permiso especial. |
 | Login con multiples intentos fallidos | Rate limiting funciona por IP/email. | Autenticacion | `AUD-SEC-002` | Integracion con `scripts/test-auth-rate-limit.ts`; manual UI recomendado | Intentos repetidos son limitados sin revelar si el email existe. |
 | Usuario desactivado con sesion activa | Sesion queda invalidada segun politica. | Autenticacion, permisos | `AUD-SEC-001` | Integracion/e2e; politica de 15 minutos definida en `auth.ts` | Usuario desactivado no accede a dashboard ni actions tras expirar la ventana definida. |
-| Matriz de rutas por rol | Cada rol puede abrir solo rutas autorizadas. | Autorizacion | `AUD-SEC-004`, `AUD-SEC-005`, `AUD-UX-002`, `AUD-UX-003` | E2E | ADMIN/SELLER/DISPATCH cumplen matriz esperada. |
-| Server actions por rol | Actions criticas rechazan roles no autorizados. | Actions | `AUD-SEC-005`, `AUD-TEST-004` | Integracion | Mutaciones protegidas no ejecutan para roles incorrectos. |
+| Matriz de rutas por rol | Cada rol puede abrir solo rutas autorizadas. | Autorizacion | `AUD-SEC-004`, `AUD-SEC-005`, `AUD-UX-002`, `AUD-UX-003` | E2E; `pnpm typecheck` aplicado para 0.33.0 | ADMIN/SELLER/DISPATCH cumplen matriz esperada. |
+| Server actions por rol | Actions criticas rechazan roles no autorizados. | Actions | `AUD-SEC-005`, `AUD-TEST-004` | Integracion; `pnpm typecheck` aplicado para 0.33.0 | Mutaciones protegidas no ejecutan para roles incorrectos. |
 | Acceso anonimo a recibo de pago | Capturas no son publicas. | Archivos, pagos | `AUD-SEC-003` | E2E/manual | URL o endpoint de recibo rechaza anonimos. |
 | CI E2E con base correcta | Workflow crea/apunta a DB existente. | CI, deploy | `AUD-PROD-001` | CI validado en GitHub Actions | `db:push`, seed y Playwright terminan exitosamente. |
 | Reenvio tras envio cancelado | Pedido puede incluirse en nuevo envio despues de cancelar anterior. | Envios | `AUD-DATA-008` | Integracion/e2e | No hay error de unique y no hay dos envios activos. |
@@ -46,8 +46,8 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 | Lote cerrado vs edicion concurrente | No se modifica lote cerrado. | Lotes | `AUD-DATA-010` | Concurrencia | Edicion falla si cierre gana carrera. |
 | Codigos concurrentes | No hay error visible por colision secuencial. | Pedidos, lotes | `AUD-DATA-017` | Concurrencia | Colisiones se reintentan o evitan. |
 | WhatsApp sin contexto | Plantillas no rompen si faltan order/payment/credit. | WhatsApp, cliente | `AUD-UX-001` | Unitario/render | No hay TypeError y solo aparecen plantillas validas. |
-| Dashboard dispatch | Links y metricas son coherentes con permisos. | Dashboard, envios | `AUD-UX-002`, `AUD-UX-012` | E2E | No hay links muertos y conteos son reales. |
-| Nuevo envio preseleccionado dispatch | Despacho abre formulario con cliente/pedido precargado. | Envios | `AUD-UX-003` | E2E | Form carga y permite crear envio elegible. |
+| Dashboard dispatch | Links y metricas son coherentes con permisos. | Dashboard, envios | `AUD-UX-002`, `AUD-UX-012` | E2E; `pnpm typecheck` aplicado para 0.33.0 | No hay links muertos y conteos son reales. |
+| Nuevo envio preseleccionado dispatch | Despacho abre formulario con cliente/pedido precargado. | Envios | `AUD-UX-003` | E2E; `pnpm typecheck` aplicado para 0.33.0 | Form carga y permite crear envio elegible. |
 | Menu movil | Navegacion aparece en sheet movil por rol. | Layout | `AUD-UX-011` | E2E viewport movil | Links visibles y navegables. |
 | Acciones destructivas con confirmacion | Ajuste de stock, variantes y categorias piden confirmacion o feedback. | UI critica | `AUD-UX-005`, `AUD-UX-006`, `AUD-UX-007` | E2E/manual | Accion no se ejecuta accidentalmente. |
 | Motivo de cancelacion de envio | Motivo obligatorio o decision documentada. | Envios | `AUD-UX-008` | E2E | Cancelacion sin motivo se bloquea si aplica. |

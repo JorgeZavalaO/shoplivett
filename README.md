@@ -138,6 +138,14 @@ La versión 0.32.0 cierra `AUD-SEC-001` definiendo una ventana de sesión corta 
 - `session.maxAge` y `jwt.maxAge` usan la misma ventana de 15 minutos.
 - Usuarios desactivados o degradados conservan acceso como máximo hasta la expiración de esa ventana, sin agregar campos de versionado al schema.
 
+### Auditoría técnica — correcciones 0.33.0
+
+La versión 0.33.0 cierra `AUD-SEC-005`, `AUD-UX-002` y `AUD-UX-003` alineando despacho con permisos reales:
+
+- `DISPATCH` no tiene lectura general declarada de clientes o pedidos en `lib/authorization.ts`.
+- El dashboard de despacho ya no enlaza a módulos no autorizados; los pedidos listos abren `/envios/nuevo?orderId=...`.
+- `/envios/nuevo` usa un loader de envíos permitido para `ADMIN`/`DISPATCH` y precarga solo pedidos pagados elegibles.
+
 ### Sprint 24 — Dashboard financiero (versión 0.25.0)
 
 El panel `/dashboard` para ADMIN combina las métricas operativas del Sprint 11 con un nuevo bloque financiero. Los agregadores viven en `lib/financial-dashboard.ts` y operan con `select` mínimos, `Cents` enteros y sin cache persistente (cada request recalcula para mantener consistencia entre instancias serverless).
@@ -493,8 +501,8 @@ Páginas:
 - Definición funcional:
   - `Ventas del día` = suma de pedidos **creados** hoy.
   - `Pagos validados del día` = suma de pagos **validados** hoy.
-- Cards enlazan a vistas filtradas existentes (`/pagos?status=PENDING`, `/pedidos?status=...`, `/envios?status=...`).
-- Listas rápidas (top 5) para pagos pendientes, reservas por vencer, pedidos listos para envío y envíos en proceso, con badge de estado y link al detalle.
+- Cards enlazan solo a rutas permitidas por rol; en despacho, los pedidos listos abren creación de envío y las métricas informativas sin ruta restringida quedan sin enlace.
+- Listas rápidas (top 5) para pagos pendientes, reservas por vencer, pedidos listos para envío y envíos en proceso, con badge de estado y link permitido segun rol.
 - Carga eficiente con `Promise.all` server-side, sólo agregados y listas cortas.
 
 ### Mensajes para WhatsApp (Sprint 12)

@@ -43,7 +43,7 @@ const ALL_TRANSITIONS: ShipmentStatus[] = [
 ];
 
 export default async function EnvioDetallePage({ params }: { params: Params }) {
-  await requireRole(["ADMIN", "DISPATCH"]);
+  const user = await requireRole(["ADMIN", "DISPATCH"]);
   const { id } = await params;
   const shipment = await getShipmentDetailAction(id);
   if (!shipment) notFound();
@@ -107,12 +107,16 @@ export default async function EnvioDetallePage({ params }: { params: Params }) {
         </div>
         <p className="text-sm text-muted-foreground">
           {SHIPPING_METHOD_LABELS[shipment.shippingMethod]} ·{" "}
-          <Link
-            href={`/clientes/${shipment.customer.id}`}
-            className="hover:underline"
-          >
-            {shipment.customer.name}
-          </Link>
+          {user.role === "ADMIN" ? (
+            <Link
+              href={`/clientes/${shipment.customer.id}`}
+              className="hover:underline"
+            >
+              {shipment.customer.name}
+            </Link>
+          ) : (
+            <span>{shipment.customer.name}</span>
+          )}
           {" · "}
           <a
             href={whatsappLink}
@@ -189,25 +193,44 @@ export default async function EnvioDetallePage({ params }: { params: Params }) {
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-2">
-              {shipment.orders.map((so) => (
-                <Link
-                  key={so.id}
-                  href={`/pedidos/${so.order.id}`}
-                  className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted"
-                >
-                  <div>
-                    <p className="font-mono text-xs font-medium">
-                      {so.order.orderNumber}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {so.order.status} · Total S/ {so.order.total.toString()}
-                    </p>
+              {shipment.orders.map((so) => {
+                const content = (
+                  <>
+                    <div>
+                      <p className="font-mono text-xs font-medium">
+                        {so.order.orderNumber}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {so.order.status} · Total S/ {so.order.total.toString()}
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      Saldo S/ {so.order.balance.toString()}
+                    </span>
+                  </>
+                );
+
+                if (user.role === "ADMIN") {
+                  return (
+                    <Link
+                      key={so.id}
+                      href={`/pedidos/${so.order.id}`}
+                      className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted"
+                    >
+                      {content}
+                    </Link>
+                  );
+                }
+
+                return (
+                  <div
+                    key={so.id}
+                    className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
+                  >
+                    {content}
                   </div>
-                  <span className="text-xs text-muted-foreground">
-                    Saldo S/ {so.order.balance.toString()}
-                  </span>
-                </Link>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>

@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
+import { getShipmentDraftDefaultsAction } from "@/actions/shipments";
 import { CreateShipmentForm } from "@/components/forms/create-shipment-form";
 import { Button } from "@/components/ui/button";
-import { getCustomerAction } from "@/actions/customers";
-import { getOrderDetailAction } from "@/actions/orders";
 import { requireRole } from "@/lib/permissions";
 import { getSettings } from "@/lib/settings";
 
@@ -28,20 +27,13 @@ export default async function NuevoEnvioPage({
     ? sp.orderId[0]
     : sp.orderId;
 
-  const [settings, defaultCustomer, preselectOrder] = await Promise.all([
+  const [settings, defaults] = await Promise.all([
     getSettings(),
-    customerIdParam ? getCustomerAction(customerIdParam) : Promise.resolve(null),
-    orderIdParam ? getOrderDetailAction(orderIdParam) : Promise.resolve(null),
+    getShipmentDraftDefaultsAction({
+      customerId: customerIdParam,
+      orderId: orderIdParam,
+    }),
   ]);
-
-  const preselect =
-    preselectOrder && preselectOrder.status === "PAID" && preselectOrder.shipmentOrder === null
-      ? {
-          id: preselectOrder.id,
-          orderNumber: preselectOrder.orderNumber,
-          total: preselectOrder.total.toString(),
-        }
-      : null;
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -66,8 +58,8 @@ export default async function NuevoEnvioPage({
         enabledShippingMethods={settings.enabledShippingMethods}
         freeShippingEnabled={settings.freeShippingEnabled}
         freeShippingThreshold={settings.freeShippingThreshold.toString()}
-        defaultCustomer={defaultCustomer}
-        preselectOrder={preselect}
+        defaultCustomer={defaults.customer}
+        preselectOrder={defaults.order}
       />
     </div>
   );

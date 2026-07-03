@@ -315,6 +315,15 @@ export async function searchCustomersForShipmentAction(query: string) {
   return getPrisma().customer.findMany({
     where: {
       isActive: true,
+      orders: {
+        some: {
+          status: "PAID",
+          OR: [
+            { shipmentOrder: null },
+            { shipmentOrder: { shipment: { status: "CANCELLED" } } },
+          ],
+        },
+      },
       OR: [
         { name: { contains: query, mode: "insensitive" } },
         { whatsapp: { contains: query.replace(/\D/g, "") } },
@@ -334,14 +343,77 @@ export async function getEligibleOrdersForShipmentAction(
   return getEligibleOrdersForShipment(customerId, query);
 }
 
+export async function getShipmentDraftDefaultsAction(args: {
+  customerId?: string;
+  orderId?: string;
+}) {
+  await requireRole(["ADMIN", "DISPATCH"]);
+  const customerId = args.customerId?.trim();
+  const orderId = args.orderId?.trim();
+  if (!customerId && !orderId) return { customer: null, order: null };
+
+  const { getPrisma } = await import("@/lib/prisma");
+  const prisma = getPrisma();
+
+  if (orderId) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        orderNumber: true,
+        total: true,
+        status: true,
+        customer: { select: { id: true, name: true, whatsapp: true } },
+        shipmentOrder: {
+          select: { shipment: { select: { status: true } } },
+        },
+      },
+    });
+    if (
+      !order ||
+      order.status !== "PAID" ||
+      (order.shipmentOrder && order.shipmentOrder.shipment.status !== "CANCELLED")
+    ) {
+      return { customer: null, order: null };
+    }
+    return {
+      customer: order.customer,
+      order: {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        total: order.total.toString(),
+      },
+    };
+  }
+
+  if (!customerId) return { customer: null, order: null };
+  const customer = await prisma.customer.findFirst({
+    where: {
+      id: customerId,
+      isActive: true,
+      orders: {
+        some: {
+          status: "PAID",
+          OR: [
+            { shipmentOrder: null },
+            { shipmentOrder: { shipment: { status: "CANCELLED" } } },
+          ],
+        },
+      },
+    },
+    select: { id: true, name: true, whatsapp: true },
+  });
+  return { customer, order: null };
+}
+
 export async function getOrderShipmentLinkAction(orderId: string) {
-  await requireRole(["ADMIN", "SELLER", "DISPATCH"]);
+  await requireRole(["ADMIN", "SELLER"]);
   if (!orderId) return null;
   return getOrderShipmentLink(orderId);
 }
 
 export async function listCustomerShipmentsAction(customerId: string) {
-  await requireRole(["ADMIN", "SELLER", "DISPATCH"]);
+  await requireRole(["ADMIN", "SELLER"]);
   if (!customerId) return [];
   return listCustomerShipments(customerId);
 }

@@ -60,11 +60,9 @@ const STATIC_PERMISSION_MATRIX: Record<Role, ReadonlySet<Permission>> = {
     "credits.write",
   ]),
   DISPATCH: new Set<Permission>([
-    "customers.read",
     "products.read",
     "inventory.read",
     "lives.read",
-    "orders.read",
     "shipments.read",
     "shipments.write",
   ]),

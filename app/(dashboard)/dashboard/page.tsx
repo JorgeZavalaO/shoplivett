@@ -288,7 +288,7 @@ function AdminDashboard({
           value={String(metrics.pedidosListosDespachoCount)}
           tone="success"
           hint="Pagados sin envío asignado"
-          href={canManageShipment ? ROUTES.shipmentsPending : ROUTES.ordersPaid}
+          href={canManageShipment ? ROUTES.shipmentsNew : undefined}
         />
       </div>
 
@@ -629,14 +629,12 @@ function DispatchDashboard({
           title="Pagos validados del día"
           value={fmtMoney(metrics.pagosValidadosDelDia)}
           hint="Cobrado hoy"
-          href={ROUTES.paymentsAll}
         />
         <DashboardMetricCard
           title="Reservas vencidas"
           value={String(metrics.reservasVencidasCount)}
           tone={metrics.reservasVencidasCount > 0 ? "destructive" : "default"}
           hint="Pedidos que requieren cancelación"
-          href={ROUTES.ordersExpired}
         />
       </div>
 
@@ -678,11 +676,11 @@ function DispatchDashboard({
             subtitle: `${o.orderNumber} · ${fmtMoney(o.total)}`,
             badge: { kind: "order", status: "PAID" },
             meta: fmtDate(o.createdAt),
-            href: `/pedidos/${o.id}` as Route,
+            href: `/envios/nuevo?orderId=${o.id}` as Route,
             whatsapp: { name: o.customer.name, phone: o.customer.whatsapp },
           }))}
-          viewAllHref={ROUTES.ordersPaid}
-          viewAllLabel="Ver pedidos pagados"
+          viewAllHref={ROUTES.shipmentsNew}
+          viewAllLabel="Crear envío"
         />
         <DashboardQuickList
           title="Envíos en proceso"
@@ -707,7 +705,7 @@ function DispatchDashboard({
           <CardHeader>
             <CardTitle className="text-base">Accesos rápidos</CardTitle>
             <CardDescription>
-              Crear un nuevo envío o revisar el live activo.
+              Crear un nuevo envío o revisar colas de despacho.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
@@ -718,16 +716,10 @@ function DispatchDashboard({
               Nuevo envío
             </a>
             <a
-              href={ROUTES.liveOpen}
+              href={ROUTES.shipmentsPending}
               className="rounded-md border border-border bg-card px-3 py-2 text-sm hover:bg-muted"
             >
-              Lives
-            </a>
-            <a
-              href={ROUTES.sales}
-              className="rounded-md border border-border bg-card px-3 py-2 text-sm hover:bg-muted"
-            >
-              Venta rápida
+              Envíos pendientes
             </a>
           </CardContent>
         </Card>
@@ -779,4 +771,3 @@ function AccessLink({ href, label }: { href: Route; label: string }) {
     </a>
   );
 }
-
