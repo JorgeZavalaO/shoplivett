@@ -35,10 +35,12 @@ type AppJWT = JWT & {
 // (variable ausente) se confía en el host. Esto cubre Vercel, Neon y otros
 // proxies sin requerir configuración explícita.
 const trustHost = process.env.AUTH_TRUST_HOST !== "false";
+export const AUTH_SESSION_MAX_AGE_SECONDS = 15 * 60;
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost,
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: AUTH_SESSION_MAX_AGE_SECONDS },
+  jwt: { maxAge: AUTH_SESSION_MAX_AGE_SECONDS },
   pages: {
     signIn: "/login",
   },

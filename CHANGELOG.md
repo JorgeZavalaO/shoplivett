@@ -5,6 +5,20 @@ Todos los cambios notables de Shoplivett se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0] - Ventana corta de sesión JWT
+
+### Seguridad
+- `auth.ts` define `AUTH_SESSION_MAX_AGE_SECONDS = 15 * 60` y aplica la misma ventana a `session.maxAge` y `jwt.maxAge`.
+- Los usuarios desactivados o con rol degradado pierden acceso al expirar la ventana definida de 15 minutos, sin introducir cambios de schema (`AUD-SEC-001`).
+
+### Auditoría
+- `AUD-SEC-001` queda marcado como `Corregido`.
+- Se registró la decisión de preferir una ventana corta de JWT frente a `tokenVersion/sessionVersion` para evitar schema nuevo y consultas por request.
+
+### Verificación
+- `pnpm typecheck`
+- `pnpm lint`
+
 ## [0.31.0] - Corrección de incidencias y restock
 
 ### Cambiado

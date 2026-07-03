@@ -130,6 +130,14 @@ Regresión actualizada:
 
 - `pnpm exec tsx scripts/_with-env.ts scripts/test-incidents.ts`
 
+### Auditoría técnica — correcciones 0.32.0
+
+La versión 0.32.0 cierra `AUD-SEC-001` definiendo una ventana de sesión corta para JWT:
+
+- `AUTH_SESSION_MAX_AGE_SECONDS = 15 * 60` en `auth.ts`.
+- `session.maxAge` y `jwt.maxAge` usan la misma ventana de 15 minutos.
+- Usuarios desactivados o degradados conservan acceso como máximo hasta la expiración de esa ventana, sin agregar campos de versionado al schema.
+
 ### Sprint 24 — Dashboard financiero (versión 0.25.0)
 
 El panel `/dashboard` para ADMIN combina las métricas operativas del Sprint 11 con un nuevo bloque financiero. Los agregadores viven en `lib/financial-dashboard.ts` y operan con `select` mínimos, `Cents` enteros y sin cache persistente (cada request recalcula para mantener consistencia entre instancias serverless).

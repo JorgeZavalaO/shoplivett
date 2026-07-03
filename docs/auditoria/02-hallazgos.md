@@ -22,8 +22,8 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Recomendacion: revalidar usuario activo y rol en requests criticas, reducir `maxAge` o implementar `sessionVersion/tokenVersion`.
 - Criterios de aceptacion: usuario desactivado pierde acceso de forma inmediata o dentro de una ventana definida; cambio de rol se refleja sin esperar expiracion larga.
 - Tests recomendados: integracion/auth para usuario desactivado; E2E de cambio de rol.
-- Dependencias: posible cambio de schema si se usa version de sesion.
-- Observaciones: balancear seguridad con costo de consultas por request.
+- Dependencias: resuelta sin cambio de schema; se eligio reducir `maxAge`.
+- Observaciones: corregido definiendo `AUTH_SESSION_MAX_AGE_SECONDS = 15 * 60` y aplicandolo a `session.maxAge` y `jwt.maxAge` en `auth.ts`. La ventana maxima de acceso tras desactivar/degradar un usuario queda definida en 15 minutos.
 
 ### AUD-SEC-002 - Login sin rate limiting
 
