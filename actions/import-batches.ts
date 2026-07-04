@@ -264,7 +264,6 @@ export async function createBatchAction(
   }
 
   const user = await getCurrentUser();
-  const code = await nextBatchCodeWithRetry();
   const prisma = getPrisma();
   const rate = Number(parsed.data.exchangeRate);
   const draft = buildDraftBatchItems(itemsParsed.data, rate);
@@ -290,90 +289,106 @@ export async function createBatchAction(
     parsed.data.exchangeRate,
   );
 
-  let batchId: string;
-  try {
-    batchId = await prisma.$transaction(async (tx) => {
-      const batch = await tx.importBatch.create({
-        data: {
-          code,
-          purchaseDate: new Date(parsed.data.purchaseDate),
-          shopper: parsed.data.shopper,
-          agency: parsed.data.agency,
-          totalCostUsd: centsToDecimalString(draft.totalCostUsdCents),
-          totalAdditionalCostsUsd: parsed.data.totalAdditionalCostsUsd,
-          totalAdditionalCostsPen: parsed.data.totalAdditionalCostsPen,
-          exchangeRate: parsed.data.exchangeRate,
-          totalInvestmentPen: centsToDecimalString(totalInvestmentPenCents),
-          notes: parsed.data.notes ?? null,
-          createdById: user?.id ?? null,
-        },
-      });
+  const MAX_BATCH_CODE_RETRIES = 5;
+  let batchId: string | undefined;
 
-      for (const item of draft.items) {
-        await tx.importBatchItem.create({
+  for (let attempt = 0; attempt < MAX_BATCH_CODE_RETRIES; attempt++) {
+    const code = await nextBatchCodeWithRetry();
+
+    try {
+      batchId = await prisma.$transaction(async (tx) => {
+        const batch = await tx.importBatch.create({
           data: {
-            batchId: batch.id,
-            variantId: item.variantId,
-            quantityPurchased: item.quantityPurchased,
-            quantityReceived: item.quantityReceived,
-            quantityAvailable: item.quantityReceived,
-            unitCostUsd: item.unitCostUsd,
-            unitCostPen: item.unitCostPen,
-            weight: item.weight || "0",
-            subtotalUsd: item.subtotalUsd,
-            subtotalPen: item.subtotalPen,
+            code,
+            purchaseDate: new Date(parsed.data.purchaseDate),
+            shopper: parsed.data.shopper,
+            agency: parsed.data.agency,
+            totalCostUsd: centsToDecimalString(draft.totalCostUsdCents),
+            totalAdditionalCostsUsd: parsed.data.totalAdditionalCostsUsd,
+            totalAdditionalCostsPen: parsed.data.totalAdditionalCostsPen,
+            exchangeRate: parsed.data.exchangeRate,
+            totalInvestmentPen: centsToDecimalString(totalInvestmentPenCents),
+            notes: parsed.data.notes ?? null,
+            createdById: user?.id ?? null,
           },
         });
 
-        await tx.inventoryMovement.create({
-          data: {
+        for (const item of draft.items) {
+          await tx.importBatchItem.create({
+            data: {
+              batchId: batch.id,
+              variantId: item.variantId,
+              quantityPurchased: item.quantityPurchased,
+              quantityReceived: item.quantityReceived,
+              quantityAvailable: item.quantityReceived,
+              unitCostUsd: item.unitCostUsd,
+              unitCostPen: item.unitCostPen,
+              weight: item.weight || "0",
+              subtotalUsd: item.subtotalUsd,
+              subtotalPen: item.subtotalPen,
+            },
+          });
+
+          await tx.inventoryMovement.create({
+            data: {
+              variantId: item.variantId,
+              type: "IN",
+              quantity: item.quantityReceived,
+              reason: `Lote ${code} - Recepción`,
+            },
+          });
+
+          await applyBatchStockDelta(tx, {
             variantId: item.variantId,
-            type: "IN",
-            quantity: item.quantityReceived,
-            reason: `Lote ${code} - Recepción`,
+            delta: item.quantityReceived,
+            label: `createBatchAction ${code}`,
+          });
+          await assertVariantStockInvariant(
+            tx,
+            item.variantId,
+            `createBatchAction ${code}`,
+          );
+        }
+
+        await auditInTx(tx, user?.id ?? null, {
+          action: "IMPORT_BATCH_CREATED",
+          entity: "ImportBatch",
+          entityId: batch.id,
+          metadata: {
+            code,
+            itemsCount: draft.items.length,
+            totalInvestmentPen: centsToDecimalString(totalInvestmentPenCents),
           },
         });
 
-        await applyBatchStockDelta(tx, {
-          variantId: item.variantId,
-          delta: item.quantityReceived,
-          label: `createBatchAction ${code}`,
-        });
-        await assertVariantStockInvariant(
-          tx,
-          item.variantId,
-          `createBatchAction ${code}`,
-        );
+        return batch.id;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 15000 });
+
+      // Success — exit retry loop
+      break;
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === "P2034" || error.message.includes("serialization"))
+      ) {
+        return { ok: false, message: "Conflicto al crear el lote. Intenta nuevamente." };
       }
-
-      await auditInTx(tx, user?.id ?? null, {
-        action: "IMPORT_BATCH_CREATED",
-        entity: "ImportBatch",
-        entityId: batch.id,
-        metadata: {
-          code,
-          itemsCount: draft.items.length,
-          totalInvestmentPen: centsToDecimalString(totalInvestmentPenCents),
-        },
-      });
-
-      return batch.id;
-    },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 15000 });
-  } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      (error.code === "P2034" || error.message.includes("serialization"))
-    ) {
-      return { ok: false, message: "Conflicto al crear el lote. Intenta nuevamente." };
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        if (attempt < MAX_BATCH_CODE_RETRIES - 1) {
+          continue;
+        }
+        return { ok: false, message: "No pudimos generar el código del lote. Intenta nuevamente." };
+      }
+      throw error;
     }
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) {
-      return { ok: false, message: "El código del lote ya existe. Intenta nuevamente." };
-    }
-    throw error;
+  }
+
+  if (!batchId) {
+    throw new Error("No se pudo asignar un identificador al lote.");
   }
 
   revalidatePath("/lotes");

@@ -12,20 +12,23 @@ import {
   getMovementHistory,
   getStockSummary,
 } from "@/lib/inventory";
-import { formatWhatsAppDisplay } from "@/lib/phone";
 import { requireRole } from "@/lib/permissions";
 
-
 type Params = Promise<{ variantId: string }>;
+type SearchParams = Promise<{ movementsPage?: string }>;
 
 export default async function VarianteInventarioPage({
   params,
+  searchParams,
 }: {
   params: Params;
+  searchParams: SearchParams;
 }) {
   const user = await requireRole(["ADMIN", "SELLER", "DISPATCH"]);
   const canAdjustStock = user.role === "ADMIN";
   const { variantId } = await params;
+  const sp = await searchParams;
+  const movementsPage = Math.max(1, Number(sp.movementsPage) || 1);
   const prisma = getPrisma();
   const variant = await prisma.productVariant.findUnique({
     where: { id: variantId },
@@ -35,7 +38,7 @@ export default async function VarianteInventarioPage({
 
   const [summary, movements] = await Promise.all([
     getStockSummary(variantId),
-    getMovementHistory(variantId),
+    getMovementHistory(variantId, { page: movementsPage }),
   ]);
 
   const productHref = `/productos/${variant.productId}`;
@@ -92,7 +95,13 @@ export default async function VarianteInventarioPage({
             <Package className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <MovementsTable items={movements} />
+            <MovementsTable items={movements.items} />
+            <MovementPagination
+              variantId={variantId}
+              page={movements.page}
+              pageCount={movements.pageCount}
+              total={movements.total}
+            />
           </CardContent>
         </Card>
 
@@ -116,4 +125,48 @@ export default async function VarianteInventarioPage({
   );
 }
 
-void formatWhatsAppDisplay;
+function MovementPagination({
+  variantId,
+  page,
+  pageCount,
+  total,
+}: {
+  variantId: string;
+  page: number;
+  pageCount: number;
+  total: number;
+}) {
+  if (pageCount <= 1) return null;
+
+  return (
+    <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
+      <p>
+        Página {page} de {pageCount} ({total} movimientos)
+      </p>
+      <div className="flex gap-2">
+        {page > 1 ? (
+          <Button
+            variant="outline"
+            size="sm"
+            render={
+              <Link href={`/inventario/${variantId}?movementsPage=${page - 1}`}>
+                Anterior
+              </Link>
+            }
+          />
+        ) : null}
+        {page < pageCount ? (
+          <Button
+            variant="outline"
+            size="sm"
+            render={
+              <Link href={`/inventario/${variantId}?movementsPage=${page + 1}`}>
+                Siguiente
+              </Link>
+            }
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}

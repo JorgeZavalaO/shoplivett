@@ -15,7 +15,11 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `actions/orders.ts` agrega `listCustomerOrdersAction` con paginación server-side por customerId (`AUD-FUNC-001`).
 - `actions/payments.ts` agrega `listCustomerPaymentsAction` con paginación server-side por customerId (`AUD-FUNC-001`).
 - `lib/sales.ts` (`createQuickSale`) rechaza vender a clientas con `status = BLOCKED` lanzando `OrderError("CUSTOMER_BLOCKED")`, revalidando el estado tanto en la lectura inicial como dentro de la transacción `Serializable` para cerrar la ventana de carrera (`AUD-UX-009`).
-- `lib/import-batches.ts` centraliza `assertBatchNotClosed(tx, batchId)` (con `BatchClosedError`/`BatchNotFoundError` tipados) y las 4 mutaciones de lote en `actions/import-batches.ts` (`updateBatchAction`, `addBatchItemAction`, `removeBatchItemAction`, `recalculateBatchAction`) la invocan como primer paso dentro de su transacción `Serializable`, en vez de validar `status !== CLOSED` antes de abrirla. Las 3 acciones que no usaban `Serializable` ahora lo usan, con manejo de conflicto de serialización (`P2034`) (`AUD-DATA-010`).
+- `actions/import-batches.ts` (`createBatchAction`) envuelve la transacción completa en un retry de hasta 5 intentos con nuevo código en cada colisión `P2002`, en vez de devolver error al usuario (`AUD-DATA-017`).
+- `lib/sales.ts` (`createQuickSale`) envuelve la transacción en un retry de hasta 5 intentos regenerando `orderNumber` en cada colisión `P2002`, en vez de propagar error interno 500 (`AUD-DATA-017`).
+- `actions/expenses.ts` (`updateExpenseAction`, `voidExpenseAction`) mueven la lectura y validación de `status` dentro de la transacción `Serializable`, cerrando la ventana de carrera entre edición y anulación concurrente (`AUD-DATA-016`).
+- `lib/inventory.ts` (`getMovementHistory`) ahora acepta `{ page, perPage }` y devuelve paginación completa (`items`, `total`, `page`, `pageCount`), limitando la carga a `perPage` movimientos (`AUD-PERF-010`).
+- `app/(dashboard)/inventario/[variantId]/page.tsx` agrega navegación Anterior/Siguiente server-side y canaliza `?movementsPage` (`AUD-PERF-010`).
 
 ### Operaciones
 - CI E2E cambia de `pnpm db:push` a `pnpm db:deploy` antes de seed y Playwright.
@@ -35,11 +39,13 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `app/(dashboard)/clientes/[id]/page.tsx`: placeholders `HISTORY_TABS` reemplazados por componentes reales de pedidos y pagos; texto de cambio de estado actualizado para reflejar que el bloqueo ya es efectivo (`AUD-UX-009`).
 - `app/(dashboard)/lotes/[id]/page.tsx`: toolbar de acciones y columna de eliminar por fila agregados, ocultos si CLOSED.
 - `components/dashboard/order-status-badge.tsx`: exporta `OrderStatus` type para tipado estricto.
-- `components/forms/quick-sale-form.tsx`: la búsqueda de clienta expone `CustomerStatusBadge`; si la clienta seleccionada está `BLOCKED` se muestra una alerta y el submit queda deshabilitado (`AUD-UX-009`).
+- `components/forms/quick-sale-form.tsx`: la búsqueda de clienta expone `CustomerStatusBadge`; si la clienta seleccionada está `BLOCKED` se muestra una alerta y el submit queda deshabilitado; al seleccionar clienta se muestra su WhatsApp real en vez de campo vacío (`AUD-UX-009`, `AUD-UX-013`).
 - `actions/sales.ts` (`searchCustomersForSaleAction`) agrega `status` al `select` para que la UI pueda mostrar el estado sin queries adicionales.
+- `lib/whatsapp.ts` (`getAvailableTemplates`) corrige filtrado: sin `hasOrder` solo muestra `CREDIT_AVAILABLE` si hay crédito, o lista vacía. Sin `hasPayment` filtra `SEPARATION_CONFIRMED` y `PAYMENT_VALIDATED`. Sin `hasShipment` filtra `SHIPMENT_SENT`. Sin `hasCredit` filtra `CREDIT_AVAILABLE`. Ya no ofrece plantillas que requieren `order` cuando no hay contexto de pedido (`AUD-UX-001`).
+- `components/forms/inventory-adjust-form.tsx`: agrega `ConfirmDialog` con resumen (tipo, cantidad, motivo) antes de ejecutar el ajuste. La confirmación usa tono `destructive` si la cantidad es negativa. Botón de submit queda deshabilitado si cantidad o motivo son inválidos (`AUD-UX-005`).
 
 ### Auditoría
-- `AUD-UX-009` y `AUD-DATA-010` quedan marcados como `Corregido`.
+- `AUD-UX-009`, `AUD-DATA-010`, `AUD-DATA-016`, `AUD-DATA-017`, `AUD-UX-001`, `AUD-UX-005`, `AUD-PERF-010` y `AUD-UX-013` quedan marcados como `Corregido`.
 
 ### Verificación
 - `pnpm typecheck` + `pnpm lint` → 0 errores.
@@ -48,6 +54,8 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `pnpm tsx scripts/test-upload-validation.ts` → ok.
 - `pnpm tsx scripts/_with-env.ts scripts/test-customer-blocked-sale.ts` → 4/4 tests (venta rechazada a cliente `BLOCKED`, permitida a `ACTIVE`).
 - `pnpm tsx scripts/_with-env.ts scripts/test-batch-closed-race.ts` → 4/4 tests, incluyendo carrera real cierre-vs-edición contra Postgres con coordinación determinista (sin depender de temporizadores).
+- `pnpm tsx scripts/_with-env.ts scripts/test-expenses.ts` → 7/7 tests (regresión transaccional de gastos).
+- Regresión adicional de Fase 1: `pnpm typecheck`, `pnpm lint` (0 errores).
 
 ## [0.39.0] - Costeo 4dp exacto, hardening de uploads/CSV, bloqueo de costeo manual y secret scanning
 

@@ -377,17 +377,43 @@ export async function adjustStock(
 // Historial
 // =====================================================================
 
-export async function getMovementHistory(variantId: string): Promise<Movement[]> {
+export type MovementPage = {
+  items: Movement[];
+  total: number;
+  page: number;
+  perPage: number;
+  pageCount: number;
+};
+
+export async function getMovementHistory(
+  variantId: string,
+  opts: { page?: number; perPage?: number } = {},
+): Promise<MovementPage> {
   const prisma = getPrisma();
-  const rows = await prisma.inventoryMovement.findMany({
-    where: { variantId },
-    orderBy: { createdAt: "desc" },
-  });
-  return rows.map((m) => ({
-    id: m.id,
-    type: m.type,
-    quantity: m.quantity,
-    reason: m.reason,
-    createdAt: m.createdAt,
-  }));
+  const safePage = Math.max(1, opts.page ?? 1);
+  const safePerPage = Math.min(100, Math.max(1, opts.perPage ?? 25));
+
+  const [total, rows] = await Promise.all([
+    prisma.inventoryMovement.count({ where: { variantId } }),
+    prisma.inventoryMovement.findMany({
+      where: { variantId },
+      orderBy: { createdAt: "desc" },
+      skip: (safePage - 1) * safePerPage,
+      take: safePerPage,
+    }),
+  ]);
+
+  return {
+    items: rows.map((m) => ({
+      id: m.id,
+      type: m.type as Movement["type"],
+      quantity: m.quantity,
+      reason: m.reason,
+      createdAt: m.createdAt,
+    })),
+    total,
+    page: safePage,
+    perPage: safePerPage,
+    pageCount: Math.ceil(total / safePerPage),
+  };
 }

@@ -1,7 +1,7 @@
 // Lógica de venta rápida: crea pedido, items, pago pendiente, reserva stock.
 // Todo corre dentro de una transacción Prisma.
 
-import type { SalesChannel } from "@prisma/client";
+import { Prisma, type SalesChannel } from "@prisma/client";
 
 import { getPrisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
@@ -195,171 +195,198 @@ export async function createQuickSale(
     }
   }
 
-  let orderResult: { orderId: string; orderNumber: string; paymentId: string };
+  let orderResult: { orderId: string; orderNumber: string; paymentId: string } | undefined;
+  const MAX_ORDER_CODE_RETRIES = 5;
+  let lastError: unknown;
+
   try {
-    orderResult = await prisma.$transaction(
-      async (tx) => {
-        // Revalidar estado del cliente dentro de la transacción para cerrar
-        // la ventana de carrera entre la lectura inicial y el commit
-        // (AUD-UX-009): un admin podría bloquear al cliente justo entre
-        // ambos momentos.
-        const currentCustomer = await tx.customer.findUnique({
-          where: { id: input.customerId },
-          select: { status: true },
-        });
-        if (!currentCustomer) {
-          throw new OrderError("La clienta ya no existe.", "CUSTOMER_NOT_FOUND");
+    for (let attempt = 0; attempt < MAX_ORDER_CODE_RETRIES; attempt++) {
+      try {
+        orderResult = await prisma.$transaction(
+          async (tx) => {
+          // Revalidar estado del cliente dentro de la transacción para cerrar
+          // la ventana de carrera entre la lectura inicial y el commit
+          // (AUD-UX-009): un admin podría bloquear al cliente justo entre
+          // ambos momentos.
+          const currentCustomer = await tx.customer.findUnique({
+            where: { id: input.customerId },
+            select: { status: true },
+          });
+          if (!currentCustomer) {
+            throw new OrderError("La clienta ya no existe.", "CUSTOMER_NOT_FOUND");
+          }
+          if (currentCustomer.status === "BLOCKED") {
+            throw new OrderError(
+              "La clienta está bloqueada y no puede registrar nuevas ventas.",
+              "CUSTOMER_BLOCKED",
+            );
+          }
+
+          const orderNumber = await generateOrderNumber(tx);
+          const expiresAt = await calculateOrderExpiry(new Date(), settings.reservationDays);
+          const balance = calculateOrderBalance(totals.total, "0");
+          const live = input.liveSessionId
+            ? await tx.liveSession.findUnique({
+                where: { id: input.liveSessionId },
+                select: { id: true, status: true },
+              })
+            : null;
+          const resolvedLiveSessionId = live?.status === "OPEN" ? live.id : null;
+
+          const order = await tx.order.create({
+            data: {
+              orderNumber,
+              customerId: input.customerId,
+              liveSessionId: resolvedLiveSessionId,
+              status: "PAYMENT_VALIDATION_PENDING",
+              subtotal: totals.subtotal,
+              discount: input.discount || "0",
+              shippingAmount: input.shippingAmount || "0",
+              total: totals.total,
+              validatedPaid: "0",
+              balance,
+              salesChannel: input.salesChannel ?? "WHATSAPP_DIRECTO",
+              expiresAt,
+              notes: input.notes ?? null,
+            },
+          });
+
+          for (const li of lineItems) {
+            const variant = variantMap.get(li.variantId)!;
+            const persist = await persistQuickSaleLine({
+              tx,
+              orderId: order.id,
+              item: {
+                variantId: li.variantId,
+                quantity: li.quantity,
+                unitPrice: li.unitPrice,
+                variant: { cost: variant.cost },
+              },
+              lineDiscountCents: discountByVariant.get(li.variantId) ?? 0,
+              shippingAllocationCents: shippingByVariant.get(li.variantId) ?? 0,
+            });
+            await auditInTx(tx, input.actorId ?? null, {
+              action: "ORDER_BATCH_ALLOCATED",
+              entity: "OrderItem",
+              entityId: persist.orderItemId,
+              metadata: {
+                orderId: order.id,
+                variantId: li.variantId,
+                quantity: li.quantity,
+                costSource: persist.costSource,
+                unitCostPen: persist.unitCostPen,
+                allocations: persist.allocations.map((a) => ({
+                  batchId: a.batchId,
+                  batchItemId: a.batchItemId,
+                  quantity: a.quantity,
+                  unitCostPen: a.unitCostPen,
+                  subtotalCostPen: a.subtotalCostPen,
+                })),
+              },
+            });
+          }
+
+          const created = await createPayment(
+            {
+              customerId: input.customerId,
+              method: input.paymentMethod as Parameters<typeof createPayment>[0]["method"],
+              amount: input.advanceAmount,
+              operationNumber: input.operationNumber ?? null,
+              notes: null,
+              sourceOrderId: order.id,
+              applications: [{ orderId: order.id, amount: input.advanceAmount }],
+            },
+            { tx },
+          );
+
+          for (const r of uploadedReceipts) {
+            await tx.paymentReceipt.create({
+              data: {
+                paymentId: created.paymentId,
+                url: r.url,
+                pathname: r.pathname,
+              },
+            });
+          }
+
+          for (const item of input.items) {
+            await reserveStock(item.variantId, item.quantity, {
+              reason: `Orden ${orderNumber}`,
+              tx,
+            });
+          }
+
+          await auditInTx(tx, input.actorId ?? null, {
+            action: "ORDER_CREATED",
+            entity: "Order",
+            entityId: order.id,
+            metadata: {
+              orderNumber,
+              customerId: input.customerId,
+              total: totals.total,
+              advance: input.advanceAmount,
+              paymentMethod: input.paymentMethod,
+              salesChannel: input.salesChannel ?? "WHATSAPP_DIRECTO",
+              items: lineItems.map((li) => ({
+                variantId: li.variantId,
+                quantity: li.quantity,
+                unitPrice: li.unitPrice,
+              })),
+              liveSessionId: resolvedLiveSessionId,
+            },
+          });
+
+          return { orderId: order.id, orderNumber, paymentId: created.paymentId };
+        },
+        { isolationLevel: "Serializable", maxWait: 5000, timeout: 15000 },
+      );
+
+      // Success — exit retry loop
+            break;
+          } catch (error) {
+            lastError = error;
+            if (
+              error instanceof Prisma.PrismaClientKnownRequestError &&
+              error.code === "P2002"
+            ) {
+              if (attempt < MAX_ORDER_CODE_RETRIES - 1) {
+                continue;
+              }
+              throw new OrderError("No pudimos generar el número de pedido. Intenta nuevamente.", "CONFLICT");
+            }
+            throw error;
+          }
         }
-        if (currentCustomer.status === "BLOCKED") {
-          throw new OrderError(
-            "La clienta está bloqueada y no puede registrar nuevas ventas.",
-            "CUSTOMER_BLOCKED",
+      } catch (error) {
+        // Compensar uploads huérfanos si todas las transacciones fallan.
+        if (uploadedReceipts.length > 0) {
+          await Promise.all(
+            uploadedReceipts.map((r) =>
+              deleteImage(r.pathname).catch(() => {
+                // El fallo de limpieza se ignora: el blob es preferible a fallar la acción.
+              }),
+            ),
           );
         }
-
-        const orderNumber = await generateOrderNumber(tx);
-        const expiresAt = await calculateOrderExpiry(new Date(), settings.reservationDays);
-        const balance = calculateOrderBalance(totals.total, "0");
-        const live = input.liveSessionId
-          ? await tx.liveSession.findUnique({
-              where: { id: input.liveSessionId },
-              select: { id: true, status: true },
-            })
-          : null;
-        const resolvedLiveSessionId = live?.status === "OPEN" ? live.id : null;
-
-        const order = await tx.order.create({
-          data: {
-            orderNumber,
-            customerId: input.customerId,
-            liveSessionId: resolvedLiveSessionId,
-            status: "PAYMENT_VALIDATION_PENDING",
-            subtotal: totals.subtotal,
-            discount: input.discount || "0",
-            shippingAmount: input.shippingAmount || "0",
-            total: totals.total,
-            validatedPaid: "0",
-            balance,
-            salesChannel: input.salesChannel ?? "WHATSAPP_DIRECTO",
-            expiresAt,
-            notes: input.notes ?? null,
-          },
-        });
-
-        for (const li of lineItems) {
-          const variant = variantMap.get(li.variantId)!;
-          const persist = await persistQuickSaleLine({
-            tx,
-            orderId: order.id,
-            item: {
-              variantId: li.variantId,
-              quantity: li.quantity,
-              unitPrice: li.unitPrice,
-              variant: { cost: variant.cost },
-            },
-            lineDiscountCents: discountByVariant.get(li.variantId) ?? 0,
-            shippingAllocationCents: shippingByVariant.get(li.variantId) ?? 0,
-          });
-          await auditInTx(tx, input.actorId ?? null, {
-            action: "ORDER_BATCH_ALLOCATED",
-            entity: "OrderItem",
-            entityId: persist.orderItemId,
-            metadata: {
-              orderId: order.id,
-              variantId: li.variantId,
-              quantity: li.quantity,
-              costSource: persist.costSource,
-              unitCostPen: persist.unitCostPen,
-              allocations: persist.allocations.map((a) => ({
-                batchId: a.batchId,
-                batchItemId: a.batchItemId,
-                quantity: a.quantity,
-                unitCostPen: a.unitCostPen,
-                subtotalCostPen: a.subtotalCostPen,
-              })),
-            },
-          });
+        if (error instanceof PaymentError) {
+          throw new OrderError(error.message, "PAYMENT_ERROR");
         }
-
-        const created = await createPayment(
-          {
-            customerId: input.customerId,
-            method: input.paymentMethod as Parameters<typeof createPayment>[0]["method"],
-            amount: input.advanceAmount,
-            operationNumber: input.operationNumber ?? null,
-            notes: null,
-            sourceOrderId: order.id,
-            applications: [{ orderId: order.id, amount: input.advanceAmount }],
-          },
-          { tx },
-        );
-
-        for (const r of uploadedReceipts) {
-          await tx.paymentReceipt.create({
-            data: {
-              paymentId: created.paymentId,
-              url: r.url,
-              pathname: r.pathname,
-            },
-          });
+        if (error instanceof BatchAllocationError) {
+          if (error.code === "INSUFFICIENT_BATCH_STOCK") {
+            throw new OrderError(error.message, "INSUFFICIENT_BATCH_STOCK");
+          }
+          if (error.code === "CONFLICT") {
+            throw new OrderError(error.message, "CONFLICT");
+          }
+          throw new OrderError(error.message, "INSUFFICIENT_STOCK");
         }
-
-        for (const item of input.items) {
-          await reserveStock(item.variantId, item.quantity, {
-            reason: `Orden ${orderNumber}`,
-            tx,
-          });
-        }
-
-        await auditInTx(tx, input.actorId ?? null, {
-          action: "ORDER_CREATED",
-          entity: "Order",
-          entityId: order.id,
-          metadata: {
-            orderNumber,
-            customerId: input.customerId,
-            total: totals.total,
-            advance: input.advanceAmount,
-            paymentMethod: input.paymentMethod,
-            salesChannel: input.salesChannel ?? "WHATSAPP_DIRECTO",
-            items: lineItems.map((li) => ({
-              variantId: li.variantId,
-              quantity: li.quantity,
-              unitPrice: li.unitPrice,
-            })),
-            liveSessionId: resolvedLiveSessionId,
-          },
-        });
-
-        return { orderId: order.id, orderNumber, paymentId: created.paymentId };
-      },
-      { isolationLevel: "Serializable", maxWait: 5000, timeout: 15000 },
-    );
-  } catch (error) {
-    // Compensar uploads huérfanos si la transacción falla.
-    if (uploadedReceipts.length > 0) {
-      await Promise.all(
-        uploadedReceipts.map((r) =>
-          deleteImage(r.pathname).catch(() => {
-            // El fallo de limpieza se ignora: el blob es preferible a fallar la acción.
-          }),
-        ),
-      );
-    }
-    if (error instanceof PaymentError) {
-      throw new OrderError(error.message, "PAYMENT_ERROR");
-    }
-    if (error instanceof BatchAllocationError) {
-      if (error.code === "INSUFFICIENT_BATCH_STOCK") {
-        throw new OrderError(error.message, "INSUFFICIENT_BATCH_STOCK");
+        if (error instanceof OrderError) throw error;
+        throw error;
       }
-      if (error.code === "CONFLICT") {
-        throw new OrderError(error.message, "CONFLICT");
-      }
-      throw new OrderError(error.message, "INSUFFICIENT_STOCK");
-    }
-    if (error instanceof OrderError) throw error;
-    throw error;
+
+  // This shouldn't be reached, but TypeScript needs the guard:
+  if (!orderResult) {
+    throw lastError instanceof Error ? lastError : new Error("Error desconocido al crear el pedido.");
   }
 
   return orderResult;

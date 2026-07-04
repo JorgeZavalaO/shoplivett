@@ -303,16 +303,10 @@ export function buildWhatsappMessage(input: BuildTemplateInput): string {
 export function getAvailableTemplates(
   context: AvailableContext,
 ): OrderTemplateKey[] {
-  const all: OrderTemplateKey[] = [...WHATSAPP_TEMPLATE_KEYS];
   if (!context.hasOrder) {
-    return all.filter(
-      (k) =>
-        k === "CREDIT_AVAILABLE" ||
-        k === "BALANCE_REMINDER" ||
-        k === "RESERVATION_NEAR_EXPIRY" ||
-        k === "RESERVATION_EXPIRED",
-    );
+    return context.hasCredit ? ["CREDIT_AVAILABLE"] : [];
   }
+  const all: OrderTemplateKey[] = [...WHATSAPP_TEMPLATE_KEYS];
   if (!context.hasPayment) {
     return all.filter(
       (k) => k !== "SEPARATION_CONFIRMED" && k !== "PAYMENT_VALIDATED",

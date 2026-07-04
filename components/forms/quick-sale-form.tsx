@@ -71,6 +71,7 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOpt
   const [customerQuery, setCustomerQuery] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [customerName, setCustomerName] = useState("");
+  const [customerWhatsapp, setCustomerWhatsapp] = useState("");
   const [customerStatus, setCustomerStatus] = useState<
     "ACTIVE" | "FREQUENT" | "RISKY" | "BLOCKED" | null
   >(null);
@@ -239,7 +240,7 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOpt
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium">{customerName}</p>
-                  <p className="text-xs text-muted-foreground">{formatWhatsAppDisplay("")}</p>
+                  <p className="text-xs text-muted-foreground">{formatWhatsAppDisplay(customerWhatsapp)}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {customerStatus ? <CustomerStatusBadge status={customerStatus} /> : null}
@@ -248,6 +249,7 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOpt
                     onClick={() => {
                       setCustomerId("");
                       setCustomerName("");
+                      setCustomerWhatsapp("");
                       setCustomerStatus(null);
                       setCustomerQuery("");
                     }}
@@ -280,6 +282,7 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOpt
                 onSelectItem={(c) => {
                   setCustomerId(c.id);
                   setCustomerName(c.name);
+                  setCustomerWhatsapp(c.whatsapp);
                   setCustomerStatus(c.status);
                   setCustomerQuery("");
                   setCustomerResults([]);

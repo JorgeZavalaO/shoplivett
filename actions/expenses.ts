@@ -154,91 +154,113 @@ export async function updateExpenseAction(
   const user = await (await import("@/lib/permissions")).getCurrentUser();
   const prisma = getPrisma();
 
-  const existing = await prisma.expense.findUnique({
-    where: { id: expenseId },
-    select: {
-      id: true,
-      expenseDate: true,
-      category: true,
-      expenseType: true,
-      description: true,
-      amount: true,
-      paymentMethod: true,
-      notes: true,
-      status: true,
-    },
-  });
-  if (!existing) return { ok: false, message: "El gasto ya no existe." };
-  if (existing.status === "VOIDED") {
-    return { ok: false, message: "No puedes editar un gasto anulado." };
-  }
+  type TxUpdateResult = { ok: false; message: string } | { ok: true };
 
-  const updateData: Record<string, unknown> = {};
-  const changedFields: Record<string, { from: unknown; to: unknown }> = {};
+  let result: TxUpdateResult;
 
-  if (parsed.data.expenseDate) {
-    const newDate = new Date(parsed.data.expenseDate);
-    if (newDate.getTime() !== existing.expenseDate.getTime()) {
-      changedFields.expenseDate = {
-        from: existing.expenseDate.toISOString(),
-        to: newDate.toISOString(),
-      };
-      updateData.expenseDate = newDate;
-    }
-  }
-  if (parsed.data.category && parsed.data.category !== existing.category) {
-    changedFields.category = { from: existing.category, to: parsed.data.category };
-    updateData.category = parsed.data.category;
-  }
-  if (parsed.data.expenseType && parsed.data.expenseType !== existing.expenseType) {
-    changedFields.expenseType = { from: existing.expenseType, to: parsed.data.expenseType };
-    updateData.expenseType = parsed.data.expenseType;
-  }
-  if (parsed.data.description && parsed.data.description !== existing.description) {
-    changedFields.description = { from: existing.description, to: parsed.data.description };
-    updateData.description = parsed.data.description;
-  }
-  if (parsed.data.amount) {
-    const newCents = toCents(parsed.data.amount);
-    if (newCents !== toCents(existing.amount.toString())) {
-      changedFields.amount = {
-        from: existing.amount.toString(),
-        to: centsToDecimalString(newCents),
-      };
-      updateData.amount = centsToDecimalString(newCents);
-    }
-  }
-  if (parsed.data.paymentMethod !== undefined) {
-    const next = parsed.data.paymentMethod ?? null;
-    if (next !== existing.paymentMethod) {
-      changedFields.paymentMethod = { from: existing.paymentMethod, to: next };
-      updateData.paymentMethod = next;
-    }
-  }
-  if (parsed.data.notes !== undefined) {
-    const next = parsed.data.notes ?? null;
-    if (next !== existing.notes) {
-      changedFields.notes = { from: existing.notes, to: next };
-      updateData.notes = next;
-    }
-  }
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const existing = await tx.expense.findUnique({
+        where: { id: expenseId },
+        select: {
+          id: true,
+          expenseDate: true,
+          category: true,
+          expenseType: true,
+          description: true,
+          amount: true,
+          paymentMethod: true,
+          notes: true,
+          status: true,
+        },
+      });
+      if (!existing) return { ok: false, message: "El gasto ya no existe." } as const;
+      if (existing.status === "VOIDED") {
+        return { ok: false, message: "No puedes editar un gasto anulado." } as const;
+      }
 
-  if (Object.keys(updateData).length === 0) {
-    redirect(`/gastos/${expenseId}`);
-  }
+      const updateData: Record<string, unknown> = {};
+      const changedFields: Record<string, { from: unknown; to: unknown }> = {};
 
-  await prisma.$transaction(async (tx) => {
-    await tx.expense.update({
-      where: { id: expenseId },
-      data: updateData,
+      if (parsed.data.expenseDate) {
+        const newDate = new Date(parsed.data.expenseDate);
+        if (newDate.getTime() !== existing.expenseDate.getTime()) {
+          changedFields.expenseDate = {
+            from: existing.expenseDate.toISOString(),
+            to: newDate.toISOString(),
+          };
+          updateData.expenseDate = newDate;
+        }
+      }
+      if (parsed.data.category && parsed.data.category !== existing.category) {
+        changedFields.category = { from: existing.category, to: parsed.data.category };
+        updateData.category = parsed.data.category;
+      }
+      if (parsed.data.expenseType && parsed.data.expenseType !== existing.expenseType) {
+        changedFields.expenseType = { from: existing.expenseType, to: parsed.data.expenseType };
+        updateData.expenseType = parsed.data.expenseType;
+      }
+      if (parsed.data.description && parsed.data.description !== existing.description) {
+        changedFields.description = { from: existing.description, to: parsed.data.description };
+        updateData.description = parsed.data.description;
+      }
+      if (parsed.data.amount) {
+        const newCents = toCents(parsed.data.amount);
+        if (newCents !== toCents(existing.amount.toString())) {
+          changedFields.amount = {
+            from: existing.amount.toString(),
+            to: centsToDecimalString(newCents),
+          };
+          updateData.amount = centsToDecimalString(newCents);
+        }
+      }
+      if (parsed.data.paymentMethod !== undefined) {
+        const next = parsed.data.paymentMethod ?? null;
+        if (next !== existing.paymentMethod) {
+          changedFields.paymentMethod = { from: existing.paymentMethod, to: next };
+          updateData.paymentMethod = next;
+        }
+      }
+      if (parsed.data.notes !== undefined) {
+        const next = parsed.data.notes ?? null;
+        if (next !== existing.notes) {
+          changedFields.notes = { from: existing.notes, to: next };
+          updateData.notes = next;
+        }
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        await tx.expense.update({
+          where: { id: expenseId },
+          data: updateData,
+        });
+        await auditInTx(tx, user?.id ?? null, {
+          action: "EXPENSE_UPDATED",
+          entity: "Expense",
+          entityId: expenseId,
+          metadata: { changes: changedFields },
+        });
+      }
+
+      return { ok: true };
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      maxWait: 5000,
+      timeout: 15000,
     });
-    await auditInTx(tx, user?.id ?? null, {
-      action: "EXPENSE_UPDATED",
-      entity: "Expense",
-      entityId: expenseId,
-      metadata: { changes: changedFields },
-    });
-  });
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      (err.code === "P2034" || err.message.includes("serialization"))
+    ) {
+      return { ok: false, message: "Conflicto al actualizar el gasto. Intenta nuevamente." };
+    }
+    throw err;
+  }
+
+  if (!result.ok) {
+    return result;
+  }
 
   revalidatePath("/gastos");
   revalidatePath(`/gastos/${expenseId}`);
@@ -267,32 +289,56 @@ export async function voidExpenseAction(
   const user = await (await import("@/lib/permissions")).getCurrentUser();
   const prisma = getPrisma();
 
-  const existing = await prisma.expense.findUnique({
-    where: { id: expenseId },
-    select: { id: true, status: true },
-  });
-  if (!existing) return { ok: false, message: "El gasto ya no existe." };
-  if (existing.status === "VOIDED") {
-    return { ok: false, message: "El gasto ya está anulado." };
+  type TxVoidResult = { ok: false; message: string } | { ok: true };
+
+  let result: TxVoidResult;
+
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const existing = await tx.expense.findUnique({
+        where: { id: expenseId },
+        select: { id: true, status: true },
+      });
+      if (!existing) return { ok: false, message: "El gasto ya no existe." } as const;
+      if (existing.status === "VOIDED") {
+        return { ok: false, message: "El gasto ya está anulado." } as const;
+      }
+
+      await tx.expense.update({
+        where: { id: expenseId },
+        data: {
+          status: "VOIDED",
+          voidedAt: new Date(),
+          voidedById: user?.id ?? null,
+          voidReason: parsed.data.voidReason,
+        },
+      });
+      await auditInTx(tx, user?.id ?? null, {
+        action: "EXPENSE_VOIDED",
+        entity: "Expense",
+        entityId: expenseId,
+        metadata: { voidReason: parsed.data.voidReason },
+      });
+
+      return { ok: true };
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      maxWait: 5000,
+      timeout: 15000,
+    });
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      (err.code === "P2034" || err.message.includes("serialization"))
+    ) {
+      return { ok: false, message: "Conflicto al anular el gasto. Intenta nuevamente." };
+    }
+    throw err;
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.expense.update({
-      where: { id: expenseId },
-      data: {
-        status: "VOIDED",
-        voidedAt: new Date(),
-        voidedById: user?.id ?? null,
-        voidReason: parsed.data.voidReason,
-      },
-    });
-    await auditInTx(tx, user?.id ?? null, {
-      action: "EXPENSE_VOIDED",
-      entity: "Expense",
-      entityId: expenseId,
-      metadata: { voidReason: parsed.data.voidReason },
-    });
-  });
+  if (!result.ok) {
+    return result;
+  }
 
   revalidatePath("/gastos");
   revalidatePath(`/gastos/${expenseId}`);

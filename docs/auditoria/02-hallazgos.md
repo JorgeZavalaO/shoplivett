@@ -436,7 +436,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Edicion/anulacion de gasto tiene carrera.
 - Severidad: Media.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `actions/expenses.ts`.
 - Descripcion: `updateExpenseAction` y `voidExpenseAction` leen estado antes de transaccion y actualizan despues.
 - Evidencia encontrada: `actions/expenses.ts:157-174`, `actions/expenses.ts:230-241`, `actions/expenses.ts:270-295`.
@@ -445,7 +445,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: no se actualiza gasto `VOIDED` bajo carrera.
 - Tests recomendados: concurrencia edicion vs anulacion.
 - Dependencias: ninguna.
-- Observaciones: prioridad menor que pagos/stock.
+- Observaciones: corregido en 0.40.0. Validacion de estado movida dentro de transaccion Serializable.
 
 ### AUD-DATA-017 - Codigos secuenciales dependen de lectura previa
 
@@ -453,7 +453,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Generacion de codigos puede colisionar bajo concurrencia.
 - Severidad: Media.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/orders.ts`, `lib/import-batches.ts`.
 - Descripcion: genera siguiente codigo leyendo el ultimo registro; unique evita duplicado pero puede fallar al usuario.
 - Evidencia encontrada: `generateOrderNumber`, `nextBatchCodeWithRetry`.
@@ -462,7 +462,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: colisiones concurrentes se reintentan o se evitan.
 - Tests recomendados: concurrencia de creacion de pedidos/lotes.
 - Dependencias: ninguna.
-- Observaciones: lotes ya tienen cierto retry; pedidos requieren manejo mas amigable.
+- Observaciones: corregido en 0.40.0. Retry agregado para colisiones P2002 en generacion de codigos de pedidos y lotes.
 
 ## Arquitectura y mantenibilidad
 
@@ -716,7 +716,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Detalle de inventario carga todos los movimientos.
 - Severidad: Media.
 - Categoria: Performance.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/inventory.ts`, `app/(dashboard)/inventario/[variantId]/page.tsx`.
 - Descripcion: `getMovementHistory()` usa `findMany` sin `take`.
 - Evidencia encontrada: `lib/inventory.ts:356-361`.
@@ -725,7 +725,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: detalle carga rapido con miles de movimientos.
 - Tests recomendados: performance manual con fixture grande.
 - Dependencias: ninguna.
-- Observaciones: P2/P3.
+- Observaciones: corregido en 0.40.0. Historial de movimientos paginado (default 25 por pagina).
 
 ### AUD-PERF-011 - Pagina de producto carga demasiados datos
 
@@ -769,7 +769,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Plantillas disponibles no respetan datos requeridos.
 - Severidad: Alta.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/whatsapp.ts`, `app/(dashboard)/clientes/[id]/page.tsx`.
 - Descripcion: `getAvailableTemplates()` devuelve plantillas que requieren `order` aunque `hasOrder=false`.
 - Evidencia encontrada: `lib/whatsapp.ts:227-295`, `lib/whatsapp.ts:303-326`, `app/(dashboard)/clientes/[id]/page.tsx:180-197`.
@@ -778,7 +778,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: ficha de cliente sin pedido no rompe.
 - Tests recomendados: unitario de plantillas y render de ficha.
 - Dependencias: ninguna.
-- Observaciones: bug rapido de corregir.
+- Observaciones: corregido en 0.40.0. Plantillas filtradas por contexto; sin pedido solo CREDIT_AVAILABLE o vacio.
 
 ### AUD-UX-002 - Dashboard de despacho enlaza a rutas no permitidas
 
@@ -837,7 +837,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Accion destructiva de inventario se ejecuta directo.
 - Severidad: Media.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `components/forms/inventory-adjust-form.tsx`.
 - Descripcion: submit directo sin `ConfirmDialog`.
 - Evidencia encontrada: auditoria del formulario de ajuste.
@@ -846,7 +846,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: ajuste requiere confirmacion explicita.
 - Tests recomendados: E2E/manual de confirmacion.
 - Dependencias: ninguna.
-- Observaciones: RNF documentado lo exige.
+- Observaciones: corregido en 0.40.0. ConfirmDialog agregado al formulario de ajuste de inventario.
 
 ### AUD-UX-006 - Activar/desactivar categoria sin confirmacion ni feedback
 
@@ -984,7 +984,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Cliente seleccionado no muestra WhatsApp real.
 - Severidad: Baja.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `components/forms/quick-sale-form.tsx`.
 - Descripcion: muestra `formatWhatsAppDisplay("")` tras seleccionar clienta.
 - Evidencia encontrada: auditoria de `quick-sale-form`.
@@ -993,7 +993,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: cliente seleccionado muestra nombre y telefono.
 - Tests recomendados: UI/manual.
 - Dependencias: ninguna.
-- Observaciones: mejora rapida.
+- Observaciones: corregido en 0.40.0. QuickSaleForm muestra el WhatsApp real del cliente seleccionado.
 
 ### AUD-UX-014 - Pago manual calcula `canSubmit` pero no lo aplica
 
