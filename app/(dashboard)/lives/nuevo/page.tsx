@@ -1,9 +1,11 @@
 import { createLiveAction } from "@/actions/lives";
 import { LiveForm } from "@/components/forms/live-form";
+import { requireRole } from "@/lib/permissions";
 import { getPrisma } from "@/lib/prisma";
 
 
 export default async function NuevoLivePage() {
+  await requireRole(["ADMIN", "SELLER"]);
   const responsibles = await getPrisma().user.findMany({
     where: { isActive: true, role: { in: ["ADMIN", "SELLER"] } },
     orderBy: { name: "asc" },

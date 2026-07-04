@@ -18,7 +18,7 @@ import {
   rejectPayment,
   PaymentError,
 } from "@/lib/payments";
-import { uploadImage, ImageUploadError } from "@/lib/blob";
+import { uploadImage, ImageUploadError, validateImageBatch } from "@/lib/blob";
 
 const decimalString = z
   .string()
@@ -113,6 +113,14 @@ export async function createPaymentAction(
     if (key === "receipts" && value instanceof File && value.size > 0) {
       receiptFiles.push(value);
     }
+  }
+  try {
+    validateImageBatch(receiptFiles);
+  } catch (error) {
+    if (error instanceof ImageUploadError) {
+      return { ok: false, message: error.message };
+    }
+    throw error;
   }
 
   try {

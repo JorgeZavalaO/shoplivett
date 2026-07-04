@@ -23,8 +23,9 @@ pnpm install
 
 # Base de datos
 pnpm db:generate    # prisma generate
-pnpm db:push        # aplicar schema sin migración
+pnpm db:push        # sincronizar schema sin historial; solo BD local descartable
 pnpm db:migrate     # crear/aplicar migración
+pnpm db:deploy      # aplicar migraciones versionadas en CI/staging/prod
 pnpm db:studio      # GUI
 pnpm db:seed        # cargar datos de demo
 
@@ -131,10 +132,11 @@ pnpm test:e2e          # corre smoke + 8 flujos obligatorios
   `/lives`, `/ventas`, `/pedidos`, `/pagos`, `/envios`, `/reportes`,
   `/auditoria`, `/configuracion`). NO renombrar a `middleware.ts` ni
   duplicarlo.
-- **Estrategia Prisma vigente**: mientras no se commiteen migraciones, el
-  bootstrap de BD usa `pnpm db:push`. `pnpm db:migrate` queda como puerta
-  para introducir migraciones formales en una fase posterior; no correrlo
-  todavía contra la BD compartida.
+- **Estrategia Prisma vigente**: el schema se versiona en
+  `prisma/migrations`. Bases limpias, CI, staging y producción usan
+  `pnpm db:deploy`. Cambios de schema nuevos se crean con `pnpm db:migrate`.
+  `pnpm db:push` queda reservado para bases locales descartables; no usarlo
+  contra bases compartidas ni productivas.
 - **Auth host trust**: `auth.ts` lee `AUTH_TRUST_HOST` desde env. Por
   compatibilidad, cualquier valor distinto de `"false"` se considera
   confiable. En Vercel, dejar el valor por defecto.
@@ -145,7 +147,7 @@ pnpm test:e2e          # corre smoke + 8 flujos obligatorios
   2. Crear Postgres Neon + `DATABASE_URL` con `pgbouncer=true` + `DIRECT_URL`.
   3. Configurar `AUTH_SECRET` (32 bytes base64) y `AUTH_URL` con la URL canónica.
   4. Crear Vercel Blob y exponer `BLOB_READ_WRITE_TOKEN`.
-  5. Asignar `SEED_*_PASSWORD` y correr `pnpm db:push && pnpm db:seed`
+  5. Asignar `SEED_*_PASSWORD` y correr `pnpm db:deploy && pnpm db:seed`
      en una consola one-shot (Vercel CLI o workflow).
   6. Definir comando build = `pnpm verify` para fallar rápido en CI.
 

@@ -6,15 +6,10 @@ Estado recomendado: no desplegar a produccion con usuarios reales hasta corregir
 
 ## Riesgos bloqueantes
 
-* Datos financieros incorrectos por `AUD-DATA-001` y `AUD-DATA-009`; el riesgo `AUD-DATA-007` ya tiene correccion aplicada en 0.36.0.
-* Stock incorrecto por `AUD-DATA-004` corregido en 0.37.0 (opcion B + reconciliacion); los riesgos `AUD-DATA-002`, `AUD-DATA-003`, `AUD-DATA-005` y `AUD-DATA-006` ya tenian correcciones aplicadas.
-* Creditos inconsistentes por `AUD-DATA-002` y `AUD-FUNC-002`.
-* Pagos aplicados a pedidos cerrados o reservas mal cerradas por `AUD-DATA-013` y `AUD-DATA-014`.
-* Sesiones de usuarios desactivados o degradados por `AUD-SEC-001`.
-* Login sin rate limiting por `AUD-SEC-002`.
-* URLs publicas historicas de capturas de pago por `AUD-SEC-003` si ya fueron filtradas antes de 0.34.0; recibos nuevos usan endpoint autenticado.
-* CI E2E potencialmente roto por `AUD-PROD-001`.
-* Reenvio de pedidos bloqueado por `AUD-DATA-008` si despacho opera cancelaciones reales.
+* URLs publicas historicas de capturas de pago por `AUD-SEC-003` si ya fueron filtradas antes de 0.34.0; los recibos nuevos usan endpoint autenticado, pero la exposicion historica no puede descartarse desde el repo.
+* Secretos productivos requieren checklist operativo (`AUD-PROD-003`). El riesgo local de `.env` (`AUD-SEC-009`) queda cerrado bajo la confirmacion operativa de que no hubo comparticion ni exposicion y el archivo seguira solo en la maquina local del responsable.
+* La senal de release sigue incompleta mientras los scripts de dominio y la matriz de permisos no corran sistematicamente en CI (`AUD-TEST-001`, `AUD-TEST-004`).
+* Reenvio de pedidos (`AUD-DATA-008`) ya fue corregido en 0.38.0. El riesgo residual es arquitectonico: la unicidad de envio activo depende hoy de logica transaccional `Serializable` y no de un indice parcial en DB. Ver decision en `07-registro-decisiones.md`.
 
 ## Riesgos aceptables temporalmente
 
@@ -31,6 +26,7 @@ Estos riesgos podrian diferirse si existe decision explicita y mitigacion operat
 * Tiempo de respuesta de `/dashboard` y `/reportes`.
 * Memoria y duracion de `app/api/reportes/[section]/route.ts`.
 * Errores Prisma `P2002`, `P2034` y timeouts.
+* Drift de schema despues de adoptar migraciones versionadas; staging debe ejecutar `pnpm db:deploy` antes de produccion.
 * Reintentos o fallos en validacion de pagos.
 * Diferencias entre `ProductVariant.stock`, `reservedStock`, `soldStock` e items de lote.
 * Creacion/cancelacion de incidencias con efectos financieros.
@@ -106,7 +102,7 @@ Consideraciones:
 * Rate limiting en login obligatorio.
 * Revocacion o revalidacion de usuario activo/rol obligatoria.
 * Headers de seguridad recomendados antes de produccion.
-* CSV injection debe corregirse antes de habilitar exports a usuarios no tecnicos.
+* Mantener secret scanning activo y revisar cada hallazgo antes de rotar credenciales reales.
 * Permisos por rol deben tener fuente unica y tests.
 * Auditoria debe permanecer inmutable.
 

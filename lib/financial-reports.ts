@@ -465,40 +465,45 @@ export async function getBatchProfitabilityReport(
 ): Promise<BatchProfitabilityReport> {
   const prisma = getPrisma();
   const whereRange = safeRange(range);
-  const batches = await prisma.importBatch.findMany({
-    select: {
-      id: true,
-      code: true,
-      status: true,
-      purchaseDate: true,
-      shopper: true,
-      agency: true,
-      totalInvestmentPen: true,
-      items: {
-        select: {
-          quantityAvailable: true,
-          allocations: {
-            select: {
-              quantity: true,
-              subtotalCostPen: true,
-              orderItem: {
-                select: {
-                  lineTotal: true,
-                  order: {
-                    select: {
-                      status: true,
-                      profitCalculatedAt: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
+
+  // AUD-PERF-003: en vez de cargar todos los lotes/items/allocations y
+  // filtrar en JS, consultamos primero solo las allocations dentro del
+  // rango con su pedido PAID. Luego cargamos unicamente los lotes
+  // efectivamente involucrados.
+  const allocationRows = await prisma.orderItemBatchAllocation.findMany({
+    where: {
+      orderItem: {
+        order: {
+          status: "PAID",
+          ...(Object.keys(whereRange).length > 0
+            ? { profitCalculatedAt: whereRange }
+            : {}),
         },
       },
     },
-    orderBy: { createdAt: "desc" },
+    select: {
+      batchId: true,
+      quantity: true,
+      subtotalCostPen: true,
+      orderItem: { select: { lineTotal: true } },
+    },
   });
+
+  const batchTotals = new Map<
+    string,
+    { soldUnits: number; allocatedCost: number; allocatedRevenue: number }
+  >();
+  for (const a of allocationRows) {
+    const acc = batchTotals.get(a.batchId) ?? {
+      soldUnits: 0,
+      allocatedCost: 0,
+      allocatedRevenue: 0,
+    };
+    acc.soldUnits += a.quantity;
+    acc.allocatedCost += resolveCents(a.subtotalCostPen, true);
+    acc.allocatedRevenue += resolveCents(a.orderItem.lineTotal);
+    batchTotals.set(a.batchId, acc);
+  }
 
   const rows: BatchProfitabilityRow[] = [];
   let totalInvestment = 0;
@@ -506,57 +511,60 @@ export async function getBatchProfitabilityReport(
   let totalAllocatedRevenue = 0;
   let totalGrossProfit = 0;
 
-  for (const b of batches) {
-    let soldUnits = 0;
-    let allocatedCost = 0;
-    let allocatedRevenue = 0;
-    for (const it of b.items) {
-      for (const a of it.allocations) {
-        if (a.orderItem.order.status !== "PAID") continue;
-        if (a.orderItem.order.profitCalculatedAt === null) continue;
-        if (whereRange.gte && a.orderItem.order.profitCalculatedAt < whereRange.gte) {
-          continue;
-        }
-        if (whereRange.lte && a.orderItem.order.profitCalculatedAt > whereRange.lte) {
-          continue;
-        }
-        soldUnits += a.quantity;
-        allocatedCost += resolveCents(a.subtotalCostPen, true);
-        allocatedRevenue += resolveCents(a.orderItem.lineTotal);
-      }
-    }
-    const investment = resolveCents(b.totalInvestmentPen);
-    const grossProfit = allocatedRevenue - allocatedCost;
-    const marginBps = allocatedRevenue > 0 ? Math.round((grossProfit * 10000) / allocatedRevenue) : 0;
-    const roiBps = investment > 0 ? Math.round((grossProfit * 10000) / investment) : 0;
-    const availableUnits = b.items.reduce((acc, it) => acc + (it.quantityAvailable ?? 0), 0);
-
-    if (soldUnits === 0 && allocatedRevenue === 0) continue;
-
-    rows.push({
-      batchId: b.id,
-      batchCode: b.code,
-      status: b.status,
-      purchaseDate: b.purchaseDate,
-      shopper: b.shopper,
-      agency: b.agency,
-      investmentCents: investment,
-      investment: centsToDecimalString(investment),
-      soldUnits,
-      allocatedRevenueCents: allocatedRevenue,
-      allocatedRevenue: centsToDecimalString(allocatedRevenue),
-      allocatedCostCents: allocatedCost,
-      allocatedCost: centsToDecimalString(allocatedCost),
-      grossProfitCents: grossProfit,
-      grossProfit: centsToDecimalString(grossProfit),
-      marginBps,
-      roiBps,
-      availableUnits,
+  if (batchTotals.size > 0) {
+    const batchIds = [...batchTotals.keys()];
+    const batches = await prisma.importBatch.findMany({
+      where: { id: { in: batchIds } },
+      select: {
+        id: true,
+        code: true,
+        status: true,
+        purchaseDate: true,
+        shopper: true,
+        agency: true,
+        totalInvestmentPen: true,
+        items: { select: { quantityAvailable: true } },
+      },
+      orderBy: { createdAt: "desc" },
     });
-    totalInvestment += investment;
-    totalSoldUnits += soldUnits;
-    totalAllocatedRevenue += allocatedRevenue;
-    totalGrossProfit += grossProfit;
+
+    for (const b of batches) {
+      const totals = batchTotals.get(b.id);
+      if (!totals) continue;
+      const { soldUnits, allocatedCost, allocatedRevenue } = totals;
+      const investment = resolveCents(b.totalInvestmentPen);
+      const grossProfit = allocatedRevenue - allocatedCost;
+      const marginBps = allocatedRevenue > 0 ? Math.round((grossProfit * 10000) / allocatedRevenue) : 0;
+      const roiBps = investment > 0 ? Math.round((grossProfit * 10000) / investment) : 0;
+      const availableUnits = b.items.reduce((acc, it) => acc + (it.quantityAvailable ?? 0), 0);
+
+      if (soldUnits === 0 && allocatedRevenue === 0) continue;
+
+      rows.push({
+        batchId: b.id,
+        batchCode: b.code,
+        status: b.status,
+        purchaseDate: b.purchaseDate,
+        shopper: b.shopper,
+        agency: b.agency,
+        investmentCents: investment,
+        investment: centsToDecimalString(investment),
+        soldUnits,
+        allocatedRevenueCents: allocatedRevenue,
+        allocatedRevenue: centsToDecimalString(allocatedRevenue),
+        allocatedCostCents: allocatedCost,
+        allocatedCost: centsToDecimalString(allocatedCost),
+        grossProfitCents: grossProfit,
+        grossProfit: centsToDecimalString(grossProfit),
+        marginBps,
+        roiBps,
+        availableUnits,
+      });
+      totalInvestment += investment;
+      totalSoldUnits += soldUnits;
+      totalAllocatedRevenue += allocatedRevenue;
+      totalGrossProfit += grossProfit;
+    }
   }
 
   rows.sort((a, b) => b.grossProfitCents - a.grossProfitCents);
@@ -787,17 +795,31 @@ export async function getLowRotationReport(
     },
   });
 
+  // AUD-PERF-005: ultima venta por variante en una sola consulta
+  // (antes: findFirst por variante -> N+1).
+  const variantIds = variants.map((v) => v.id);
+  const lastSoldByVariant = new Map<string, Date>();
+  if (variantIds.length > 0) {
+    const lastSoldRows = await prisma.orderItem.groupBy({
+      by: ["variantId"],
+      where: {
+        variantId: { in: variantIds },
+        order: { status: "PAID" },
+      },
+      _max: { createdAt: true },
+    });
+    for (const row of lastSoldRows) {
+      const maxDate = row._max.createdAt;
+      if (maxDate) lastSoldByVariant.set(row.variantId, maxDate);
+    }
+  }
+
   const rows: LowRotationRow[] = [];
   let totalUnits = 0;
   let totalCents = 0;
 
   for (const v of variants) {
-    const last = await prisma.orderItem.findFirst({
-      where: { variantId: v.id, order: { status: "PAID" } },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
-    });
-    const lastSoldAt = last?.createdAt ?? null;
+    const lastSoldAt = lastSoldByVariant.get(v.id) ?? null;
     if (lastSoldAt && lastSoldAt >= threshold) continue;
     const daysSinceLastSale = lastSoldAt
       ? Math.floor((Date.now() - lastSoldAt.getTime()) / (1000 * 60 * 60 * 24))

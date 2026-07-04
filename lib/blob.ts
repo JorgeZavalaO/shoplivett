@@ -10,6 +10,8 @@ export const BLOB_ACCEPTED_TYPES = [
 export type BlobAcceptedType = (typeof BLOB_ACCEPTED_TYPES)[number];
 
 export const BLOB_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+export const BLOB_MAX_FILES_PER_ACTION = 5;
+export const BLOB_MAX_TOTAL_BYTES = 15 * 1024 * 1024; // 15 MB
 
 export function isBlobAcceptedType(value: string): value is BlobAcceptedType {
   return (BLOB_ACCEPTED_TYPES as readonly string[]).includes(value);
@@ -32,12 +34,85 @@ export class ImageUploadError extends Error {
     public readonly code:
       | "MISSING_FILE"
       | "INVALID_TYPE"
+      | "INVALID_SIGNATURE"
       | "TOO_LARGE"
+      | "TOO_MANY_FILES"
+      | "TOTAL_TOO_LARGE"
       | "MISSING_TOKEN"
       | "UPLOAD_FAILED",
   ) {
     super(message);
     this.name = "ImageUploadError";
+  }
+}
+
+function matchesSignature(contentType: string, bytes: Uint8Array): boolean {
+  if (contentType === "image/png") {
+    return (
+      bytes.length >= 8 &&
+      bytes[0] === 0x89 &&
+      bytes[1] === 0x50 &&
+      bytes[2] === 0x4e &&
+      bytes[3] === 0x47 &&
+      bytes[4] === 0x0d &&
+      bytes[5] === 0x0a &&
+      bytes[6] === 0x1a &&
+      bytes[7] === 0x0a
+    );
+  }
+  if (contentType === "image/jpeg") {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (contentType === "image/webp") {
+    return (
+      bytes.length >= 12 &&
+      bytes[0] === 0x52 &&
+      bytes[1] === 0x49 &&
+      bytes[2] === 0x46 &&
+      bytes[3] === 0x46 &&
+      bytes[8] === 0x57 &&
+      bytes[9] === 0x45 &&
+      bytes[10] === 0x42 &&
+      bytes[11] === 0x50
+    );
+  }
+  return false;
+}
+
+async function assertImageSignature(file: File | Blob, contentType: string): Promise<void> {
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if (!matchesSignature(contentType, bytes)) {
+    throw new ImageUploadError(
+      "El archivo no coincide con una imagen PNG, JPEG o WebP valida.",
+      "INVALID_SIGNATURE",
+    );
+  }
+}
+
+export function validateImageBatch(
+  files: Array<File | Blob>,
+  options?: {
+    maxFiles?: number;
+    maxTotalBytes?: number;
+  },
+): void {
+  const nonEmptyFiles = files.filter((file) => file.size > 0);
+  const maxFiles = options?.maxFiles ?? BLOB_MAX_FILES_PER_ACTION;
+  const maxTotalBytes = options?.maxTotalBytes ?? BLOB_MAX_TOTAL_BYTES;
+
+  if (nonEmptyFiles.length > maxFiles) {
+    throw new ImageUploadError(
+      `Solo puedes subir hasta ${maxFiles} archivo(s) por accion.`,
+      "TOO_MANY_FILES",
+    );
+  }
+
+  const totalBytes = nonEmptyFiles.reduce((acc, file) => acc + file.size, 0);
+  if (totalBytes > maxTotalBytes) {
+    throw new ImageUploadError(
+      `El tamano total de archivos supera el maximo de ${Math.floor(maxTotalBytes / (1024 * 1024))} MB por accion.`,
+      "TOTAL_TOO_LARGE",
+    );
   }
 }
 
@@ -84,6 +159,7 @@ export async function uploadImage(
       "TOO_LARGE",
     );
   }
+  await assertImageSignature(file, contentType);
 
   const safeFolder = folder.replace(/[^a-zA-Z0-9/_-]/g, "").replace(/^\/+|\/+$/g, "");
   const ext = extensionFor(contentType);

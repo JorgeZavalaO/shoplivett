@@ -446,7 +446,7 @@ model Order {
   payments  Payment[]
   paymentApplications PaymentApplication[]
   creditApplications  CustomerCreditApplication[]
-  shipmentOrder        ShipmentOrder?
+  shipmentOrders       ShipmentOrder[]
   expiredById  String?
   expiredBy    User?      @relation("OrderExpirer", fields: [expiredById], references: [id], onDelete: SetNull)
   expiredAt    DateTime?
@@ -650,7 +650,7 @@ model ShipmentOrder {
   id         String   @id @default(cuid())
   shipmentId String
   shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  orderId    String   @unique
+  orderId    String
   order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
 

@@ -8,6 +8,7 @@ export class CostingError extends Error {
       | "ZERO_TOTAL_WEIGHT"
       | "ZERO_TOTAL_QUANTITY"
       | "INVALID_MIX_PERCENTS"
+      | "MANUAL_NOT_SUPPORTED"
       | "INVALID_RATE"
       | "INVALID_INPUT",
   ) {
@@ -293,7 +294,11 @@ export function distributeMixed(
 }
 
 export function distributeManual(items: CostInput[]): Map<string, Cents> {
-  return zeroDistribution(items);
+  void items;
+  throw new CostingError(
+    "El metodo MANUAL todavia no esta soportado. Cambia la configuracion a Por valor, Por peso o Mixto.",
+    "MANUAL_NOT_SUPPORTED",
+  );
 }
 
 export function calculateLandedCosts(

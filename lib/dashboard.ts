@@ -231,7 +231,7 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
     prisma.order.count({
       where: {
         status: "PAID",
-        shipmentOrder: null,
+        shipmentOrders: { none: { shipment: { status: { not: "CANCELLED" } } } },
       },
     }),
     prisma.shipment.count({
@@ -268,7 +268,7 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
     prisma.order.findMany({
       where: {
         status: "PAID",
-        shipmentOrder: null,
+        shipmentOrders: { none: { shipment: { status: { not: "CANCELLED" } } } },
       },
       orderBy: { createdAt: "asc" },
       take: 5,

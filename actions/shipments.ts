@@ -318,10 +318,7 @@ export async function searchCustomersForShipmentAction(query: string) {
       orders: {
         some: {
           status: "PAID",
-          OR: [
-            { shipmentOrder: null },
-            { shipmentOrder: { shipment: { status: "CANCELLED" } } },
-          ],
+          shipmentOrders: { none: { shipment: { status: { not: "CANCELLED" } } } },
         },
       },
       OR: [
@@ -364,15 +361,17 @@ export async function getShipmentDraftDefaultsAction(args: {
         total: true,
         status: true,
         customer: { select: { id: true, name: true, whatsapp: true } },
-        shipmentOrder: {
+        shipmentOrders: {
+          where: { shipment: { status: { not: "CANCELLED" } } },
           select: { shipment: { select: { status: true } } },
+          take: 1,
         },
       },
     });
     if (
       !order ||
       order.status !== "PAID" ||
-      (order.shipmentOrder && order.shipmentOrder.shipment.status !== "CANCELLED")
+      order.shipmentOrders.length > 0
     ) {
       return { customer: null, order: null };
     }
@@ -394,10 +393,7 @@ export async function getShipmentDraftDefaultsAction(args: {
       orders: {
         some: {
           status: "PAID",
-          OR: [
-            { shipmentOrder: null },
-            { shipmentOrder: { shipment: { status: "CANCELLED" } } },
-          ],
+          shipmentOrders: { none: { shipment: { status: { not: "CANCELLED" } } } },
         },
       },
     },

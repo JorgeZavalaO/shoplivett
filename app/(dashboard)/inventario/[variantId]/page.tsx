@@ -23,7 +23,8 @@ export default async function VarianteInventarioPage({
 }: {
   params: Params;
 }) {
-  await requireRole(["ADMIN", "SELLER", "DISPATCH"]);
+  const user = await requireRole(["ADMIN", "SELLER", "DISPATCH"]);
+  const canAdjustStock = user.role === "ADMIN";
   const { variantId } = await params;
   const prisma = getPrisma();
   const variant = await prisma.productVariant.findUnique({
@@ -95,19 +96,21 @@ export default async function VarianteInventarioPage({
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Sliders className="size-4" /> Ajuste manual
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Ingreso o ajuste con motivo obligatorio.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <InventoryAdjustForm variantId={variantId} />
-          </CardContent>
-        </Card>
+        {canAdjustStock ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Sliders className="size-4" /> Ajuste manual
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Ingreso o ajuste con motivo obligatorio.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <InventoryAdjustForm variantId={variantId} />
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
     </div>
   );

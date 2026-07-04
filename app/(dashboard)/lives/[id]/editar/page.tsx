@@ -2,12 +2,14 @@ import { notFound, redirect } from "next/navigation";
 
 import { updateLiveAction } from "@/actions/lives";
 import { LiveForm } from "@/components/forms/live-form";
+import { requireRole } from "@/lib/permissions";
 import { getPrisma } from "@/lib/prisma";
 
 
 type Params = Promise<{ id: string }>;
 
 export default async function EditLivePage({ params }: { params: Params }) {
+  await requireRole(["ADMIN", "SELLER"]);
   const { id } = await params;
   const prisma = getPrisma();
   const live = await prisma.liveSession.findUnique({ where: { id } });

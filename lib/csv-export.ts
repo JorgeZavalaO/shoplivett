@@ -12,6 +12,15 @@ export type CsvColumn<T> = {
   value: (row: T) => CsvCell;
 };
 
+function neutralizeFormulaCell(raw: string): string {
+  if (!raw) return raw;
+  const first = raw[0];
+  if (first === "=" || first === "+" || first === "-" || first === "@") {
+    return `'${raw}`;
+  }
+  return raw;
+}
+
 function escapeCell(value: CsvCell): string {
   if (value === null || value === undefined) return "";
   let raw: string;
@@ -24,6 +33,7 @@ function escapeCell(value: CsvCell): string {
   } else {
     raw = String(value);
   }
+  raw = neutralizeFormulaCell(raw);
   if (
     raw.includes('"') ||
     raw.includes(",") ||

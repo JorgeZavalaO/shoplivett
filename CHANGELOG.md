@@ -5,6 +5,89 @@ Todos los cambios notables de Shoplivett se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Datos
+- Se agrega baseline Prisma versionado en `prisma/migrations/20260704000000_init/migration.sql` y `migration_lock.toml`, cerrando `AUD-DATA-012`.
+- Se agrega `pnpm db:deploy` para aplicar migraciones versionadas en CI, staging y produccion; `db:push` queda restringido a bases locales descartables (`AUD-PROD-004`).
+
+### Operaciones
+- CI E2E cambia de `pnpm db:push` a `pnpm db:deploy` antes de seed y Playwright.
+- README, AGENTS y auditoria documentan la adopcion controlada del baseline para bases existentes con `prisma migrate resolve --applied 20260704000000_init`.
+
+## [0.39.0] - Costeo 4dp exacto, hardening de uploads/CSV, bloqueo de costeo manual y secret scanning
+
+### Datos
+- `lib/money.ts` agrega `toTenThousandths`, `tenThousandthsToCents` y `tenThousandthsToDecimalString` para preservar 4 decimales exactos en costos unitarios sin truncar a 2 decimales antes de multiplicar (`AUD-DATA-009`).
+- `lib/order-batch-allocation.ts` (`allocateOrderItemBatches`) usa `tenThousandthsToCents` para calcular `subtotalCostPen` desde `landedUnitCostPen` con enteros 1/10000, evitando redondeo prematuro.
+- `lib/import-batch-costing.ts` (`calculateLandedCosts`) deja de devolver distribución cero para `MANUAL`: ahora falla explícitamente con `CostingError("MANUAL_NOT_SUPPORTED")` (`AUD-FUNC-006`).
+- `lib/validations.ts` (`BusinessSettingsSchema`) rechaza guardar `defaultCostAllocationMethod = "MANUAL"`.
+
+### Seguridad
+- `lib/csv-export.ts` neutraliza celdas que empiezan con `=`, `+`, `-` o `@` anteponiendo `'` antes del escape RFC 4180, previniendo inyección de fórmulas en Excel (`AUD-SEC-006`).
+- `lib/blob.ts` agrega validación de firma de archivo (magic bytes PNG/JPEG/WebP), límite de archivos por acción (`BLOB_MAX_FILES_PER_ACTION=5`) y límite de bytes totales (`BLOB_MAX_TOTAL_BYTES=15 MB`) (`AUD-SEC-007`).
+- `actions/payments.ts` y `actions/sales.ts` validan el lote de imágenes con `validateImageBatch` antes de subir a Blob.
+- `.github/workflows/secret-scan.yml` agrega flujo de Gitleaks en CI para detectar fugas de secretos en archivos rastreados (`AUD-SEC-009`).
+- Se confirma operativamente que `.env` nunca se compartió, no hubo exposición y se mantiene solo en local.
+
+### UX
+- `components/forms/settings-form.tsx` filtra `MANUAL` de las opciones de método de costeo y muestra advertencia de que se habilitará en una versión futura con overrides por item.
+
+### Auditoría
+- `AUD-SEC-006`, `AUD-SEC-007`, `AUD-SEC-009`, `AUD-DATA-009` y `AUD-FUNC-006` quedan marcados como `Corregido`.
+- Se registró la decisión de bloquear `MANUAL` por ahora y habilitarlo solo cuando existan overrides reales por item de lote.
+
+### Verificación
+- `pnpm typecheck`
+- `pnpm exec dotenv -e .env -- tsx scripts/test-financial-reports.ts` → 12/12 tests (nueva regresión CSV injection).
+- `pnpm exec dotenv -e .env -- tsx scripts/test-upload-validation.ts` → nueva regresión de validación de imágenes.
+- `pnpm exec dotenv -e .env -- tsx scripts/test-order-batch-fifo.ts` → 14/14 tests (nuevas regresiones: costeo 4dp y MANUAL_NOT_SUPPORTED).
+
+## [0.39.1] - Optimización de performance financiera (N+1, grafo completo, duplicación)
+
+### Datos
+- `getLowRotationProducts` reemplaza `orderItem.findFirst` por variante con un único `groupBy`, eliminando N+1 en dashboard y reportes (`AUD-PERF-005`).
+- `getLowRotationReport` aplica el mismo `groupBy` unificado, reduciendo queries de O(N) a O(1) en export CSV de sin rotación (`AUD-PERF-005`).
+- `getBatchProfitability` y `getBatchProfitabilityReport` filtran `OrderItemAllocation` en DB por `status = PAID` y rango de fechas antes de cargar lotes, evitando cargar el grafo histórico completo (`AUD-PERF-003`).
+- `getFinancialAlerts` acepta `precomputed` con `overview` y `lowRotationCount`; `dashboard/page.tsx` le pasa resultados ya calculados, eliminando la duplicación de trabajo (`AUD-PERF-001`).
+
+### Auditoría
+- `AUD-PERF-001`, `AUD-PERF-003` y `AUD-PERF-005` quedan marcados como `Corregido`.
+- Se agrega `scripts/test-perf-fixes.ts` con 5 tests de regresión que verifican query count constante y wall-clock ≤ 2s.
+- `lib/prisma.ts` agrega soporte opcional para `PRISMA_LOG_QUERY=1` para instrumentar conteo de queries en tests.
+
+### Verificación
+- `pnpm typecheck` → 0 errores.
+- `pnpm lint` → 0 errores.
+- `pnpm build` → exitoso.
+- `pnpm exec dotenv -e .env -- tsx scripts/_with-env.ts scripts/test-perf-fixes.ts` → 5/5 tests de regresión de performance.
+
+## [0.38.0] - Reenvío con historial, guards de lives y ocultamiento de ajuste
+
+### Datos
+- `ShipmentOrder.orderId` ya no es `@unique`; `Order.shipmentOrders[]` reemplaza `Order.shipmentOrder?`, preservando historial completo de envíos cancelados (`AUD-DATA-008`).
+- Todas las consultas de envío filtran activos con `shipment.status != "CANCELLED"`; la regla de un solo envío activo por pedido se mantiene con validación transaccional `Serializable` en `createShipment()`.
+- En ese momento, el índice parcial de base de datos (único condicional) se difirió para `AUD-DATA-012` (migraciones versionadas). Ver `docs/auditoria/07-registro-decisiones.md` para la decisión vigente.
+
+### Seguridad
+- `app/(dashboard)/lives/nuevo/page.tsx` y `app/(dashboard)/lives/[id]/editar/page.tsx` ahora ejecutan `requireRole(["ADMIN", "SELLER"])` antes de consultar datos (`AUD-SEC-004`).
+
+### UX
+- El formulario de ajuste de inventario (`InventoryAdjustForm`) solo se renderiza si `user.role === "ADMIN"`, ocultándolo para `SELLER` y `DISPATCH` (`AUD-UX-004`).
+
+### Operaciones
+- Se simplificaron condiciones `OR:[condiciónÚnica]` en `actions/shipments.ts` para queries más legibles.
+
+### Auditoría
+- `AUD-DATA-008`, `AUD-SEC-004` y `AUD-UX-004` quedan marcados como `Corregido`.
+- Se registró la decisión de preservar historial con `shipmentOrders[]` y diferir el índice parcial a `AUD-DATA-012`.
+
+### Verificación
+- `pnpm typecheck`
+- `pnpm lint` (mismos 9 warnings preexistentes)
+- `pnpm exec dotenv -e .env -- playwright test e2e/flows.spec.ts -g "AUD-DATA-008"` → 1 passed.
+- `git diff --check` sin errores.
+
 ## [0.37.0] - Sincronización stock ↔ lotes y reconciliación
 
 ### Datos
@@ -20,7 +103,7 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Auditoría
 - `AUD-DATA-004` queda marcado como `Corregido`.
 - Se registró la decisión de mantener `ProductVariant.stock` como proyección sincronizada (opción B) con script de reconciliación.
-- `AUD-DATA-012` (migraciones Prisma) sigue pendiente y la opción B evita esa dependencia.
+- En ese momento, `AUD-DATA-012` (migraciones Prisma) seguía pendiente y la opción B evitaba esa dependencia.
 
 ### Verificación
 - `pnpm typecheck`

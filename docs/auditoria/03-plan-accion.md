@@ -99,11 +99,11 @@ Objetivo: evitar timeouts, exceso de memoria y consultas N+1 en entorno serverle
 
 Hallazgos incluidos:
 
-* `AUD-PERF-001` - Dashboard financiero duplica trabajo y tiene N+1.
+* `AUD-PERF-001` - Dashboard financiero duplica trabajo y tiene N+1. **Corregido** (`scripts/test-perf-fixes.ts`).
 * `AUD-PERF-002` - Reportes y CSV cargan datasets completos.
-* `AUD-PERF-003` - Rentabilidad por lote carga grafo completo.
+* `AUD-PERF-003` - Rentabilidad por lote carga grafo completo. **Corregido** (`scripts/test-perf-fixes.ts`).
 * `AUD-PERF-004` - Falta indice para `status + profitCalculatedAt`.
-* `AUD-PERF-005` - Baja rotacion de reportes tiene N+1.
+* `AUD-PERF-005` - Baja rotacion de reportes tiene N+1. **Corregido** (`scripts/test-perf-fixes.ts`).
 * `AUD-PERF-006` - Export de gastos trunca a 1000 filas.
 * `AUD-PERF-007` - Overview financiero hace aggregates duplicados.
 * `AUD-PERF-008` - Fallback mensual puede hacer muchas consultas.
@@ -155,7 +155,6 @@ Hallazgos incluidos:
 * `AUD-UX-001` a `AUD-UX-016`.
 * `AUD-PROD-002` - No hay `vercel.json`.
 * `AUD-PROD-003` - Secretos reales/aparentes en `.env` local.
-* `AUD-PROD-004` - Sin migraciones versionadas.
 * `AUD-PROD-005` - Falta estrategia explicita de observabilidad, backups y rollback.
 
 Orden recomendado:
@@ -163,7 +162,7 @@ Orden recomendado:
 1. Corregir navegacion movil y enlaces rotos.
 2. Mejorar confirmaciones y estados de formularios.
 3. Definir estrategia Vercel/observabilidad/backups.
-4. Formalizar migraciones antes de produccion real.
+4. Mantener migraciones versionadas probadas en staging antes de produccion real.
 5. Mantener documentacion viva.
 
 Riesgo que reduce: errores operativos, UX rota, despliegues no reproducibles y respuesta lenta ante incidentes.

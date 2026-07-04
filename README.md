@@ -44,10 +44,10 @@ Administrador interno de ventas para una tienda de carteras que vende principalm
    - `BLOB_READ_WRITE_TOKEN` desde Vercel → Storage → Blob
    - `SEED_ADMIN_PASSWORD`, `SEED_SELLER_PASSWORD`, `SEED_DISPATCH_PASSWORD`
 
-3. Aplica el schema y crea los usuarios seed:
+3. Aplica las migraciones y crea los usuarios seed:
 
    ```bash
-   pnpm db:push
+   pnpm db:deploy
    pnpm db:seed
    ```
 
@@ -84,8 +84,9 @@ Por defecto, el seed crea tres usuarios (solo para desarrollo):
 | `pnpm test:e2e:install` | Descarga Chromium para Playwright. |
 | `pnpm test:e2e` | Ejecuta la suite Playwright (smoke + 8 flujos Sprint 15). |
 | `pnpm db:generate` | Genera el cliente Prisma. |
-| `pnpm db:push` | Aplica el schema a la base de datos. |
+| `pnpm db:push` | Sincroniza schema sin historial; solo para bases locales descartables. No usar en CI, staging ni producción. |
 | `pnpm db:migrate` | Crea/aplica migraciones con historial. |
+| `pnpm db:deploy` | Aplica migraciones versionadas en CI, staging y producción. |
 | `pnpm db:studio` | Abre Prisma Studio. |
 | `pnpm db:seed` | Crea los usuarios seed (idempotente). |
 
@@ -179,6 +180,34 @@ La versión 0.37.0 cierra `AUD-DATA-004` sincronizando `ProductVariant.stock` co
 - `lib/financial-reports.ts` y vistas de baja rotación estandarizan la fórmula `available = stock - reservedStock - soldStock`.
 - `scripts/reconcile-variant-stock.ts [--apply]` reporta y corrige drift residual.
 - Regresiones: `test-order-batch-fifo.ts` 12/12, `test-incidents.ts` 16/16, reconciliación detecta drift en datos seed.
+
+### Auditoría técnica — correcciones 0.38.0
+
+La versión 0.38.0 cierra `AUD-DATA-008`, `AUD-SEC-004` y `AUD-UX-004`:
+
+- `ShipmentOrder.orderId` ya no es `@unique`; `Order.shipmentOrders[]` reemplaza `Order.shipmentOrder?`, preservando historial de envíos cancelados y permitiendo reenvío (`AUD-DATA-008`). La regla de un solo envío activo se mantiene transaccionalmente (`Serializable`).
+- `/lives/nuevo` y `/lives/[id]/editar` agregan `requireRole(["ADMIN", "SELLER"])` antes de consultar datos (`AUD-SEC-004`).
+- El formulario de ajuste de inventario solo se muestra para `ADMIN` (`AUD-UX-004`).
+- Regresión: `pnpm exec dotenv -e .env -- playwright test e2e/flows.spec.ts -g "AUD-DATA-008"` → 1 passed.
+
+### Auditoría técnica — correcciones 0.39.0
+
+La versión 0.39.0 cierra `AUD-SEC-006`, `AUD-SEC-007`, `AUD-SEC-009`, `AUD-DATA-009` y `AUD-FUNC-006`:
+
+- **CSV injection** (`AUD-SEC-006`): `lib/csv-export.ts` neutraliza celdas con prefijo de fórmula (`=`, `+`, `-`, `@`) anteponiendo `'` antes del escape RFC 4180. Regresión en `scripts/test-financial-reports.ts`.
+- **Upload hardening** (`AUD-SEC-007`): `lib/blob.ts` valida firmas de archivo (magic bytes PNG/JPEG/WebP), limita archivos por acción a 5 y bytes totales a 15 MB. `actions/payments.ts` y `actions/sales.ts` validan el lote con `validateImageBatch` antes de subir. Regresión en `scripts/test-upload-validation.ts`.
+- **Secret scanning** (`AUD-SEC-009`): `.github/workflows/secret-scan.yml` ejecuta Gitleaks en CI. Se confirma que `.env` nunca se compartió y no hay exposición.
+- **Costeo 4 decimales exacto** (`AUD-DATA-009`): `lib/money.ts` agrega `toTenThousandths` y `tenThousandthsToCents` para preservar 4dp en `landedUnitCostPen` sin truncar. `lib/order-batch-allocation.ts` usa estos helpers en `allocateOrderItemBatches`. Regresión en `scripts/test-order-batch-fifo.ts`.
+- **Costeo manual bloqueado** (`AUD-FUNC-006`): `lib/import-batch-costing.ts` falla con `CostingError("MANUAL_NOT_SUPPORTED")`. `lib/validations.ts` rechaza `MANUAL` en settings y `components/forms/settings-form.tsx` lo filtra del selector con advertencia UX.
+
+### Auditoría técnica — correcciones 0.39.1
+
+La versión 0.39.1 cierra `AUD-PERF-001`, `AUD-PERF-003` y `AUD-PERF-005` optimizando la performance del dashboard y reportes financieros:
+
+- **N+1 de baja rotación** (`AUD-PERF-001`/`AUD-PERF-005`): `getLowRotationProducts` y `getLowRotationReport` reemplazan `findFirst` por variante con un único `groupBy`, reduciendo queries de O(N) a O(1).
+- **Grafo completo de rentabilidad** (`AUD-PERF-003`): `getBatchProfitability` y `getBatchProfitabilityReport` filtran `OrderItemAllocation` en DB por `status = PAID` y rango de fechas antes de cargar lotes.
+- **Duplicación de dashboard** (`AUD-PERF-001`): `getFinancialAlerts` acepta `precomputed`; `dashboard/page.tsx` pasa `overview` y `lowRotationCount` ya calculados, evitando recalcularlos.
+- Regresión: `pnpm exec dotenv -e .env -- tsx scripts/_with-env.ts scripts/test-perf-fixes.ts` → 5/5 tests (query count constante + wall-clock ≤ 2s).
 
 ### Sprint 24 — Dashboard financiero (versión 0.25.0)
 
@@ -279,7 +308,7 @@ Los tests previos (`test-costing`, `test-order-batch-fifo`, `test-expenses`, `te
 Para correr todo el bloque:
 
 ```bash
-pnpm db:push && pnpm db:seed
+pnpm db:deploy && pnpm db:seed
 pnpm tsx scripts/_with-env.ts scripts/test-financial-sprint27.ts
 pnpm verify
 ```
@@ -299,7 +328,7 @@ Auditoría completa de los 27 sprints del proyecto. Documentación en [`docs/aud
 - `06-riesgos-produccion.md`: riesgos bloqueantes, checklist de deploy y plan de rollback.
 - `07-registro-decisiones.md`: registro de decisiones técnicas con alternativas evaluadas.
 
-Nivel de riesgo actual: **Crítico** — el sistema no está listo para producción con usuarios reales hasta resolver los hallazgos P0.
+Nivel de riesgo actual: **Alto** — la mayoría de hallazgos P0/P1 están corregidos (0.30.0–0.39.0). Quedan pendientes P1 de rendimiento (`AUD-PERF-001/003/005`) y otros riesgos operativos documentados en `docs/auditoria/`.
 
 ## Deploy en Vercel
 
@@ -313,8 +342,10 @@ Nivel de riesgo actual: **Crítico** — el sistema no está listo para producci
    - `BLOB_READ_WRITE_TOKEN` desde Vercel → Storage → Create Database → Blob.
    - `SEED_ADMIN_PASSWORD`, `SEED_SELLER_PASSWORD`, `SEED_DISPATCH_PASSWORD` (sólo se usan en el seed inicial).
 4. Crea el store de Vercel Blob (mismo Storage → Create Database) y copia su `BLOB_READ_WRITE_TOKEN`.
-5. Define el comando de build en Vercel como `pnpm verify` para que typecheck y lint fallen rápido en CI.
-6. Tras el primer deploy, ejecuta `pnpm db:push && pnpm db:seed` desde la consola one-shot de Vercel CLI (o un workflow puntual) para crear las tablas y los usuarios iniciales.
+5. No compartas `.env` reales en zips, tickets o sesiones remotas. El repo incluye `.env.example` sin secretos y CI ejecuta secret scanning para detectar fugas en archivos rastreados.
+6. Define el comando de build en Vercel como `pnpm verify` para que typecheck y lint fallen rápido en CI.
+7. Tras el primer deploy, ejecuta `pnpm db:deploy && pnpm db:seed` desde la consola one-shot de Vercel CLI (o un workflow puntual) para crear las tablas y los usuarios iniciales.
+8. Si una base existente fue creada previamente con `db:push`, valida que su schema coincida con `prisma/schema.prisma` en staging y marca el baseline como aplicado con `pnpm prisma migrate resolve --applied 20260704000000_init` antes de usar `pnpm db:deploy` para migraciones futuras.
 
 > La aplicación está pensada para correr en multi-instancia serverless. Toda la caché compartida se apoya en la cache de Next.js con tags (`lib/settings.ts`); no uses `globalThis`.
 
@@ -338,13 +369,13 @@ La suite oficial es Playwright y vive en `e2e/`. Hay cuatro specs:
 
 ```bash
 pnpm test:e2e:install                                # una sola vez
-pnpm db:push && pnpm db:seed                        # sobre la base E2E
+pnpm db:deploy && pnpm db:seed                      # sobre la base E2E
 pnpm test:e2e                                       # build + start, contra .env local
 pnpm test:e2e:env                                   # usa .env.e2e (recomendado)
 pnpm test:e2e:dev                                   # levanta next dev en lugar de build+start
 ```
 
-`E2E_BASE_URL` permite apuntar a un servidor ya levantado. En CI (`.github/workflows/ci.yml`) el flujo es `pnpm db:push && pnpm db:seed && pnpm test:e2e` con Playwright levantando el build.
+`E2E_BASE_URL` permite apuntar a un servidor ya levantado. En CI (`.github/workflows/ci.yml`) el flujo es `pnpm db:deploy && pnpm db:seed && pnpm test:e2e` con Playwright levantando el build.
 
 ## Estructura
 
@@ -690,4 +721,4 @@ Capa de cierre del proyecto. Entregables:
 
 ## Versión
 
-La versión actual se rastrea en `package.json` y en el [CHANGELOG](./CHANGELOG.md).
+Versión actual: **0.39.0**. Rastreada en `package.json` y [CHANGELOG](./CHANGELOG.md).

@@ -370,7 +370,6 @@ async function AdminFinancialSection({
     topProducts,
     lowProducts,
     lowRotation,
-    alerts,
     batchProfitability,
     batchOptions,
     categoryOptions,
@@ -395,7 +394,6 @@ async function AdminFinancialSection({
       limit: DEFAULT_TOP_PRODUCTS_LIMIT,
     }),
     getLowRotationProducts(LOW_ROTATION_THRESHOLD_DAYS, DEFAULT_LOW_ROTATION_LIMIT),
-    getFinancialAlerts(filter),
     getBatchProfitability({
       year: filter.year,
       month: filter.month,
@@ -404,6 +402,14 @@ async function AdminFinancialSection({
     listBatchOptions(),
     listCategoryOptionsForFilter(),
   ]);
+
+  // AUD-PERF-001: reutilizar overview y conteo de baja rotacion en lugar
+  // de recalcularlos dentro de getFinancialAlerts.
+  const alerts = await getFinancialAlerts(filter, {
+    overview,
+    lowRotationCount: lowRotation.rows.length,
+    lowRotationThresholdDays: lowRotation.thresholdDays,
+  });
 
   return (
     <div className="flex flex-col gap-4">

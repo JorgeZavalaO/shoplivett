@@ -154,6 +154,14 @@ export const BusinessSettingsSchema = z
         message: "La suma de valor y peso debe ser 100 cuando el método es mixto.",
       });
     }
+    if (data.defaultCostAllocationMethod === "MANUAL") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["defaultCostAllocationMethod"],
+        message:
+          "El metodo Manual por item aun no esta disponible. Usa Por valor, Por peso o Mixto.",
+      });
+    }
   });
 
 export type BusinessSettingsInput = z.infer<typeof BusinessSettingsSchema>;

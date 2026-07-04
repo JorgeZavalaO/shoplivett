@@ -13,12 +13,21 @@ function createPrismaClient(): PrismaClient {
     throw new Error("DATABASE_URL no está definida en las variables de entorno.");
   }
   const adapter = new PrismaPg({ connectionString });
+  const logLevels: Prisma.LogLevel[] =
+    process.env.NODE_ENV === "development"
+      ? ["error", "warn"]
+      : ["error"];
+  // PRISMA_LOG_QUERY=1 emite 'query' como evento (`emit: 'event'`) para
+  // que los tests de regresion puedan contar sentencias via `$on('query')`.
+  // Mantenemos 'stdout' cuando no se requiere instrumentacion para no
+  // contaminar la salida de los tests ordinarios.
+  const log: Array<Prisma.LogLevel | Prisma.LogDefinition> =
+    process.env.PRISMA_LOG_QUERY === "1"
+      ? [{ level: "query", emit: "event" }]
+      : logLevels;
   return new PrismaClient({
     adapter,
-    log:
-      process.env.NODE_ENV === "development"
-        ? ["error", "warn"]
-        : ["error"],
+    log,
   });
 }
 

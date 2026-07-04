@@ -109,7 +109,11 @@ export async function createShipment(
             status: true,
             total: true,
             balance: true,
-            shipmentOrder: { select: { id: true, shipmentId: true, shipment: { select: { status: true } } } },
+            shipmentOrders: {
+              where: { shipment: { status: { not: "CANCELLED" } } },
+              select: { id: true, shipmentId: true, shipment: { select: { status: true } } },
+              take: 1,
+            },
           },
         });
         if (orders.length !== uniqueIds.length) {
@@ -129,8 +133,8 @@ export async function createShipment(
               "ORDER_NOT_PAID",
             );
           }
-          if (o.shipmentOrder) {
-            const target = o.shipmentOrder.shipment;
+          if (o.shipmentOrders.length > 0) {
+            const target = o.shipmentOrders[0].shipment;
             if (target.status !== "CANCELLED") {
               throw new ShipmentError(
                 `El pedido ya pertenece a un envío activo.`,
@@ -499,16 +503,18 @@ export async function getEligibleOrdersForShipment(
       balance: true,
       status: true,
       createdAt: true,
-      shipmentOrder: {
+      shipmentOrders: {
+        where: { shipment: { status: { not: "CANCELLED" } } },
         select: {
           id: true,
           shipment: { select: { id: true, status: true } },
         },
+        take: 1,
       },
     },
   });
   return rows
-    .filter((o) => !o.shipmentOrder || o.shipmentOrder.shipment.status === "CANCELLED")
+    .filter((o) => o.shipmentOrders.length === 0)
     .map((o) => ({
       id: o.id,
       orderNumber: o.orderNumber,
@@ -521,11 +527,12 @@ export async function getEligibleOrdersForShipment(
 
 export async function getOrderShipmentLink(orderId: string) {
   const prisma = getPrisma();
-  const link = await prisma.shipmentOrder.findUnique({
-    where: { orderId },
+  const link = await prisma.shipmentOrder.findFirst({
+    where: { orderId, shipment: { status: { not: "CANCELLED" } } },
+    orderBy: { createdAt: "desc" },
     include: { shipment: { select: { id: true, status: true } } },
   });
-  return link && link.shipment.status !== "CANCELLED" ? link.shipment : null;
+  return link?.shipment ?? null;
 }
 
 export async function listCustomerShipments(customerId: string) {

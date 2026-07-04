@@ -274,6 +274,18 @@ async function main() {
     assert.ok(csv.includes('"linea\nnueva"'));
   });
 
+  await run("buildCsv neutraliza formulas estilo Excel", () => {
+    const cols: Array<CsvColumn<{ a: string }>> = [{ header: "A", value: (r) => r.a }];
+    const csv = buildCsv(
+      [{ a: "=1+1" }, { a: "+SUM(A1:A2)" }, { a: "-cmd" }, { a: "@calc" }],
+      cols,
+    );
+    assert.ok(csv.includes("'=1+1"));
+    assert.ok(csv.includes("'+SUM(A1:A2)"));
+    assert.ok(csv.includes("'-cmd"));
+    assert.ok(csv.includes("'@calc"));
+  });
+
   await run("centsToCsv maneja null y enteros", () => {
     assert.equal(centsToCsv(null), "");
     assert.equal(centsToCsv(12345), "123.45");

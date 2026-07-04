@@ -189,7 +189,9 @@ export async function getOrderDetailAction(orderId: string) {
         },
         orderBy: { createdAt: "desc" },
       },
-      shipmentOrder: {
+      shipmentOrders: {
+        where: { shipment: { status: { not: "CANCELLED" } } },
+        take: 1,
         select: {
           id: true,
           shipment: { select: { id: true, status: true } },

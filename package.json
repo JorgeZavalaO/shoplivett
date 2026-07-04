@@ -1,6 +1,6 @@
 {
   "name": "shoplivett",
-  "version": "0.37.0",
+  "version": "0.39.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -13,10 +13,12 @@
     "test:e2e:dev": "cross-env E2E_START_MODE=dev playwright test",
     "test:e2e:env": "cross-env E2E_ENV_FILE=.env.e2e playwright test",
     "test:e2e:install": "playwright install --with-deps chromium",
+    "test:upload-validation": "tsx scripts/test-upload-validation.ts",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts"
   },

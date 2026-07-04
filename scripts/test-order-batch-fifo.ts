@@ -18,6 +18,7 @@ import {
   releaseOrderItemAllocations,
   variantOperatesWithBatches,
 } from "../lib/order-batch-allocation";
+import { calculateLandedCosts, CostingError } from "../lib/import-batch-costing";
 
 let passed = 0;
 let failed = 0;
@@ -267,6 +268,119 @@ async function main() {
     assert.equal(snapshots[0]?.costSource, "LEGACY");
     assert.equal(snapshots[0]?.unitCostPen, "40.0000");
     assert.equal(snapshots[0]?.grossProfitPen, "60.00");
+  });
+
+  await run("allocateOrderItemBatches preserva costos 4dp al calcular subtotal", async () => {
+    const stamp = Date.now();
+    let orderId4dp = "";
+    const batch = await prisma.importBatch.create({
+      data: {
+        code: `FIFO-4DP-${stamp}`,
+        purchaseDate: new Date(),
+        shopper: "Test",
+        agency: "Test",
+        totalCostUsd: "0.00",
+        exchangeRate: "3.7500",
+        totalInvestmentPen: "0.00",
+        status: "COMPLETE",
+        distributionMethod: "MIXED",
+        lastRecalculatedAt: new Date(),
+      },
+    });
+    const variant4dp = await prisma.productVariant.create({
+      data: {
+        productId: variant.productId,
+        code: `FIFO4-${stamp}`.slice(0, 32),
+        price: "100.00",
+        cost: "0.0000",
+        stock: 3,
+        reservedStock: 0,
+        soldStock: 0,
+        status: "ACTIVE",
+      },
+    });
+    const batchItem = await prisma.importBatchItem.create({
+      data: {
+        batchId: batch.id,
+        variantId: variant4dp.id,
+        quantityPurchased: 3,
+        quantityReceived: 3,
+        quantityAvailable: 3,
+        unitCostUsd: "0.0000",
+        unitCostPen: "0.0000",
+        weight: "0",
+        subtotalUsd: "0.00",
+        subtotalPen: "0.00",
+        additionalCostPen: "0.0000",
+        additionalSubtotalPen: "0.00",
+        landedUnitCostPen: "30.1234",
+        landedSubtotalPen: "90.37",
+        calculatedAt: new Date(),
+      },
+    });
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const order = await tx.order.create({
+          data: {
+            orderNumber: `FIFO-4DP-O-${stamp}`,
+            customerId: customer.id,
+            status: "PAYMENT_VALIDATION_PENDING",
+            subtotal: "0",
+            total: "0",
+            balance: "0",
+            expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+          },
+          select: { id: true },
+        });
+        const orderItem = await tx.orderItem.create({
+          data: {
+            orderId: order.id,
+            variantId: variant4dp.id,
+            quantity: 3,
+            unitPrice: "100.00",
+            lineTotal: "300.00",
+          },
+          select: { id: true },
+        });
+        return allocateOrderItemBatches(tx, orderItem.id, variant4dp.id, 3);
+      });
+      orderId4dp = `FIFO-4DP-O-${stamp}`;
+      assert.equal(result[0]?.batchItemId, batchItem.id);
+      assert.equal(result[0]?.subtotalCostPen, "90.37");
+    } finally {
+      await prisma.orderItemBatchAllocation.deleteMany({ where: { orderItem: { order: { orderNumber: orderId4dp } } } });
+      await prisma.orderItem.deleteMany({ where: { order: { orderNumber: orderId4dp } } });
+      await prisma.order.deleteMany({ where: { orderNumber: orderId4dp } });
+      await prisma.orderItemBatchAllocation.deleteMany({ where: { batchItemId: batchItem.id } });
+      await prisma.importBatchItem.deleteMany({ where: { id: batchItem.id } });
+      await prisma.productVariant.deleteMany({ where: { id: variant4dp.id } });
+      await prisma.importBatch.deleteMany({ where: { id: batch.id } });
+    }
+  });
+
+  await run("calculateLandedCosts rechaza metodo MANUAL explictamente", () => {
+    assert.throws(
+      () =>
+        calculateLandedCosts(
+          [
+            {
+              id: "a",
+              unitCostPen: 10,
+              subtotalPen: 20,
+              quantityPurchased: 2,
+              weight: 1,
+            },
+          ],
+          {
+            method: "MANUAL",
+            totalAdditionalCostsUsd: 0,
+            totalAdditionalCostsPen: 10,
+            exchangeRate: 3.75,
+          },
+        ),
+      (error: unknown) =>
+        error instanceof CostingError && error.code === "MANUAL_NOT_SUPPORTED",
+    );
   });
 
   await run("createQuickSale + validatePayment reconoce profit", async () => {

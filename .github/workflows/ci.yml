@@ -79,7 +79,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
       - run: pnpm test:e2e:install --with-deps
-      - run: pnpm db:push
+      - run: pnpm db:deploy
       - run: pnpm db:seed
       - run: pnpm test:e2e
       - name: Upload Playwright report

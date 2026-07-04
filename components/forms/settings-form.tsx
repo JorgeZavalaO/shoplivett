@@ -125,9 +125,9 @@ export function SettingsForm({ initial }: SettingsFormProps) {
 
   const costMethodOptions = useMemo(
     () =>
-      Object.entries(COST_ALLOCATION_METHOD_LABELS) as Array<
+      (Object.entries(COST_ALLOCATION_METHOD_LABELS) as Array<
         [CostAllocationMethod, string]
-      >,
+      >).filter(([value]) => value !== "MANUAL"),
     [],
   );
 
@@ -519,6 +519,9 @@ export function SettingsForm({ initial }: SettingsFormProps) {
               <FieldError
                 message={state.fieldErrors?.defaultCostAllocationMethod}
               />
+              <p className="text-xs text-muted-foreground">
+                El modo manual por item queda diferido hasta contar con overrides reales por item.
+              </p>
             </div>
           </div>
           <Separator />

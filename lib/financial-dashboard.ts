@@ -593,21 +593,30 @@ export async function getLowRotationProducts(
     },
   });
 
+  // AUD-PERF-005: ultima venta por variante en una sola consulta
+  // (antes: findFirst por variante -> N+1).
+  const variantIds = variants.map((v) => v.id);
+  const lastSoldByVariant = new Map<string, Date>();
+  if (variantIds.length > 0) {
+    const lastSoldRows = await prisma.orderItem.groupBy({
+      by: ["variantId"],
+      where: {
+        variantId: { in: variantIds },
+        order: { status: "PAID" },
+      },
+      _max: { createdAt: true },
+    });
+    for (const row of lastSoldRows) {
+      const maxDate = row._max.createdAt;
+      if (maxDate) lastSoldByVariant.set(row.variantId, maxDate);
+    }
+  }
+
   const rows: LowRotationRow[] = [];
   for (const v of variants) {
     if (v.stock <= 0 && v.soldStock <= 0) continue;
 
-    // Ultima venta: agregamos la fecha maxima de OrderItem.createdAt para
-    // esta variante en orders PAID.
-    const lastOrderItem = await prisma.orderItem.findFirst({
-      where: {
-        variantId: v.id,
-        order: { status: "PAID" },
-      },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
-    });
-    const lastSoldAt = lastOrderItem?.createdAt ?? null;
+    const lastSoldAt = lastSoldByVariant.get(v.id) ?? null;
     if (lastSoldAt && lastSoldAt >= threshold) continue;
     const daysSinceLastSale = lastSoldAt
       ? Math.floor((Date.now() - lastSoldAt.getTime()) / (1000 * 60 * 60 * 24))
@@ -694,73 +703,73 @@ export async function getBatchProfitability(
     ...(filter.year && filter.month ? { year: filter.year, month: filter.month } : {}),
   };
   const limit = Math.min(50, Math.max(1, filter.limit ?? 10));
+  const range = monthRange(year, month);
 
-  const batches = await prisma.importBatch.findMany({
+  // AUD-PERF-003: en vez de cargar el grafo completo (todos los lotes y
+  // todas las allocations historicas) y filtrar en JS, consultamos primero
+  // solo las allocations que ya cumplieron el filtro de periodo y status.
+  // Luego cargamos unicamente los lotes que aparecen.
+  const allocationRows = await prisma.orderItemBatchAllocation.findMany({
     where: {
-      status: { in: ["COMPLETE", "CLOSED"] },
+      orderItem: {
+        order: {
+          status: "PAID",
+          profitCalculatedAt: { gte: range.gte, lte: range.lte },
+        },
+      },
     },
+    select: {
+      batchId: true,
+      quantity: true,
+      subtotalCostPen: true,
+      orderItem: { select: { lineTotal: true } },
+    },
+  });
+
+  const batchTotals = new Map<
+    string,
+    { soldUnits: number; allocatedCostCents: number; allocatedRevenueCents: number }
+  >();
+  for (const a of allocationRows) {
+    const acc = batchTotals.get(a.batchId) ?? {
+      soldUnits: 0,
+      allocatedCostCents: 0,
+      allocatedRevenueCents: 0,
+    };
+    acc.soldUnits += a.quantity;
+    acc.allocatedCostCents += toCents(a.subtotalCostPen, { allowNegative: true });
+    acc.allocatedRevenueCents += toCents(a.orderItem.lineTotal);
+    batchTotals.set(a.batchId, acc);
+  }
+
+  if (batchTotals.size === 0) {
+    return { rows: [], filter };
+  }
+
+  const batchIds = [...batchTotals.keys()];
+  const batches = await prisma.importBatch.findMany({
+    where: { id: { in: batchIds }, status: { in: ["COMPLETE", "CLOSED"] } },
     select: {
       id: true,
       code: true,
       status: true,
       purchaseDate: true,
       totalInvestmentPen: true,
-      items: {
-        select: {
-          quantityAvailable: true,
-          allocations: {
-            select: {
-              quantity: true,
-              subtotalCostPen: true,
-              orderItem: {
-                select: {
-                  lineTotal: true,
-                  order: {
-                    select: {
-                      status: true,
-                      profitCalculatedAt: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
+      items: { select: { quantityAvailable: true } },
     },
-    orderBy: { createdAt: "desc" },
   });
+  const batchMap = new Map(batches.map((b) => [b.id, b]));
 
   const rows: BatchProfitabilityRow[] = [];
-  for (const b of batches) {
-    let soldUnits = 0;
-    let allocatedCostCents = 0;
-    let allocatedRevenueCents = 0;
-
-    for (const it of b.items) {
-      for (const a of it.allocations) {
-        if (a.orderItem.order.status !== "PAID") continue;
-        if (a.orderItem.order.profitCalculatedAt === null) continue;
-        if (filter.year && filter.month) {
-          const dt = a.orderItem.order.profitCalculatedAt;
-          if (
-            dt.getFullYear() !== year ||
-            dt.getMonth() + 1 !== month
-          ) {
-            continue;
-          }
-        }
-        soldUnits += a.quantity;
-        allocatedCostCents += toCents(a.subtotalCostPen, { allowNegative: true });
-        allocatedRevenueCents += toCents(a.orderItem.lineTotal);
-      }
-    }
+  for (const [batchId, totals] of batchTotals) {
+    const b = batchMap.get(batchId);
+    if (!b) continue;
 
     const investmentCents = toCents(b.totalInvestmentPen);
-    const grossProfitCents = allocatedRevenueCents - allocatedCostCents;
+    const grossProfitCents = totals.allocatedRevenueCents - totals.allocatedCostCents;
     const marginBps =
-      allocatedRevenueCents > 0
-        ? Math.round((grossProfitCents * 10000) / allocatedRevenueCents)
+      totals.allocatedRevenueCents > 0
+        ? Math.round((grossProfitCents * 10000) / totals.allocatedRevenueCents)
         : 0;
     const roiBps =
       investmentCents > 0
@@ -772,8 +781,7 @@ export async function getBatchProfitability(
       0,
     );
 
-    if (soldUnits === 0 && allocatedRevenueCents === 0) {
-      // Sin ventas: la omitimos para mantener el foco en rentabilidad.
+    if (totals.soldUnits === 0 && totals.allocatedRevenueCents === 0) {
       continue;
     }
 
@@ -784,11 +792,11 @@ export async function getBatchProfitability(
       purchaseDate: b.purchaseDate,
       investmentCents,
       investment: centsToDecimalString(investmentCents),
-      soldUnits,
-      allocatedRevenueCents,
-      allocatedRevenue: centsToDecimalString(allocatedRevenueCents),
-      allocatedCostCents,
-      allocatedCost: centsToDecimalString(allocatedCostCents),
+      soldUnits: totals.soldUnits,
+      allocatedRevenueCents: totals.allocatedRevenueCents,
+      allocatedRevenue: centsToDecimalString(totals.allocatedRevenueCents),
+      allocatedCostCents: totals.allocatedCostCents,
+      allocatedCost: centsToDecimalString(totals.allocatedCostCents),
       grossProfitCents,
       grossProfit: centsToDecimalString(grossProfitCents),
       marginBps,
@@ -821,8 +829,17 @@ export type FinancialAlerts = {
   minimumMarginBps: number;
 };
 
+// AUD-PERF-001: la pagina ya calcula el overview y la baja rotacion.
+// Aceptarlos como `precomputed` evita recalcularlos aqui.
+export type FinancialAlertsPrecomputed = {
+  overview?: FinancialOverview;
+  lowRotationCount?: number;
+  lowRotationThresholdDays?: number;
+};
+
 export async function getFinancialAlerts(
   filter: FinancialDashboardFilter = {},
+  precomputed: FinancialAlertsPrecomputed = {},
 ): Promise<FinancialAlerts> {
   const prisma = getPrisma();
   // Leemos settings directamente de Prisma (sin unstable_cache) para que
@@ -838,8 +855,14 @@ export async function getFinancialAlerts(
   const minimumMarginBps = settings?.minimumTargetMarginBps ?? 1500;
   const targetMarginBps = settings?.objectiveTargetMarginBps ?? 3000;
 
-  const overview = await getFinancialOverview(filter);
-  const lowRotation = await getLowRotationProducts(60, 1000);
+  const overview = precomputed.overview ?? (await getFinancialOverview(filter));
+  const lowRotation =
+    precomputed.lowRotationCount !== undefined
+      ? {
+          rows: new Array(precomputed.lowRotationCount).fill(null),
+          thresholdDays: precomputed.lowRotationThresholdDays ?? 60,
+        }
+      : await getLowRotationProducts(60, 1000);
 
   const lowMarginRange = monthRange(
     filter.year ?? overview.year,

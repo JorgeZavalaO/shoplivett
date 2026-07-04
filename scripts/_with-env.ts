@@ -12,7 +12,14 @@ if (!target) {
 }
 
 const rest = process.argv.slice(3);
+// Tests de performance necesitan log de queries Prisma para contar el
+// numero exacto de sentencias que ejecuta cada dominio.
+if (target.includes("test-perf")) {
+  process.env.PRISMA_LOG_QUERY = "1";
+}
+
 const result = spawnSync(process.execPath, ["--import", "tsx", target, ...rest], {
   stdio: "inherit",
+  env: process.env,
 });
 process.exit(result.status ?? 1);

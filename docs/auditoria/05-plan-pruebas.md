@@ -25,20 +25,22 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 | Matriz de rutas por rol | Cada rol puede abrir solo rutas autorizadas. | Autorizacion | `AUD-SEC-004`, `AUD-SEC-005`, `AUD-UX-002`, `AUD-UX-003` | E2E; `pnpm typecheck` aplicado para 0.33.0 | ADMIN/SELLER/DISPATCH cumplen matriz esperada. |
 | Server actions por rol | Actions criticas rechazan roles no autorizados. | Actions | `AUD-SEC-005`, `AUD-TEST-004` | Integracion; `pnpm typecheck` aplicado para 0.33.0 | Mutaciones protegidas no ejecutan para roles incorrectos. |
 | Acceso anonimo a recibo de pago | Capturas no son publicas. | Archivos, pagos | `AUD-SEC-003` | E2E/manual; `pnpm typecheck` aplicado para 0.34.0 | URL o endpoint de recibo rechaza anonimos. |
-| CI E2E con base correcta | Workflow crea/apunta a DB existente. | CI, deploy | `AUD-PROD-001` | CI validado en GitHub Actions | `db:push`, seed y Playwright terminan exitosamente. |
-| Reenvio tras envio cancelado | Pedido puede incluirse en nuevo envio despues de cancelar anterior. | Envios | `AUD-DATA-008` | Integracion/e2e | No hay error de unique y no hay dos envios activos. |
+| CI E2E con base correcta | Workflow crea/apunta a DB existente. | CI, deploy | `AUD-PROD-001`, `AUD-DATA-012`, `AUD-PROD-004` | CI validado en GitHub Actions | `db:deploy`, seed y Playwright terminan exitosamente. |
+| Reenvio tras envio cancelado | Pedido puede incluirse en nuevo envio despues de cancelar anterior. | Envios | `AUD-DATA-008` | Integracion con `e2e/flows.spec.ts`; validacion transaccional `Serializable` | No hay error de unique y no hay dos envios activos. |
 | Descuento en venta | Snapshots financieros reflejan descuento. | Ventas, reportes | `AUD-DATA-007` | Integracion con `scripts/test-order-batch-fifo.ts` | `lineDiscountPen` y utilidad por linea son correctos. |
-| Costo unitario 4 decimales | Costos aterrizados se redondean correctamente. | Lotes, utilidad | `AUD-DATA-009` | Unitario/integracion | Subtotal de costo coincide con regla definida. |
+| Costo unitario 4 decimales | Costos aterrizados se redondean correctamente. | Lotes, utilidad | `AUD-DATA-009` | Integracion en `scripts/test-order-batch-fifo.ts` | Subtotal de costo coincide con regla definida. |
 
 ## Tests importantes
 
 | Prueba | Que valida | Modulo afectado | Hallazgo cubierto | Tipo de test | Criterio de exito |
 | --- | --- | --- | --- | --- | --- |
-| CSV injection | Valores que empiezan con formula se exportan como texto. | Reportes CSV | `AUD-SEC-006` | Unitario | `=`, `+`, `-`, `@` quedan neutralizados. |
-| Upload invalido | Archivo no imagen o lote excesivo se rechaza. | Blob, pagos, productos | `AUD-SEC-007` | Integracion/manual | MIME falso, tamano total excesivo o cantidad excesiva fallan. |
+| CSV injection | Valores que empiezan con formula se exportan como texto. | Reportes CSV | `AUD-SEC-006` | Unitario en `scripts/test-financial-reports.ts` | `=`, `+`, `-`, `@` quedan neutralizados. |
+| Upload invalido | Archivo no imagen o lote excesivo se rechaza. | Blob, pagos, productos | `AUD-SEC-007` | Integracion en `scripts/test-upload-validation.ts` | MIME falso, firma invalida, tamano total excesivo o cantidad excesiva fallan. |
+| Metodo manual bloqueado | El costeo manual no puede quedar activo como placeholder silencioso. | Lotes, configuracion | `AUD-FUNC-006` | Integracion/validacion en `scripts/test-order-batch-fifo.ts` y Zod/UI | `MANUAL` falla explicitamente o no puede seleccionarse. |
 | Headers de seguridad | Respuestas incluyen headers definidos. | Produccion web | `AUD-SEC-008` | Manual/integracion; `pnpm typecheck` aplicado para 0.34.0 | CSP y headers no rompen app. |
-| Baja rotacion con dataset grande | No hay N+1 ni timeout. | Dashboard, reportes | `AUD-PERF-001`, `AUD-PERF-005` | Performance/integracion | Query count/tiempo se mantienen acotados. |
-| Rentabilidad por lote grande | No carga todo el grafo historico. | Reportes financieros | `AUD-PERF-003` | Performance/integracion | Reporte responde bajo limite definido. |
+| Baja rotacion con dataset grande | No hay N+1 ni timeout. | Dashboard, reportes | `AUD-PERF-001`, `AUD-PERF-005` | Performance/integracion con `scripts/test-perf-fixes.ts` | Query count constante al crecer N; `getLowRotationProducts` y `getLowRotationReport` no escalan con el numero de variantes. |
+| Rentabilidad por lote grande | No carga todo el grafo historico. | Reportes financieros | `AUD-PERF-003` | Performance/integracion con `scripts/test-perf-fixes.ts` | `getBatchProfitability` y `getBatchProfitabilityReport` ejecutan <= 8 queries acotadas y completan bajo 2s con docenas de lotes. |
+| Alertas financieras reusan resultados | `getFinancialAlerts` no recalcula overview/baja rotacion. | Dashboard | `AUD-PERF-001` | Integracion con `scripts/test-perf-fixes.ts` | Llamada con `precomputed` ejecuta <= 4 queries y devuelve el `lowRotationCount` recibido. |
 | Export CSV grande | Export no trunca silenciosamente ni consume memoria excesiva. | Reportes | `AUD-PERF-002`, `AUD-PERF-006` | Performance/manual | Usuario recibe export completo o aviso de limite. |
 | Reporte de lives multiple | Cada live muestra totales propios. | Reportes operativos | `AUD-PERF-009` | Integracion | Dos lives con ventas distintas no comparten metricas. |
 | Top productos historico | Revenue no muestra cero falso. | Reportes | `AUD-PERF-012` | Integracion | Ingresos historicos se calculan o se ocultan claramente. |
@@ -71,7 +73,7 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 | Error boundaries contextuales | Errores ofrecen recuperacion util. | UX | `AUD-UX-016` | Manual | Mensaje y CTA son claros por modulo. |
 | Restore de backup | Backup Neon se restaura en staging. | Produccion | `AUD-PROD-005` | Manual/runbook | Restore documentado y probado. |
 | Rollback de release | Version anterior puede restaurarse. | Produccion | `AUD-PROD-005` | Manual/runbook | Procedimiento validado en staging. |
-| Secret scanning | Repo no contiene secretos. | Seguridad/produccion | `AUD-SEC-009`, `AUD-PROD-003` | Manual/CI | Scanner no detecta secretos. |
+| Secret scanning | Repo no contiene secretos rastreados. | Seguridad/produccion | `AUD-SEC-009`, `AUD-PROD-003` | CI/manual | `secret-scan.yml` corre y el workspace no comparte `.env` reales. |
 | Trace de Playwright en fallo | Artefactos ayudan a diagnosticar. | Testing | `AUD-TEST-003` | CI | Fallo genera trace/reporte. |
 
 ## Reglas para agregar pruebas

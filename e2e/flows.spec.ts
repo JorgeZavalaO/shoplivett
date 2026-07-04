@@ -12,7 +12,7 @@ import {
   validatePayment,
   rejectPayment,
 } from "../lib/payments";
-import { createShipment } from "../lib/shipments";
+import { cancelShipment, createShipment } from "../lib/shipments";
 import { expireReservation } from "../lib/order-expiry";
 import { coercePaymentMethodFees } from "../lib/settings-defaults";
 
@@ -282,6 +282,56 @@ test.describe("Sprint 15 — Flujos obligatorios", () => {
     expect(
       shipmentRow?.orders.every((so: { order: { status: string } }) => so.order.status === "PAID"),
     ).toBe(true);
+  });
+
+  test("AUD-DATA-008 — pedido con envío cancelado puede reenviarse", async () => {
+    const { user } = await getAdmin();
+    const customer = await createTestCustomer("05b");
+    const variant = await createTestProductWithStock("05b", 3);
+
+    const sale = await createQuickSale({
+      customerId: customer.id,
+      items: [{ variantId: variant.id, quantity: 1 }],
+      discount: "0",
+      shippingAmount: "0",
+      advanceAmount: "100",
+      paymentMethod: "YAPE",
+      actorId: user.id,
+    });
+    await validatePayment({ paymentId: sale.paymentId, actorId: user.id });
+
+    const first = await createShipment({
+      customerId: customer.id,
+      orderIds: [sale.orderId],
+      shippingMethod: "DELIVERY_PROPIO",
+      shippingCost: "10",
+      forceFreeShipping: false,
+      actorId: user.id,
+    });
+    await cancelShipment({
+      shipmentId: first.shipmentId,
+      reason: "Reprogramación de despacho",
+      actorId: user.id,
+    });
+
+    const second = await createShipment({
+      customerId: customer.id,
+      orderIds: [sale.orderId],
+      shippingMethod: "DELIVERY_PROPIO",
+      shippingCost: "10",
+      forceFreeShipping: false,
+      actorId: user.id,
+    });
+
+    const links = await prisma.shipmentOrder.findMany({
+      where: { orderId: sale.orderId },
+      include: { shipment: { select: { id: true, status: true } } },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(links).toHaveLength(2);
+    expect(links[0].shipment.status).toBe("CANCELLED");
+    expect(links[1].shipment.id).toBe(second.shipmentId);
+    expect(links.filter((l) => l.shipment.status !== "CANCELLED")).toHaveLength(1);
   });
 
   test("RF-S15-07 — Rechazo de pago: libera stock y cancela reserva sin pagos validados", async () => {

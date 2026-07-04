@@ -4,6 +4,7 @@
 // y los formularios siempre usan exactamente 2 decimales.
 
 export type Cents = number;
+export type TenThousandths = number;
 
 export class MoneyError extends Error {
   constructor(
@@ -79,4 +80,50 @@ export function sumCents(
     (acc, v) => acc + toCents(v, { allowNegative: true }),
     0,
   );
+}
+
+/**
+ * Convierte un decimal con hasta 4 decimales a una unidad entera de 1/10000.
+ * Ej: "30.1234" => 301234.
+ */
+export function toTenThousandths(
+  value: string | number | { toString(): string } | null | undefined,
+  opts: { allowNegative?: boolean } = {},
+): TenThousandths {
+  if (value == null) return 0;
+  const raw = toRawString(value);
+  const trimmed = raw.trim();
+  if (trimmed === "") return 0;
+  const isNegative = trimmed.startsWith("-");
+  const unsigned = isNegative ? trimmed.slice(1) : trimmed;
+  const num = Number(unsigned);
+  if (!Number.isFinite(num)) {
+    throw new MoneyError("Monto inválido.");
+  }
+  if (!opts.allowNegative && isNegative) {
+    throw new MoneyError("El monto no puede ser negativo.");
+  }
+  const [whole, fraction = ""] = unsigned.split(".");
+  const safeWhole = (whole || "0").replace(/[^0-9]/g, "") || "0";
+  const safeFraction = (fraction || "")
+    .replace(/[^0-9]/g, "")
+    .padEnd(4, "0")
+    .slice(0, 4);
+  return (Number(safeWhole) * 10000 + Number(safeFraction)) * (isNegative ? -1 : 1);
+}
+
+export function tenThousandthsToDecimalString(value: TenThousandths): string {
+  const negative = value < 0;
+  const abs = negative ? -value : value;
+  const whole = Math.trunc(abs / 10000);
+  const fraction = Math.trunc(abs % 10000);
+  return `${negative ? "-" : ""}${whole}.${String(fraction).padStart(4, "0")}`;
+}
+
+/**
+ * Redondea una unidad 1/10000 a centavos (2 decimales) preservando signo.
+ */
+export function tenThousandthsToCents(value: TenThousandths): Cents {
+  if (value >= 0) return Math.floor((value + 50) / 100);
+  return -Math.floor((-value + 50) / 100);
 }

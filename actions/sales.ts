@@ -10,6 +10,7 @@ import { CreateOrderSchema, type CreateOrderInput } from "@/lib/validations";
 import { createQuickSale, OrderError } from "@/lib/sales";
 import { getOpenLive } from "@/lib/live";
 import { isSalesChannel } from "@/lib/order-batch-allocation";
+import { ImageUploadError, validateImageBatch } from "@/lib/blob";
 import { getEnabledSalesChannels, getSettings } from "@/lib/settings";
 import { SALES_CHANNEL_LABELS } from "@/lib/settings-defaults";
 import { getItemPricing } from "@/lib/import-batch-costing";
@@ -67,6 +68,14 @@ export async function createQuickSaleAction(
     if (key === "receipts" && value instanceof File && value.size > 0) {
       receiptFiles.push(value);
     }
+  }
+  try {
+    validateImageBatch(receiptFiles);
+  } catch (error) {
+    if (error instanceof ImageUploadError) {
+      return { ok: false, message: error.message };
+    }
+    throw error;
   }
 
   try {

@@ -29,7 +29,7 @@ Documento operativo para coordinar multiples sesiones de trabajo sobre la evoluc
 - Los costos reales vendidos se congelan en `OrderItem` y/o una tabla de asignacion. Cambios posteriores en un lote no alteran ventas historicas.
 - Todo dinero interno debe operar en centavos enteros con `lib/money.ts`.
 - Las acciones criticas nuevas deben auditarse con `auditInTx` si forman parte de una transaccion de negocio o `auditAfter` si son posteriores.
-- Mientras el repositorio no adopte migraciones formales, los cambios de schema se aplican con `pnpm db:push`, no con `pnpm db:migrate` contra la base compartida.
+- El repositorio usa migraciones Prisma versionadas. Bases limpias, CI, staging y produccion aplican schema con `pnpm db:deploy`; cambios nuevos de schema se crean con `pnpm db:migrate`. `pnpm db:push` queda solo para bases locales descartables.
 
 ## Reglas Para Multiples Sesiones
 

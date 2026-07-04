@@ -18,7 +18,13 @@
 
 import { Prisma, type OrderItemCostSource, type SalesChannel } from "@prisma/client";
 
-import { toCents, centsToDecimalString, type Cents } from "@/lib/money";
+import {
+  toCents,
+  toTenThousandths,
+  tenThousandthsToCents,
+  centsToDecimalString,
+  type Cents,
+} from "@/lib/money";
 import { applyBatchStockDelta, assertVariantStockInvariant } from "@/lib/stock-sync";
 
 export class BatchAllocationError extends Error {
@@ -178,11 +184,8 @@ export async function allocateOrderItemBatches(
     if (available <= 0) continue;
     const take = Math.min(available, remaining);
     const unitCostPen = decString(candidate.landedUnitCostPen);
-    const unitCostCents = toCents(unitCostPen, { allowNegative: true });
-    // landUnitCostPen tiene hasta 4 decimales: lo llevamos a cents con la
-    // función de utilidad que preserva 2 decimales a partir de los 4.
-    const unitCost2dpCents = Math.round(unitCostCents * 100) / 100;
-    const subtotalCents = Math.round(unitCost2dpCents * take);
+    const unitCostTenThousandths = toTenThousandths(unitCostPen, { allowNegative: true });
+    const subtotalCents = tenThousandthsToCents(unitCostTenThousandths * take);
     const subtotalCostPen = centsToDecimalString(subtotalCents);
 
     const update = await tx.importBatchItem.updateMany({

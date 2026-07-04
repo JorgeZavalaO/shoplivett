@@ -74,7 +74,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: roles no autorizados redirigen antes de consultar datos.
 - Tests recomendados: E2E por rol para rutas de lives.
 - Dependencias: ninguna.
-- Observaciones: revisar tambien detalle/listado si aplica.
+- Observaciones: en 0.38.0 se agrego `requireRole(["ADMIN", "SELLER"])` en ambas paginas.
 
 ### AUD-SEC-005 - Drift entre permisos declarados y guards reales
 
@@ -108,7 +108,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: valores peligrosos se exportan como texto seguro.
 - Tests recomendados: unitario de `buildCsv()` con celdas formula-like.
 - Dependencias: ninguna.
-- Observaciones: aplicar a todos los reportes.
+- Observaciones: corregido neutralizando celdas que empiezan con `=`, `+`, `-` o `@` en `lib/csv-export.ts` mediante prefijo de apostrofe antes del escape RFC 4180. Regresion agregada en `scripts/test-financial-reports.ts`.
 
 ### AUD-SEC-007 - Validacion de subida de archivos incompleta
 
@@ -125,7 +125,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: archivos no imagen son rechazados; accion limita cantidad/tamano total.
 - Tests recomendados: integracion/manual de upload invalido y lote excesivo.
 - Dependencias: ninguna.
-- Observaciones: diferenciar productos vs recibos.
+- Observaciones: corregido en `lib/blob.ts` agregando validacion por firma para PNG/JPEG/WebP y limites agregados por accion (`BLOB_MAX_FILES_PER_ACTION`, `BLOB_MAX_TOTAL_BYTES`). `actions/payments.ts` y `actions/sales.ts` validan el lote antes de subir; los uploads individuales siguen validando 5 MB por archivo. Regresion agregada en `scripts/test-upload-validation.ts`.
 
 ### AUD-SEC-008 - Falta de headers de seguridad explicitos
 
@@ -159,7 +159,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: secretos rotados si aplica; `.env` local no se comparte; `.env.example` sin secretos.
 - Tests recomendados: revision manual de repositorio y secret scanning.
 - Dependencias: acceso a proveedores Neon/Vercel/Auth.
-- Observaciones: no esta trackeado, pero sigue siendo riesgo operativo.
+- Observaciones: se agrego secret scanning automatizado con `.github/workflows/secret-scan.yml` y `README.md` refuerza no compartir `.env` reales. Confirmado por el responsable del workspace: el `.env` no se compartio, no hubo exposicion y se mantendra solo en local en su maquina. No se requiere rotacion adicional y el riesgo queda cerrado bajo esa premisa operativa.
 
 ## Datos y consistencia
 
@@ -186,7 +186,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Incidencias canceladas dejan stock o creditos aplicados.
 - Severidad: Critica.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/incidents.ts`.
 - Descripcion: `createIncident()` aplica efectos reales; `cancelIncident()` solo cambia estado.
 - Evidencia encontrada: `lib/incidents.ts:439-544`, `lib/incidents.ts:675-683`.
@@ -288,7 +288,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Pedido con envio cancelado no puede reenviarse.
 - Severidad: Alta.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `prisma/schema.prisma`, `lib/shipments.ts`.
 - Descripcion: el codigo permite envio nuevo si el anterior esta `CANCELLED`, pero `ShipmentOrder.orderId` es unico.
 - Evidencia encontrada: `prisma/schema.prisma:649-654`, `lib/shipments.ts:132-140`, `lib/shipments.ts:194-197`.
@@ -297,7 +297,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: reenvio funciona y no permite dos envios activos.
 - Tests recomendados: E2E/dominio de cancelar envio y crear otro.
 - Dependencias: estrategia de migraciones.
-- Observaciones: P1.
+- Observaciones: en 0.38.0 se elimina `@unique` de `ShipmentOrder.orderId` y se adopta `shipmentOrders[]` en `Order`. La regla de un solo envio activo por pedido queda garantizada por logica transaccional `Serializable` en `createShipment()`, no por constraint parcial en DB. Tras `AUD-DATA-012`, el baseline de migraciones existe; no se agrega indice parcial porque PostgreSQL no puede expresar esa unicidad sobre `Shipment.status` sin denormalizar el estado en `ShipmentOrder`.
 
 ### AUD-DATA-009 - Costos unitarios 4 decimales truncados
 
@@ -305,7 +305,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Costos aterrizados pierden precision.
 - Severidad: Alta.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/order-batch-allocation.ts`, `lib/money.ts`.
 - Descripcion: `toCents()` conserva 2 decimales, pero `landedUnitCostPen` tiene 4 decimales.
 - Evidencia encontrada: `lib/money.ts:49-55`, `lib/order-batch-allocation.ts:179-185`.
@@ -314,7 +314,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: subtotal de lote con costos 4dp redondea correctamente.
 - Tests recomendados: unitarios con costos fraccionarios.
 - Dependencias: `AUD-DATA-007`.
-- Observaciones: P1.
+- Observaciones: corregido agregando helpers de dinero 4dp en `lib/money.ts` (`toTenThousandths`, `tenThousandthsToCents`) y usando esos enteros exactos en `allocateOrderItemBatches()` para calcular `subtotalCostPen` desde `landedUnitCostPen` sin truncar a 2 decimales antes de multiplicar. Regresion agregada en `scripts/test-order-batch-fifo.ts` validando `30.1234 x 3 = 90.37`.
 
 ### AUD-DATA-010 - Mutaciones de lotes validan estado fuera de transaccion
 
@@ -322,7 +322,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Lotes cerrados pueden modificarse por carrera.
 - Severidad: Alta.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `actions/import-batches.ts`.
 - Descripcion: varias acciones leen `status !== CLOSED` antes de transaccion y luego escriben sin revalidar dentro.
 - Evidencia encontrada: `actions/import-batches.ts:380-406`, `actions/import-batches.ts:564-571`, `actions/import-batches.ts:649-675`, `actions/import-batches.ts:781-804`.
@@ -356,16 +356,16 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Schema se aplica con `db:push` sin historial formal.
 - Severidad: Media.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `prisma/migrations`.
-- Descripcion: no se encontraron migraciones versionadas.
-- Evidencia encontrada: carpeta `prisma/migrations` inexistente.
+- Descripcion: el schema cuenta con baseline versionado y estrategia formal de migraciones.
+- Evidencia encontrada: baseline versionado en `prisma/migrations/20260704000000_init/migration.sql` y `prisma/migrations/migration_lock.toml`.
 - Riesgo real: dificil reproducir BD, auditar cambios y aplicar constraints en produccion.
-- Recomendacion: crear baseline y estrategia formal de migraciones antes de produccion.
-- Criterios de aceptacion: migraciones aplican schema desde cero y sobre entorno existente controlado.
-- Tests recomendados: levantar BD limpia con migraciones y seed.
-- Dependencias: estabilizar cambios P0/P1.
-- Observaciones: tambien es riesgo de produccion.
+- Recomendacion: mantener cambios futuros de schema como migraciones versionadas y reservar `db:push` para bases locales descartables.
+- Criterios de aceptacion: migraciones aplican schema desde cero con `pnpm db:deploy` y una BD existente creada con `db:push` puede adoptar el baseline mediante `prisma migrate resolve --applied 20260704000000_init` tras validar drift en staging.
+- Tests recomendados: levantar BD limpia con `pnpm db:deploy && pnpm db:seed`.
+- Dependencias: estabilizar cambios P0/P1 para migraciones futuras de constraints.
+- Observaciones: corregido junto con `AUD-PROD-004`; CI E2E usa `pnpm db:deploy`.
 
 ### AUD-DATA-013 - Cierre de reservas ignora pagos aplicados por `PaymentApplication`
 
@@ -373,7 +373,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Pagos pendientes multi-pedido pueden quedar vivos al cerrar reserva.
 - Severidad: Media.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/order-expiry.ts`, `prisma/schema.prisma`.
 - Descripcion: `closeUnpaidReservation()` incluye `payments` por relacion `Order.payments`, no por `PaymentApplication`.
 - Evidencia encontrada: `lib/order-expiry.ts:54-59`, `lib/order-expiry.ts:105-116`, `prisma/schema.prisma:513-514`, `prisma/schema.prisma:554-560`.
@@ -407,7 +407,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: `recoveredAmount` se calcula pero no aumenta utilidad real.
 - Severidad: Media.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/expenses.ts`.
 - Descripcion: `incidentRecoveredCents` se calcula pero `realNetProfitCents` resta solo gastos y perdidas.
 - Evidencia encontrada: `lib/expenses.ts:341-350`.
@@ -530,7 +530,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Baja rotacion se calcula varias veces y con consulta por variante.
 - Severidad: Alta.
 - Categoria: Performance.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `app/(dashboard)/dashboard/page.tsx`, `lib/financial-dashboard.ts`.
 - Descripcion: dashboard llama baja rotacion y alertas; alertas vuelven a calcular overview y baja rotacion.
 - Evidencia encontrada: `app/(dashboard)/dashboard/page.tsx:377-399`, `lib/financial-dashboard.ts:570-609`, `lib/financial-dashboard.ts:841-842`.
@@ -540,6 +540,13 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Tests recomendados: performance smoke con miles de variantes.
 - Dependencias: ninguna.
 - Observaciones: P1/P2.
+- Solucion aplicada: `getFinancialAlerts` ahora acepta un segundo argumento
+  `precomputed` con `overview` y `lowRotationCount` ya calculados. La pagina
+  `/dashboard` le pasa el `overview` y el conteo de baja rotacion que ya
+  computo en su `Promise.all`, evitando recalcularlos. Ademas, el bucle
+  N+1 de `getLowRotationProducts` se reemplazo por un `groupBy` de
+  `OrderItem` (ver `AUD-PERF-005`). Cubierto por
+  `scripts/test-perf-fixes.ts`.
 
 ### AUD-PERF-002 - Reportes y CSV cargan datasets completos
 
@@ -564,8 +571,8 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: `getBatchProfitabilityReport()` filtra historico en JS.
 - Severidad: Alta.
 - Categoria: Performance.
-- Estado: Pendiente.
-- Archivo, ruta o modulo afectado: `lib/financial-reports.ts`.
+- Estado: Corregido.
+- Archivo, ruta o modulo afectado: `lib/financial-reports.ts`, `lib/financial-dashboard.ts`.
 - Descripcion: carga lotes, items, allocations, orderItem y order sin `take`, luego filtra fecha/estado en loops.
 - Evidencia encontrada: `lib/financial-reports.ts:468-527`.
 - Riesgo real: payload excesivo y tiempos crecientes.
@@ -574,6 +581,13 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Tests recomendados: performance con muchos lotes/asignaciones.
 - Dependencias: tests de rentabilidad.
 - Observaciones: P2.
+- Solucion aplicada: `getBatchProfitabilityReport` y
+  `getBatchProfitability` ahora consultan primero las allocations
+  filtrando por `orderItem.order.status = PAID` y el rango de fechas
+  (`profitCalculatedAt` para la variante dashboard, `from`/`to` para
+  reportes), luego cargan unicamente los lotes con datos. Se conserva el
+  filtro por `status in [COMPLETE, CLOSED]` (dashboard) y el orden por
+  `createdAt desc`. Cubierto por `scripts/test-perf-fixes.ts`.
 
 ### AUD-PERF-004 - Falta indice para `status + profitCalculatedAt`
 
@@ -598,8 +612,8 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: `getLowRotationReport()` consulta ultima venta por variante.
 - Severidad: Alta.
 - Categoria: Performance.
-- Estado: Pendiente.
-- Archivo, ruta o modulo afectado: `lib/financial-reports.ts`.
+- Estado: Corregido.
+- Archivo, ruta o modulo afectado: `lib/financial-reports.ts`, `lib/financial-dashboard.ts`.
 - Descripcion: carga variantes candidatas y hace `orderItem.findFirst` por cada una.
 - Evidencia encontrada: `lib/financial-reports.ts:760-797`.
 - Riesgo real: muchas queries para reportes/exportaciones.
@@ -608,6 +622,13 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Tests recomendados: performance/regresion con muchas variantes.
 - Dependencias: ninguna.
 - Observaciones: similar a `AUD-PERF-001`.
+- Solucion aplicada: `getLowRotationReport` y `getLowRotationProducts`
+  ahora hacen un unico `prisma.orderItem.groupBy({ by: ['variantId'],
+  where: { variantId: { in: variantIds }, order: { status: 'PAID' } },
+  _max: { createdAt: true } })` para obtener la ultima venta por
+  variante en una sola consulta. Antes hacian `findFirst` por cada
+  variante (1 + N queries). Cubierto por
+  `scripts/test-perf-fixes.ts`.
 
 ### AUD-PERF-006 - Export de gastos trunca a 1000 filas
 
@@ -787,7 +808,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Formulario de ajuste aparece aunque action exige admin.
 - Severidad: Media.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `app/(dashboard)/inventario/[variantId]/page.tsx`, `actions/inventory.ts`.
 - Descripcion: pagina permite `ADMIN|SELLER|DISPATCH` y siempre renderiza `InventoryAdjustForm`; action exige `ADMIN`.
 - Evidencia encontrada: `app/(dashboard)/inventario/[variantId]/page.tsx:26`, `app/(dashboard)/inventario/[variantId]/page.tsx:98-109`.
@@ -796,7 +817,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: solo roles autorizados ven ajuste.
 - Tests recomendados: E2E por rol.
 - Dependencias: `AUD-SEC-005`.
-- Observaciones: relacionado con permisos.
+- Observaciones: en 0.38.0 se condiciona el render del form a `user.role === "ADMIN"`.
 
 ### AUD-UX-005 - Ajuste de inventario sin confirmacion
 
@@ -1085,7 +1106,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Descripcion: servicio Postgres crea una DB distinta a la del `DATABASE_URL` E2E.
 - Evidencia encontrada: `.github/workflows/ci.yml:45-50`, `.github/workflows/ci.yml:59-60`, `.github/workflows/ci.yml:79`.
 - Riesgo real: E2E falla antes de correr o no valida lo esperado.
-- Recomendacion: usar misma DB o crear `ci_e2e` antes de `db:push`.
+- Recomendacion: usar misma DB o crear `ci_e2e` antes de `db:deploy`.
 - Criterios de aceptacion: CI E2E corre schema, seed y tests contra DB existente.
 - Tests recomendados: ejecutar workflow.
 - Dependencias: ninguna.
@@ -1097,7 +1118,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Configuracion operacional de Vercel no esta explicitada.
 - Severidad: Baja.
 - Categoria: Produccion.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `vercel.json` inexistente.
 - Descripcion: no hay duraciones/regiones/politicas especificas para rutas pesadas.
 - Evidencia encontrada: no se encontro `vercel.json`.
@@ -1131,16 +1152,16 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Deploy depende de `db:push`.
 - Severidad: Media.
 - Categoria: Produccion.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `prisma/schema.prisma`, scripts de deploy.
-- Descripcion: documentacion actual usa `db:push`; no hay historial formal para prod.
-- Evidencia encontrada: README/AGENTS y ausencia de `prisma/migrations`.
-- Riesgo real: cambios de schema no auditables y rollback dificil.
-- Recomendacion: crear baseline y migraciones antes de datos reales.
-- Criterios de aceptacion: produccion aplica migraciones versionadas.
-- Tests recomendados: restaurar DB limpia desde migraciones.
-- Dependencias: `AUD-DATA-012`.
-- Observaciones: bloquear antes de produccion real.
+- Descripcion: deploy productivo usa migraciones versionadas; `db:push` queda restringido a bases locales descartables.
+- Evidencia encontrada: `prisma/migrations/20260704000000_init/migration.sql`, script `pnpm db:deploy`, CI E2E con `pnpm db:deploy`, README/AGENTS actualizados.
+- Riesgo real: mitigado; el riesgo residual es drift si se vuelve a usar `db:push` fuera de bases locales descartables.
+- Recomendacion: aplicar `pnpm db:deploy` en CI/staging/produccion y crear migraciones nuevas con `pnpm db:migrate`.
+- Criterios de aceptacion: produccion aplica migraciones versionadas y bases existentes adoptan el baseline con `migrate resolve` luego de validar schema.
+- Tests recomendados: restaurar DB limpia desde migraciones y seed.
+- Dependencias: `AUD-DATA-012` corregido.
+- Observaciones: mantener staging como puerta para validar migraciones antes de produccion real.
 
 ### AUD-PROD-005 - Falta estrategia explicita de observabilidad, backups y rollback
 
@@ -1252,7 +1273,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Metodo `MANUAL` distribuye cero costos adicionales.
 - Severidad: Alta.
 - Categoria: Funcionalidades faltantes.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/import-batch-costing.ts`, settings financieros.
 - Descripcion: UI/settings exponen manual, pero la funcion devuelve distribucion cero.
 - Evidencia encontrada: `lib/import-batch-costing.ts:295-327`.
@@ -1261,7 +1282,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: `MANUAL` distribuye costos reales o no puede seleccionarse.
 - Tests recomendados: unitarios de costeo manual o test de bloqueo de configuracion.
 - Dependencias: decision funcional.
-- Observaciones: P1/P2 segun uso real.
+- Observaciones: corregido con enfoque seguro minimo: `MANUAL` deja de ser seleccionable en `components/forms/settings-form.tsx`, `BusinessSettingsSchema` rechaza guardar ese metodo y `calculateLandedCosts()` falla explicitamente con `MANUAL_NOT_SUPPORTED` si apareciera en datos antiguos. Con esto deja de existir distribucion silenciosa a cero mientras se difiere una futura implementacion real de overrides por item.
 
 ### AUD-FUNC-007 - Modelo no cubre costo real de envio prometido
 

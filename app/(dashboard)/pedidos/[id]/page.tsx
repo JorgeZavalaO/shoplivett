@@ -35,11 +35,12 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
   const { id } = await params;
   const order = await getOrderDetailAction(id);
   if (!order) notFound();
+  const activeShipmentOrder = order.shipmentOrders[0] ?? null;
 
   const canCreateShipment =
     (user.role === "ADMIN" || user.role === "DISPATCH") &&
     order.status === "PAID" &&
-    (!order.shipmentOrder || order.shipmentOrder.shipment.status === "CANCELLED");
+    !activeShipmentOrder;
 
   const canSeeCosts = user.role === "ADMIN";
   const isPaid = order.status === "PAID";
@@ -150,14 +151,14 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
               </Link>
             </>
           ) : null}
-          {order.shipmentOrder && order.shipmentOrder.shipment.status !== "CANCELLED" ? (
+          {activeShipmentOrder ? (
             <>
               {" · Envío: "}
               <Link
-                href={`/envios/${order.shipmentOrder.shipment.id}`}
+                href={`/envios/${activeShipmentOrder.shipment.id}`}
                 className="font-mono hover:underline"
               >
-                {order.shipmentOrder.shipment.id.slice(-6).toUpperCase()}
+                {activeShipmentOrder.shipment.id.slice(-6).toUpperCase()}
               </Link>
             </>
           ) : null}
@@ -468,7 +469,7 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
               context={{
                 hasOrder: true,
                 hasPayment: Boolean(latestPayment),
-                hasShipment: Boolean(order.shipmentOrder && order.shipmentOrder.shipment.status !== "CANCELLED"),
+                hasShipment: Boolean(activeShipmentOrder),
                 hasCredit: false,
               }}
               order={{
