@@ -5,6 +5,29 @@ Todos los cambios notables de Shoplivett se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.37.0] - Sincronización stock ↔ lotes y reconciliación
+
+### Datos
+- `lib/stock-sync.ts` agrega `applyBatchStockDelta()` y `assertVariantStockInvariant()` para mantener `ProductVariant.stock` como proyección denormalizada de la suma de `ImportBatchItem.quantityAvailable` (`AUD-DATA-004`).
+- `actions/import-batches.ts` ahora sincroniza `ProductVariant.stock` en `createBatchAction`, `addBatchItemAction` y `removeBatchItemAction`, dentro de la misma transacción.
+- `lib/order-batch-allocation.ts` sincroniza el delta en allocate (FIFO) y release (cancelación/expiración de reservas), manteniendo la invariante durante el ciclo de venta.
+- `lib/financial-reports.ts` y las vistas de baja rotación (`components/reports/low-rotation-report-view.tsx`, `components/dashboard/financial-alerts.tsx`) ahora calculan `available = stock - reservedStock - soldStock` (fórmula canónica de `computeAvailable`).
+
+### Operaciones
+- `scripts/reconcile-variant-stock.ts` detecta y corrige drift entre `ProductVariant.stock` y la suma de `quantityAvailable` por variante con lote. Sin flags solo reporta; con `--apply` corrige.
+- El assert de invariante se ejecuta en `NODE_ENV !== "production"` (solo log, no aborta la transacción) para detectar drift temprano sin afectar prod.
+
+### Auditoría
+- `AUD-DATA-004` queda marcado como `Corregido`.
+- Se registró la decisión de mantener `ProductVariant.stock` como proyección sincronizada (opción B) con script de reconciliación.
+- `AUD-DATA-012` (migraciones Prisma) sigue pendiente y la opción B evita esa dependencia.
+
+### Verificación
+- `pnpm typecheck`
+- `pnpm exec tsx scripts/_with-env.ts scripts/test-order-batch-fifo.ts` → 12/12 tests.
+- `pnpm exec tsx scripts/_with-env.ts scripts/test-incidents.ts` → 16/16 tests.
+- `pnpm exec tsx scripts/_with-env.ts scripts/reconcile-variant-stock.ts` detecta drift en datos seed históricos.
+
 ## [0.36.0] - Prorrateo de descuento y envío en snapshots
 
 ### Datos

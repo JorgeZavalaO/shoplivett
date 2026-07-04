@@ -220,7 +220,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: `ImportBatchItem.quantityAvailable` no actualiza `ProductVariant.stock`.
 - Severidad: Critica.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `actions/import-batches.ts`, `lib/inventory.ts`, `lib/sales.ts`.
 - Descripcion: lotes registran disponibilidad y movimiento `IN`, pero la reserva valida contra `ProductVariant.stock`.
 - Evidencia encontrada: `actions/import-batches.ts:301-324`, `actions/import-batches.ts:587-610`, `lib/inventory.ts:137-147`, `lib/sales.ts:104-106`.
@@ -229,7 +229,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: venta por lote funciona y mantiene stock/lotes coherentes.
 - Tests recomendados: FIFO/lote desde recepcion hasta venta, cancelacion y expiracion.
 - Dependencias: decisiones de modelo de inventario.
-- Observaciones: P0.
+- Observaciones: en 0.37.0 se adopta opcion B (PV como proyeccion sincronizada) con `lib/stock-sync.ts` y `scripts/reconcile-variant-stock.ts`. Regresion en `scripts/test-order-batch-fifo.ts`.
 
 ### AUD-DATA-005 - Ajuste manual de stock inseguro
 

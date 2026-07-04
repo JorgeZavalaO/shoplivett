@@ -19,6 +19,7 @@
 import { Prisma, type OrderItemCostSource, type SalesChannel } from "@prisma/client";
 
 import { toCents, centsToDecimalString, type Cents } from "@/lib/money";
+import { applyBatchStockDelta, assertVariantStockInvariant } from "@/lib/stock-sync";
 
 export class BatchAllocationError extends Error {
   constructor(
@@ -207,6 +208,12 @@ export async function allocateOrderItemBatches(
       },
     });
 
+    await applyBatchStockDelta(tx, {
+      variantId: candidate.variantId,
+      delta: -take,
+      label: `allocateOrderItemBatches ${orderItemId}`,
+    });
+
     allocations.push({
       batchItemId: candidate.id,
       batchId: candidate.batchId,
@@ -226,6 +233,8 @@ export async function allocateOrderItemBatches(
     );
   }
 
+  await assertVariantStockInvariant(tx, variantId, "allocateOrderItemBatches");
+
   return allocations;
 }
 
@@ -240,15 +249,32 @@ export async function releaseOrderItemAllocations(
 ): Promise<{ batchItemId: string; quantity: number }[]> {
   const allocations = await tx.orderItemBatchAllocation.findMany({
     where: { orderItemId },
-    select: { id: true, batchItemId: true, quantity: true },
+    select: { id: true, batchItemId: true, quantity: true, variantId: true },
   });
   const released: { batchItemId: string; quantity: number }[] = [];
+  const deltaByVariant = new Map<string, number>();
   for (const alloc of allocations) {
     await tx.importBatchItem.update({
       where: { id: alloc.batchItemId },
       data: { quantityAvailable: { increment: alloc.quantity } },
     });
     released.push({ batchItemId: alloc.batchItemId, quantity: alloc.quantity });
+    deltaByVariant.set(
+      alloc.variantId,
+      (deltaByVariant.get(alloc.variantId) ?? 0) + alloc.quantity,
+    );
+  }
+  for (const [variantId, delta] of deltaByVariant) {
+    await applyBatchStockDelta(tx, {
+      variantId,
+      delta,
+      label: `releaseOrderItemAllocations ${orderItemId}`,
+    });
+    await assertVariantStockInvariant(
+      tx,
+      variantId,
+      `releaseOrderItemAllocations ${orderItemId}`,
+    );
   }
   if (allocations.length > 0) {
     await tx.orderItemBatchAllocation.deleteMany({ where: { orderItemId } });

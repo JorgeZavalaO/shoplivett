@@ -170,6 +170,16 @@ La versión 0.36.0 cierra `AUD-DATA-007` prorrateando descuento y envío en los 
 - `lib/sales.ts` calcula el reparto del descuento/envío del pedido antes de persistir cada línea, alineando la utilidad bruta/neta con `Order.total`.
 - Regresión: `pnpm exec tsx scripts/_with-env.ts scripts/test-order-batch-fifo.ts` con 11/11 tests.
 
+### Auditoría técnica — correcciones 0.37.0
+
+La versión 0.37.0 cierra `AUD-DATA-004` sincronizando `ProductVariant.stock` con la suma de `ImportBatchItem.quantityAvailable` (opción B + reconciliación):
+
+- `lib/stock-sync.ts` centraliza `applyBatchStockDelta()` y `assertVariantStockInvariant()`.
+- `actions/import-batches.ts` (create/add/remove) y `lib/order-batch-allocation.ts` (allocate/release) sincronizan el delta en la misma transacción.
+- `lib/financial-reports.ts` y vistas de baja rotación estandarizan la fórmula `available = stock - reservedStock - soldStock`.
+- `scripts/reconcile-variant-stock.ts [--apply]` reporta y corrige drift residual.
+- Regresiones: `test-order-batch-fifo.ts` 12/12, `test-incidents.ts` 16/16, reconciliación detecta drift en datos seed.
+
 ### Sprint 24 — Dashboard financiero (versión 0.25.0)
 
 El panel `/dashboard` para ADMIN combina las métricas operativas del Sprint 11 con un nuevo bloque financiero. Los agregadores viven en `lib/financial-dashboard.ts` y operan con `select` mínimos, `Cents` enteros y sin cache persistente (cada request recalcula para mantener consistencia entre instancias serverless).

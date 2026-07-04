@@ -28,6 +28,7 @@ import {
 } from "@/lib/import-batch-costing";
 import { getSettings } from "@/lib/settings";
 import { centsToDecimalString, toCents, type Cents } from "@/lib/money";
+import { applyBatchStockDelta, assertVariantStockInvariant } from "@/lib/stock-sync";
 
 export type BatchActionResult = {
   ok: boolean;
@@ -322,6 +323,17 @@ export async function createBatchAction(
             reason: `Lote ${code} - Recepción`,
           },
         });
+
+        await applyBatchStockDelta(tx, {
+          variantId: item.variantId,
+          delta: item.quantityReceived,
+          label: `createBatchAction ${code}`,
+        });
+        await assertVariantStockInvariant(
+          tx,
+          item.variantId,
+          `createBatchAction ${code}`,
+        );
       }
 
       await auditInTx(tx, user?.id ?? null, {
@@ -609,6 +621,17 @@ export async function addBatchItemAction(
         },
       });
 
+      await applyBatchStockDelta(tx, {
+        variantId: parsed.data.variantId,
+        delta: parsed.data.quantityReceived,
+        label: `addBatchItemAction ${batch.code}`,
+      });
+      await assertVariantStockInvariant(
+        tx,
+        parsed.data.variantId,
+        `addBatchItemAction ${batch.code}`,
+      );
+
       await auditInTx(tx, user?.id ?? null, {
         action: "IMPORT_BATCH_ITEM_ADDED",
         entity: "ImportBatch",
@@ -685,7 +708,17 @@ export async function removeBatchItemAction(
           reason: `Lote - Item eliminado (${item.quantityAvailable} uds)` as string,
         },
       });
+      await applyBatchStockDelta(tx, {
+        variantId: item.variantId,
+        delta: -item.quantityAvailable,
+        label: `removeBatchItemAction ${batchId}`,
+      });
     }
+    await assertVariantStockInvariant(
+      tx,
+      item.variantId,
+      `removeBatchItemAction ${batchId}`,
+    );
 
     await auditInTx(tx, user?.id ?? null, {
       action: "IMPORT_BATCH_ITEM_REMOVED",

@@ -103,7 +103,12 @@ export function LowRotationReportView({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end">
-                          <StockHealthBadge availableUnits={r.stock - r.reservedStock} />
+                          <StockHealthBadge
+                            availableUnits={Math.max(
+                              0,
+                              r.stock - r.reservedStock - r.soldStock,
+                            )}
+                          />
                         </div>
                       </TableCell>
                       <TableCell className="text-right">{r.reservedStock}</TableCell>

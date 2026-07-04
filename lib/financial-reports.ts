@@ -639,6 +639,7 @@ export async function getStockValuationReport(
       size: true,
       stock: true,
       reservedStock: true,
+      soldStock: true,
       cost: true,
       product: {
         select: {
@@ -685,6 +686,7 @@ export async function getStockValuationReport(
     }
     const lineCents = unitCostCents * stock;
     const reservedStock = v.reservedStock;
+    const soldStock = v.soldStock;
     rows.push({
       variantId: v.id,
       variantCode: v.code,
@@ -694,7 +696,7 @@ export async function getStockValuationReport(
       size: v.size,
       stock,
       reservedStock,
-      available: Math.max(0, stock - reservedStock),
+      available: Math.max(0, stock - reservedStock - soldStock),
       unitCostCents,
       unitCost: centsToDecimalString(unitCostCents),
       totalCostCents: lineCents,

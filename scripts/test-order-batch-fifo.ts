@@ -410,6 +410,151 @@ async function main() {
     },
   );
 
+  await run(
+    "AUD-DATA-004: applyBatchStockDelta sincroniza ProductVariant.stock y suma de quantityAvailable",
+    async () => {
+      const localCategory = await prisma.category.upsert({
+        where: { slug: "fifo-sync-test" },
+        update: {},
+        create: { name: "FIFO Sync Test", slug: "fifo-sync-test", isActive: true },
+      });
+      const localProduct = await prisma.product.create({
+        data: {
+          name: `FIFO Sync Product ${Date.now()}`,
+          isActive: true,
+          categoryId: localCategory.id,
+        },
+      });
+      const localVariant = await prisma.productVariant.create({
+        data: {
+          productId: localProduct.id,
+          code: `FIFO-SYNC-${Date.now()}`.slice(0, 32),
+          price: "100.00",
+          cost: "50.0000",
+          stock: 0,
+          reservedStock: 0,
+          soldStock: 0,
+          status: "ACTIVE",
+        },
+      });
+      const localBatch = await prisma.importBatch.create({
+        data: {
+          code: `FIFO-SYNC-BATCH-${Date.now()}`,
+          purchaseDate: new Date(),
+          shopper: "Aud Data",
+          agency: "Lima",
+          totalCostUsd: "0.00",
+          totalAdditionalCostsUsd: "0",
+          totalAdditionalCostsPen: "0",
+          exchangeRate: "3.5",
+          totalInvestmentPen: "0.00",
+          createdById:
+            (await prisma.user.findFirst({ where: { role: "ADMIN" } }))?.id ??
+            customer.id,
+        },
+      });
+      try {
+        const { applyBatchStockDelta, assertVariantStockInvariant } =
+          await import("../lib/stock-sync");
+        const before = await prisma.productVariant.findUnique({
+          where: { id: localVariant.id },
+          select: { stock: true },
+        });
+        assert.equal(before?.stock, 0, "stock inicial en 0");
+        // Simula el path createBatchAction creando el item y aplicando delta.
+        await prisma.$transaction(async (tx) => {
+          await tx.importBatchItem.create({
+            data: {
+              batchId: localBatch.id,
+              variantId: localVariant.id,
+              quantityPurchased: 5,
+              quantityReceived: 5,
+              quantityAvailable: 5,
+              unitCostUsd: "10.00",
+              unitCostPen: "35.0000",
+              weight: "0",
+              subtotalUsd: "50.00",
+              subtotalPen: "175.00",
+              calculatedAt: new Date(),
+            },
+          });
+          await applyBatchStockDelta(tx, {
+            variantId: localVariant.id,
+            delta: 5,
+            label: "test sync create",
+          });
+          await assertVariantStockInvariant(tx, localVariant.id, "test sync create");
+        });
+        const after = await prisma.productVariant.findUnique({
+          where: { id: localVariant.id },
+          select: { stock: true },
+        });
+        assert.equal(after?.stock, 5, "stock debe subir a 5 despues de sync");
+
+        // Simula venta FIFO: aloca 2 unidades -> stock debe bajar a 3.
+        const { allocateOrderItemBatches } = await import(
+          "../lib/order-batch-allocation"
+        );
+        const orderItem = await prisma.orderItem.create({
+          data: {
+            orderId: (
+              await prisma.order.create({
+                data: {
+                  orderNumber: `FIFO-SYNC-SALE-${Date.now()}`,
+                  customerId: customer.id,
+                  status: "PAYMENT_VALIDATION_PENDING",
+                  subtotal: "200.00",
+                  total: "200.00",
+                  balance: "0",
+                  expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+                },
+                select: { id: true },
+              })
+            ).id,
+            variantId: localVariant.id,
+            quantity: 2,
+            unitPrice: "100.00",
+            lineTotal: "200.00",
+          },
+          select: { id: true },
+        });
+        await prisma.$transaction(async (tx) => {
+          await allocateOrderItemBatches(tx, orderItem.id, localVariant.id, 2);
+        });
+        const afterSale = await prisma.productVariant.findUnique({
+          where: { id: localVariant.id },
+          select: { stock: true },
+        });
+        assert.equal(
+          afterSale?.stock,
+          3,
+          "stock debe bajar a 3 tras allocate FIFO",
+        );
+      } finally {
+        await prisma.orderItemBatchAllocation.deleteMany({
+          where: { variantId: localVariant.id },
+        });
+        await prisma.orderItem.deleteMany({
+          where: { variantId: localVariant.id },
+        });
+        await prisma.order.deleteMany({
+          where: { orderNumber: { startsWith: "FIFO-SYNC-SALE-" } },
+        });
+        await prisma.importBatchItem.deleteMany({
+          where: { variantId: localVariant.id },
+        });
+        await prisma.importBatch.deleteMany({
+          where: { code: { startsWith: "FIFO-SYNC-BATCH-" } },
+        });
+        await prisma.productVariant.delete({ where: { id: localVariant.id } });
+        await prisma.product.deleteMany({
+          where: { name: { startsWith: "FIFO Sync Product" } },
+        });
+        await prisma.category.deleteMany({ where: { slug: "fifo-sync-test" } });
+      }
+    },
+  );
+
   await run("recognizeOrderProfit es idempotente", async () => {
     // Crea un pedido PAID ad-hoc para esta prueba.
     const order = await prisma.order.create({

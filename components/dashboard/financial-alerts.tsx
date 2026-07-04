@@ -135,11 +135,16 @@ export function LowRotationSection({ rows }: { rows: LowRotationRow[] }) {
                   <TableCell className="font-mono text-xs">
                     {r.variantCode}
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end">
-                      <StockHealthBadge availableUnits={r.stock - r.reservedStock} />
-                    </div>
-                  </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end">
+                          <StockHealthBadge
+                            availableUnits={Math.max(
+                              0,
+                              r.stock - r.reservedStock - r.soldStock,
+                            )}
+                          />
+                        </div>
+                      </TableCell>
                   <TableCell className="text-right">
                     {fmtMoney(r.stockValue)}
                   </TableCell>
