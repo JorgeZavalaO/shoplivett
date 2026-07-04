@@ -1,13 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Pencil } from "lucide-react";
+import { ArrowLeft, Pencil, MessageCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { CustomerSummary } from "@/components/dashboard/customer-summary";
 import { CustomerCreditsHistory } from "@/components/dashboard/customer-credits-history";
 import { CustomerShipmentsHistory } from "@/components/dashboard/customer-shipments-history";
+import { CustomerOrdersHistory } from "@/components/dashboard/customer-orders-history";
+import { CustomerPaymentsHistory } from "@/components/dashboard/customer-payments-history";
 import { getCustomerSummary } from "@/lib/customer-helpers";
 import { getCustomerCreditsAction } from "@/actions/credits";
+import { listCustomerOrdersAction } from "@/actions/orders";
+import { listCustomerPaymentsAction } from "@/actions/payments";
 import { requireRole } from "@/lib/permissions";
 import { listCustomerShipmentsAction } from "@/actions/shipments";
 import { setCustomerStatusAction } from "@/actions/customers";
@@ -17,16 +21,10 @@ import {
   WhatsAppQuickButton,
 } from "@/components/whatsapp/whatsapp-actions";
 import { buildWhatsappLink, buildWhatsappMessage } from "@/lib/whatsapp";
-import { MessageCircle } from "lucide-react";
 import { DeactivateCustomerButton } from "@/components/forms/deactivate-customer-button";
 
 
 type Params = Promise<{ id: string }>;
-
-const HISTORY_TABS = [
-  { label: "Pedidos", sprint: "Sprint 7" },
-  { label: "Pagos", sprint: "Sprint 8" },
-];
 
 export default async function ClienteDetallePage({ params }: { params: Params }) {
   await requireRole(["ADMIN", "SELLER"]);
@@ -34,9 +32,11 @@ export default async function ClienteDetallePage({ params }: { params: Params })
   const summary = await getCustomerSummary(id);
   if (!summary) notFound();
 
-  const [credits, shipments] = await Promise.all([
+  const [credits, shipments, ordersData, paymentsData] = await Promise.all([
     getCustomerCreditsAction(id),
     listCustomerShipmentsAction(id),
+    listCustomerOrdersAction(id, { page: 1, perPage: 10 }),
+    listCustomerPaymentsAction(id, { page: 1, perPage: 10 }),
   ]);
 
   const whatsappLink = `https://wa.me/${summary.whatsapp.replace(/[^\d]/g, "")}`;
@@ -137,8 +137,9 @@ export default async function ClienteDetallePage({ params }: { params: Params })
         <div className="flex flex-col gap-1.5">
           <h2 className="text-base font-semibold">Cambiar estado</h2>
           <p className="text-xs text-muted-foreground">
-            Bloqueo es informativo: no impide ventas en Sprint 3. Se endurecerá
-            al entrar al flujo de pedidos.
+            Una clienta con estado &quot;Bloqueada&quot; no puede registrar
+            nuevas ventas: el servidor rechaza la venta rápida de forma
+            explícita.
           </p>
         </div>
         <form action={changeStatus} className="flex flex-wrap items-end gap-3">
@@ -196,21 +197,9 @@ export default async function ClienteDetallePage({ params }: { params: Params })
         defaultTemplate={hasCredit ? "CREDIT_AVAILABLE" : "BALANCE_REMINDER"}
       />
 
-      <div className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold">Historial</h2>
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {HISTORY_TABS.map((tab) => (
-            <div
-              key={tab.label}
-              className="rounded-lg border border-dashed border-border bg-muted/20 p-4 text-sm"
-            >
-              <p className="font-medium">{tab.label}</p>
-              <p className="text-xs text-muted-foreground">
-                Disponible en {tab.sprint}
-              </p>
-            </div>
-          ))}
-        </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <CustomerOrdersHistory customerId={id} initialData={ordersData} />
+        <CustomerPaymentsHistory customerId={id} initialData={paymentsData} />
       </div>
     </div>
   );

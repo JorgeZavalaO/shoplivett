@@ -7,13 +7,47 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.40.0] - Historial real de cliente, UI de créditos, gestión completa de lotes y baseline de migraciones
+
 ### Datos
 - Se agrega baseline Prisma versionado en `prisma/migrations/20260704000000_init/migration.sql` y `migration_lock.toml`, cerrando `AUD-DATA-012`.
 - Se agrega `pnpm db:deploy` para aplicar migraciones versionadas en CI, staging y produccion; `db:push` queda restringido a bases locales descartables (`AUD-PROD-004`).
+- `actions/orders.ts` agrega `listCustomerOrdersAction` con paginación server-side por customerId (`AUD-FUNC-001`).
+- `actions/payments.ts` agrega `listCustomerPaymentsAction` con paginación server-side por customerId (`AUD-FUNC-001`).
+- `lib/sales.ts` (`createQuickSale`) rechaza vender a clientas con `status = BLOCKED` lanzando `OrderError("CUSTOMER_BLOCKED")`, revalidando el estado tanto en la lectura inicial como dentro de la transacción `Serializable` para cerrar la ventana de carrera (`AUD-UX-009`).
+- `lib/import-batches.ts` centraliza `assertBatchNotClosed(tx, batchId)` (con `BatchClosedError`/`BatchNotFoundError` tipados) y las 4 mutaciones de lote en `actions/import-batches.ts` (`updateBatchAction`, `addBatchItemAction`, `removeBatchItemAction`, `recalculateBatchAction`) la invocan como primer paso dentro de su transacción `Serializable`, en vez de validar `status !== CLOSED` antes de abrirla. Las 3 acciones que no usaban `Serializable` ahora lo usan, con manejo de conflicto de serialización (`P2034`) (`AUD-DATA-010`).
 
 ### Operaciones
 - CI E2E cambia de `pnpm db:push` a `pnpm db:deploy` antes de seed y Playwright.
 - README, AGENTS y auditoria documentan la adopcion controlada del baseline para bases existentes con `prisma migrate resolve --applied 20260704000000_init`.
+
+### UX
+- `components/dashboard/customer-orders-history.tsx`: nuevo componente que reemplaza el placeholder "PEDIDOS_RECENT" con tabla paginada real de pedidos del cliente.
+- `components/dashboard/customer-payments-history.tsx`: nuevo componente que reemplaza el placeholder "PAYMENTS_RECENT" con tabla paginada real de pagos del cliente.
+- `components/dashboard/customer-credits-history.tsx`: reescrito como client component con estado para crear crédito manual, aplicar crédito a pedido y devolver crédito inline (`AUD-FUNC-002`).
+- `components/forms/create-manual-credit-form.tsx`: formulario de registro de crédito manual (monto + notas).
+- `components/forms/apply-credit-to-order-form.tsx`: formulario de aplicación de crédito a pedido (búsqueda de pedido + monto).
+- `components/forms/refund-credit-form.tsx`: formulario de devolución de crédito (motivo obligatorio).
+- `components/forms/batch-edit-form.tsx`: formulario de edición de lote (fecha, shopper, agencia, costos, TC, notas).
+- `components/forms/add-batch-item-form.tsx`: formulario de agregado de producto a lote (búsqueda de variante + cantidad/costo).
+- `components/forms/remove-batch-item-button.tsx`: botón destructivo con ConfirmDialog para eliminar ítem de lote.
+- `components/forms/batch-detail-actions.tsx`: toolbar cliente que agrupa editar + agregar producto, oculto si el lote está CLOSED.
+- `app/(dashboard)/clientes/[id]/page.tsx`: placeholders `HISTORY_TABS` reemplazados por componentes reales de pedidos y pagos; texto de cambio de estado actualizado para reflejar que el bloqueo ya es efectivo (`AUD-UX-009`).
+- `app/(dashboard)/lotes/[id]/page.tsx`: toolbar de acciones y columna de eliminar por fila agregados, ocultos si CLOSED.
+- `components/dashboard/order-status-badge.tsx`: exporta `OrderStatus` type para tipado estricto.
+- `components/forms/quick-sale-form.tsx`: la búsqueda de clienta expone `CustomerStatusBadge`; si la clienta seleccionada está `BLOCKED` se muestra una alerta y el submit queda deshabilitado (`AUD-UX-009`).
+- `actions/sales.ts` (`searchCustomersForSaleAction`) agrega `status` al `select` para que la UI pueda mostrar el estado sin queries adicionales.
+
+### Auditoría
+- `AUD-UX-009` y `AUD-DATA-010` quedan marcados como `Corregido`.
+
+### Verificación
+- `pnpm typecheck` + `pnpm lint` → 0 errores.
+- `pnpm tsx scripts/_with-env.ts scripts/test-order-batch-fifo.ts` → 14/14 tests.
+- `pnpm tsx scripts/_with-env.ts scripts/test-financial-reports.ts` → 12/12 tests.
+- `pnpm tsx scripts/test-upload-validation.ts` → ok.
+- `pnpm tsx scripts/_with-env.ts scripts/test-customer-blocked-sale.ts` → 4/4 tests (venta rechazada a cliente `BLOCKED`, permitida a `ACTIVE`).
+- `pnpm tsx scripts/_with-env.ts scripts/test-batch-closed-race.ts` → 4/4 tests, incluyendo carrera real cierre-vs-edición contra Postgres con coordinación determinista (sin depender de temporizadores).
 
 ## [0.39.0] - Costeo 4dp exacto, hardening de uploads/CSV, bloqueo de costeo manual y secret scanning
 

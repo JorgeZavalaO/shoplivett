@@ -331,7 +331,19 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: no se modifica lote cerrado bajo concurrencia.
 - Tests recomendados: test de carrera cierre vs edicion.
 - Dependencias: ninguna.
-- Observaciones: P1/P2.
+- Observaciones: P1/P2. El estado "Corregido" quedo registrado antes de que el codigo reflejara la correccion real (inconsistencia detectada y subsanada en esta iteracion).
+- Solucion aplicada: se centralizo la revalidacion en `assertBatchNotClosed(tx, batchId)`
+  (`lib/import-batches.ts`), que relee `status` con el `tx` de la transaccion en curso
+  y lanza `BatchClosedError`/`BatchNotFoundError` tipados. Las 4 acciones de
+  `actions/import-batches.ts` (`updateBatchAction`, `addBatchItemAction`,
+  `removeBatchItemAction`, `recalculateBatchAction`) llaman a este helper como
+  primer paso dentro de su `prisma.$transaction(..., { isolationLevel: Serializable })`;
+  las 3 que no usaban `Serializable` ahora lo usan. Se agrego manejo de conflicto
+  de serializacion (`P2034`/"serialization") en las 4 acciones. Cubierto por
+  `scripts/test-batch-closed-race.ts`, que valida tanto el chequeo determinista
+  como una carrera real (cierre concurrente commiteado antes de que la mutacion
+  en curso intente escribir la misma fila) usando coordinacion explicita
+  (sin depender de temporizadores) para eliminar flakiness por latencia de red.
 
 ### AUD-DATA-011 - Faltan constraints de invariantes
 
@@ -893,7 +905,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Estado `BLOCKED` es informativo aunque ventas ya existen.
 - Severidad: Media.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/sales.ts`, `app/(dashboard)/clientes/[id]/page.tsx`.
 - Descripcion: `createQuickSale()` valida existencia de cliente, no estado `BLOCKED`.
 - Evidencia encontrada: `lib/sales.ts:79-84`, `app/(dashboard)/clientes/[id]/page.tsx:138-142`.
@@ -902,7 +914,18 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: regla de bloqueo se aplica en servidor.
 - Tests recomendados: venta con cliente bloqueado.
 - Dependencias: decision de negocio.
-- Observaciones: tambien afecta datos/operacion.
+- Observaciones: tambien afecta datos/operacion. Decision de negocio adoptada:
+  bloqueo duro sin override (ningun rol, incluido ADMIN, puede vender a un
+  cliente `BLOCKED` desde venta rapida).
+- Solucion aplicada: `createQuickSale` (`lib/sales.ts`) rechaza con
+  `OrderError` codigo `CUSTOMER_BLOCKED` si `customer.status === "BLOCKED"`,
+  tanto en la lectura inicial como revalidando dentro de la transaccion
+  `Serializable` (cierra la ventana de carrera si el estado cambia entre la
+  lectura y el commit). `searchCustomersForSaleAction` (`actions/sales.ts`)
+  expone `status` en el resultado; `QuickSaleForm` muestra badge/alerta de
+  bloqueo y deshabilita el submit si el cliente seleccionado esta bloqueado.
+  El texto de `/clientes/[id]` se actualizo para reflejar que el bloqueo ya
+  es efectivo. Cubierto por `scripts/test-customer-blocked-sale.ts`.
 
 ### AUD-UX-010 - Buscador global decorativo
 
@@ -1188,7 +1211,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Ficha de cliente mantiene placeholders de pedidos y pagos.
 - Severidad: Alta.
 - Categoria: Funcionalidades faltantes.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `app/(dashboard)/clientes/[id]/page.tsx`.
 - Descripcion: se muestran tarjetas `Disponible en Sprint` para historial.
 - Evidencia encontrada: `app/(dashboard)/clientes/[id]/page.tsx:199-213`.
@@ -1197,7 +1220,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: no hay placeholders y los datos enlazan a detalles.
 - Tests recomendados: E2E detalle cliente con pedidos/pagos.
 - Dependencias: ninguna.
-- Observaciones: P2.
+- Observaciones: P2. Corregido en 0.40.0 con CustomerOrdersHistory y CustomerPaymentsHistory; implementado mediante listCustomerOrdersAction y listCustomerPaymentsAction.
 
 ### AUD-FUNC-002 - UI de creditos incompleta
 
@@ -1205,7 +1228,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Acciones de creditos existen, pero no hay UI operativa.
 - Severidad: Alta.
 - Categoria: Funcionalidades faltantes.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `actions/credits.ts`, `components/dashboard/customer-credits-history.tsx`.
 - Descripcion: se puede listar credito, pero no crear manual, aplicar a pedido o registrar devolucion desde UI.
 - Evidencia encontrada: acciones en `actions/credits.ts`; UI informativa en `components/dashboard/customer-credits-history.tsx:131-141`.
@@ -1214,7 +1237,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: admin/seller puede operar creditos desde UI.
 - Tests recomendados: E2E credito manual, aplicacion y devolucion.
 - Dependencias: `AUD-DATA-001`, `AUD-DATA-014`.
-- Observaciones: cuidado porque aplicar credito puede cerrar pedido y mover stock.
+- Observaciones: cuidado porque aplicar credito puede cerrar pedido y mover stock. Corregido en 0.40.0 con CreateManualCreditForm, ApplyCreditToOrderForm, RefundCreditForm y CustomerCreditsHistory reescrito.
 
 ### AUD-FUNC-003 - Edicion de aplicaciones de pago no expuesta
 
@@ -1256,7 +1279,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Actions de lotes no estan completamente accesibles desde UI.
 - Severidad: Media.
 - Categoria: Funcionalidades faltantes.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `actions/import-batches.ts`, `app/(dashboard)/lotes/[id]/page.tsx`.
 - Descripcion: existen update/add/remove/recalculate, pero detalle expone principalmente recalculo.
 - Evidencia encontrada: auditoria de actions y detalle de lote.
@@ -1265,7 +1288,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: lote no cerrado se puede gestionar desde UI; cerrado queda bloqueado.
 - Tests recomendados: E2E gestion lote.
 - Dependencias: `AUD-DATA-004`, `AUD-DATA-010`.
-- Observaciones: no implementar antes de corregir consistencia de stock.
+- Observaciones: no implementar antes de corregir consistencia de stock. Corregido en 0.40.0 con BatchEditForm, AddBatchItemForm, RemoveBatchItemButton y BatchDetailActions.
 
 ### AUD-FUNC-006 - Costeo manual es placeholder
 

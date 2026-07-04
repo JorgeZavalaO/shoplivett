@@ -543,3 +543,64 @@ export async function searchCustomersForPaymentAction(query: string) {
     select: { id: true, name: true, whatsapp: true },
   });
 }
+
+export type CustomerPaymentItem = {
+  id: string;
+  amount: string;
+  method: PaymentMethod;
+  status: string;
+  operationNumber: string | null;
+  createdAt: Date;
+  validatedAt: Date | null;
+  orderNumbers: string[];
+};
+
+export async function listCustomerPaymentsAction(
+  customerId: string,
+  args?: { page?: number; perPage?: number },
+) {
+  await requireRole(["ADMIN", "SELLER"]);
+  if (!customerId) return { items: [], total: 0, page: 1, perPage: 20 };
+  const safePage = Math.max(1, args?.page ?? 1);
+  const safePerPage = Math.min(50, Math.max(1, args?.perPage ?? 10));
+  const prisma = getPrisma();
+  const where = { applications: { some: { order: { customerId } } } };
+  const [total, items] = await Promise.all([
+    prisma.payment.count({ where }),
+    prisma.payment.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (safePage - 1) * safePerPage,
+      take: safePerPage,
+      select: {
+        id: true,
+        amount: true,
+        method: true,
+        status: true,
+        operationNumber: true,
+        createdAt: true,
+        validatedAt: true,
+        applications: {
+          select: { order: { select: { orderNumber: true } } },
+          take: 5,
+        },
+      },
+    }),
+  ]);
+  return {
+    items: items.map((p) => ({
+      id: p.id,
+      amount: p.amount.toString(),
+      method: p.method,
+      status: p.status,
+      operationNumber: p.operationNumber,
+      createdAt: p.createdAt,
+      validatedAt: p.validatedAt,
+      orderNumbers: p.applications.map((a) => a.order.orderNumber),
+    })),
+    total,
+    page: safePage,
+    perPage: safePerPage,
+    remainingPages: Math.max(0, Math.ceil(total / safePerPage) - safePage),
+  };
+}

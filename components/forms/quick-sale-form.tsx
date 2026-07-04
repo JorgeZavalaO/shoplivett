@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { AsyncSearchList } from "@/components/ui/async-search-list";
 import { MarginBadge } from "@/components/financial/margin-badge";
 import { StockHealthBadge } from "@/components/financial/stock-health-badge";
+import { CustomerStatusBadge } from "@/components/dashboard/customer-status-badge";
 import { formatWhatsAppDisplay } from "@/lib/phone";
 import { isBelowMinimumPrice } from "@/lib/financial-ui";
 import {
@@ -70,7 +71,12 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOpt
   const [customerQuery, setCustomerQuery] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [customerName, setCustomerName] = useState("");
-  const [customerResults, setCustomerResults] = useState<{ id: string; name: string; whatsapp: string }[]>([]);
+  const [customerStatus, setCustomerStatus] = useState<
+    "ACTIVE" | "FREQUENT" | "RISKY" | "BLOCKED" | null
+  >(null);
+  const [customerResults, setCustomerResults] = useState<
+    { id: string; name: string; whatsapp: string; status: "ACTIVE" | "FREQUENT" | "RISKY" | "BLOCKED" }[]
+  >([]);
   const [customerLoading, setCustomerLoading] = useState(false);
   const [customerError, setCustomerError] = useState<string | null>(null);
   const [, searchCustomer] = useTransition();
@@ -174,8 +180,9 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOpt
     salesChannelOptions[0]?.value ?? "WHATSAPP_DIRECTO",
   );
 
+  const isCustomerBlocked = customerStatus === "BLOCKED";
   const canSubmit = Boolean(
-    customerId && cart.length > 0 && advanceAmount && Number(advanceAmount) > 0,
+    customerId && !isCustomerBlocked && cart.length > 0 && advanceAmount && Number(advanceAmount) > 0,
   );
   const cartFinancials = useMemo(() => {
     const subtotal = cart.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0);
@@ -228,14 +235,33 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOpt
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium">Clienta *</label>
           {customerName ? (
-            <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
-              <div>
-                <p className="text-sm font-medium">{customerName}</p>
-                <p className="text-xs text-muted-foreground">{formatWhatsAppDisplay("")}</p>
+            <div className="flex flex-col gap-2 rounded-lg border border-border bg-card px-3 py-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">{customerName}</p>
+                  <p className="text-xs text-muted-foreground">{formatWhatsAppDisplay("")}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {customerStatus ? <CustomerStatusBadge status={customerStatus} /> : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomerId("");
+                      setCustomerName("");
+                      setCustomerStatus(null);
+                      setCustomerQuery("");
+                    }}
+                    className="text-destructive"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
               </div>
-              <button type="button" onClick={() => { setCustomerId(""); setCustomerName(""); setCustomerQuery(""); }} className="text-destructive">
-                <X className="size-4" />
-              </button>
+              {isCustomerBlocked ? (
+                <p className="rounded-md bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
+                  Esta clienta está bloqueada y no puede registrar nuevas ventas.
+                </p>
+              ) : null}
             </div>
           ) : (
             <div className="flex flex-col gap-2">
@@ -254,6 +280,7 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOpt
                 onSelectItem={(c) => {
                   setCustomerId(c.id);
                   setCustomerName(c.name);
+                  setCustomerStatus(c.status);
                   setCustomerQuery("");
                   setCustomerResults([]);
                 }}
@@ -263,6 +290,9 @@ export function QuickSaleForm({ openLive, enabledPaymentMethods, salesChannelOpt
                     <span className="ml-2 text-xs text-muted-foreground">
                       {formatWhatsAppDisplay(c.whatsapp)}
                     </span>
+                    {c.status === "BLOCKED" ? (
+                      <span className="ml-2 text-xs font-medium text-destructive">Bloqueada</span>
+                    ) : null}
                   </>
                 )}
               />

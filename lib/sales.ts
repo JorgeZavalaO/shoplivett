@@ -28,6 +28,7 @@ export class OrderError extends Error {
     message: string,
     public readonly code:
       | "CUSTOMER_NOT_FOUND"
+      | "CUSTOMER_BLOCKED"
       | "VARIANT_NOT_FOUND"
       | "INSUFFICIENT_STOCK"
       | "INVALID_ADVANCE"
@@ -82,6 +83,12 @@ export async function createQuickSale(
   });
   if (!customer) {
     throw new OrderError("La clienta ya no existe.", "CUSTOMER_NOT_FOUND");
+  }
+  if (customer.status === "BLOCKED") {
+    throw new OrderError(
+      "La clienta está bloqueada y no puede registrar nuevas ventas.",
+      "CUSTOMER_BLOCKED",
+    );
   }
 
   const variantIds = input.items.map((i) => i.variantId);
@@ -192,6 +199,24 @@ export async function createQuickSale(
   try {
     orderResult = await prisma.$transaction(
       async (tx) => {
+        // Revalidar estado del cliente dentro de la transacción para cerrar
+        // la ventana de carrera entre la lectura inicial y el commit
+        // (AUD-UX-009): un admin podría bloquear al cliente justo entre
+        // ambos momentos.
+        const currentCustomer = await tx.customer.findUnique({
+          where: { id: input.customerId },
+          select: { status: true },
+        });
+        if (!currentCustomer) {
+          throw new OrderError("La clienta ya no existe.", "CUSTOMER_NOT_FOUND");
+        }
+        if (currentCustomer.status === "BLOCKED") {
+          throw new OrderError(
+            "La clienta está bloqueada y no puede registrar nuevas ventas.",
+            "CUSTOMER_BLOCKED",
+          );
+        }
+
         const orderNumber = await generateOrderNumber(tx);
         const expiresAt = await calculateOrderExpiry(new Date(), settings.reservationDays);
         const balance = calculateOrderBalance(totals.total, "0");

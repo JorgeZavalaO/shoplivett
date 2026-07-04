@@ -18,6 +18,9 @@ import {
   nextBatchCodeWithRetry,
   listBatches,
   getBatchDetail,
+  assertBatchNotClosed,
+  BatchClosedError,
+  BatchNotFoundError,
 } from "@/lib/import-batches";
 import { auditInTx } from "@/lib/audit";
 import { getCurrentUser } from "@/lib/permissions";
@@ -35,6 +38,13 @@ export type BatchActionResult = {
   message?: string;
   fieldErrors?: Partial<Record<keyof ImportBatchCreateInput | "items", string>>;
 };
+
+function isSerializationConflict(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    (error.code === "P2034" || error.message.includes("serialization"))
+  );
+}
 
 function fieldErrorsFromZod(
   issues: ZodIssue[],
@@ -490,56 +500,73 @@ export async function updateBatchAction(
       parsed.data.exchangeRate,
   );
 
-  await prisma.$transaction(async (tx) => {
-    await tx.importBatch.update({
-      where: { id: batchId },
-      data: updateData,
-    });
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        // AUD-DATA-010: revalidar CLOSED dentro de la transacción Serializable
+        // para cerrar la ventana de carrera con un cierre concurrente del lote.
+        await assertBatchNotClosed(tx, batchId, "No puedes modificar un lote cerrado.");
 
-    if (invalidatesCosting) {
-      await resetBatchCostingState(tx, batchId);
-    }
+        await tx.importBatch.update({
+          where: { id: batchId },
+          data: updateData,
+        });
 
-    if (headerNeedsSync) {
-      await syncBatchHeaderFromItems(tx, batchId, {
-        exchangeRate: parsed.data.exchangeRate ?? existing.exchangeRate.toString(),
-        totalAdditionalCostsUsd:
-          parsed.data.totalAdditionalCostsUsd ?? existing.totalAdditionalCostsUsd.toString(),
-        totalAdditionalCostsPen:
-          parsed.data.totalAdditionalCostsPen ?? existing.totalAdditionalCostsPen.toString(),
-      });
-    }
+        if (invalidatesCosting) {
+          await resetBatchCostingState(tx, batchId);
+        }
 
-    const hasStatusChange = parsed.data.status && parsed.data.status !== existing.status;
-    const hasNonStatusFieldChanges = Object.keys(changedFields).some(
-      (key) => key !== "status",
+        if (headerNeedsSync) {
+          await syncBatchHeaderFromItems(tx, batchId, {
+            exchangeRate: parsed.data.exchangeRate ?? existing.exchangeRate.toString(),
+            totalAdditionalCostsUsd:
+              parsed.data.totalAdditionalCostsUsd ?? existing.totalAdditionalCostsUsd.toString(),
+            totalAdditionalCostsPen:
+              parsed.data.totalAdditionalCostsPen ?? existing.totalAdditionalCostsPen.toString(),
+          });
+        }
+
+        const hasStatusChange = parsed.data.status && parsed.data.status !== existing.status;
+        const hasNonStatusFieldChanges = Object.keys(changedFields).some(
+          (key) => key !== "status",
+        );
+
+        if (hasStatusChange) {
+          await auditInTx(tx, user?.id ?? null, {
+            action: "IMPORT_BATCH_STATUS_CHANGED",
+            entity: "ImportBatch",
+            entityId: batchId,
+            metadata: {
+              previousStatus: existing.status,
+              nextStatus: parsed.data.status,
+              code: existing.code,
+            },
+          });
+        }
+
+        if (hasNonStatusFieldChanges) {
+          await auditInTx(tx, user?.id ?? null, {
+            action: "IMPORT_BATCH_UPDATED",
+            entity: "ImportBatch",
+            entityId: batchId,
+            metadata: {
+              code: existing.code,
+              changes: changedFields,
+            },
+          });
+        }
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 15000 },
     );
-
-    if (hasStatusChange) {
-      await auditInTx(tx, user?.id ?? null, {
-        action: "IMPORT_BATCH_STATUS_CHANGED",
-        entity: "ImportBatch",
-        entityId: batchId,
-        metadata: {
-          previousStatus: existing.status,
-          nextStatus: parsed.data.status,
-          code: existing.code,
-        },
-      });
+  } catch (error) {
+    if (error instanceof BatchClosedError || error instanceof BatchNotFoundError) {
+      return { ok: false, message: error.message };
     }
-
-    if (hasNonStatusFieldChanges) {
-      await auditInTx(tx, user?.id ?? null, {
-        action: "IMPORT_BATCH_UPDATED",
-        entity: "ImportBatch",
-        entityId: batchId,
-        metadata: {
-          code: existing.code,
-          changes: changedFields,
-        },
-      });
+    if (isSerializationConflict(error)) {
+      return { ok: false, message: "Conflicto al actualizar el lote. Intenta nuevamente." };
     }
-  });
+    throw error;
+  }
 
   revalidatePath("/lotes");
   revalidatePath(`/lotes/${batchId}`);
@@ -596,61 +623,73 @@ export async function addBatchItemAction(
   ).items[0];
 
   try {
-    await prisma.$transaction(async (tx) => {
-      await tx.importBatchItem.create({
-        data: {
-          batchId: batch.id,
-          variantId: draft.variantId,
-          quantityPurchased: draft.quantityPurchased,
-          quantityReceived: draft.quantityReceived,
-          quantityAvailable: draft.quantityReceived,
-          unitCostUsd: draft.unitCostUsd,
-          unitCostPen: draft.unitCostPen,
-          weight: draft.weight || "0",
-          subtotalUsd: draft.subtotalUsd,
-          subtotalPen: draft.subtotalPen,
-        },
-      });
+    await prisma.$transaction(
+      async (tx) => {
+        // AUD-DATA-010: revalidar CLOSED dentro de la transacción Serializable.
+        await assertBatchNotClosed(tx, batchId, "No puedes agregar productos a un lote cerrado.");
 
-      await tx.inventoryMovement.create({
-        data: {
+        await tx.importBatchItem.create({
+          data: {
+            batchId: batch.id,
+            variantId: draft.variantId,
+            quantityPurchased: draft.quantityPurchased,
+            quantityReceived: draft.quantityReceived,
+            quantityAvailable: draft.quantityReceived,
+            unitCostUsd: draft.unitCostUsd,
+            unitCostPen: draft.unitCostPen,
+            weight: draft.weight || "0",
+            subtotalUsd: draft.subtotalUsd,
+            subtotalPen: draft.subtotalPen,
+          },
+        });
+
+        await tx.inventoryMovement.create({
+          data: {
+            variantId: parsed.data.variantId,
+            type: "IN",
+            quantity: parsed.data.quantityReceived,
+            reason: `Lote ${batch.code} - Item agregado`,
+          },
+        });
+
+        await applyBatchStockDelta(tx, {
           variantId: parsed.data.variantId,
-          type: "IN",
-          quantity: parsed.data.quantityReceived,
-          reason: `Lote ${batch.code} - Item agregado`,
-        },
-      });
+          delta: parsed.data.quantityReceived,
+          label: `addBatchItemAction ${batch.code}`,
+        });
+        await assertVariantStockInvariant(
+          tx,
+          parsed.data.variantId,
+          `addBatchItemAction ${batch.code}`,
+        );
 
-      await applyBatchStockDelta(tx, {
-        variantId: parsed.data.variantId,
-        delta: parsed.data.quantityReceived,
-        label: `addBatchItemAction ${batch.code}`,
-      });
-      await assertVariantStockInvariant(
-        tx,
-        parsed.data.variantId,
-        `addBatchItemAction ${batch.code}`,
-      );
+        await auditInTx(tx, user?.id ?? null, {
+          action: "IMPORT_BATCH_ITEM_ADDED",
+          entity: "ImportBatch",
+          entityId: batch.id,
+          metadata: {
+            code: batch.code,
+            variantId: parsed.data.variantId,
+          },
+        });
 
-      await auditInTx(tx, user?.id ?? null, {
-        action: "IMPORT_BATCH_ITEM_ADDED",
-        entity: "ImportBatch",
-        entityId: batch.id,
-        metadata: {
-          code: batch.code,
-          variantId: parsed.data.variantId,
-        },
-      });
-
-      await resetBatchCostingState(tx, batch.id);
-      await syncBatchHeaderFromItems(tx, batch.id);
-    });
+        await resetBatchCostingState(tx, batch.id);
+        await syncBatchHeaderFromItems(tx, batch.id);
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 15000 },
+    );
   } catch (error) {
+    if (error instanceof BatchClosedError || error instanceof BatchNotFoundError) {
+      return { ok: false, message: error.message };
+    }
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
     ) {
       return { ok: false, message: "Esa variante ya está en el lote." };
+    }
+    if (isSerializationConflict(error)) {
+      return { ok: false, message: "Conflicto al agregar el item. Intenta nuevamente." };
     }
     throw error;
   }
@@ -696,40 +735,59 @@ export async function removeBatchItemAction(
     );
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.importBatchItem.delete({ where: { id: itemId } });
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        // AUD-DATA-010: revalidar CLOSED dentro de la transacción Serializable.
+        await assertBatchNotClosed(tx, batchId, "No puedes eliminar productos de un lote cerrado.");
 
-    if (item.quantityAvailable > 0) {
-      await tx.inventoryMovement.create({
-        data: {
-          variantId: item.variantId,
-          type: "ADJUSTMENT",
-          quantity: -item.quantityAvailable,
-          reason: `Lote - Item eliminado (${item.quantityAvailable} uds)` as string,
-        },
-      });
-      await applyBatchStockDelta(tx, {
-        variantId: item.variantId,
-        delta: -item.quantityAvailable,
-        label: `removeBatchItemAction ${batchId}`,
-      });
-    }
-    await assertVariantStockInvariant(
-      tx,
-      item.variantId,
-      `removeBatchItemAction ${batchId}`,
+        await tx.importBatchItem.delete({ where: { id: itemId } });
+
+        if (item.quantityAvailable > 0) {
+          await tx.inventoryMovement.create({
+            data: {
+              variantId: item.variantId,
+              type: "ADJUSTMENT",
+              quantity: -item.quantityAvailable,
+              reason: `Lote - Item eliminado (${item.quantityAvailable} uds)` as string,
+            },
+          });
+          await applyBatchStockDelta(tx, {
+            variantId: item.variantId,
+            delta: -item.quantityAvailable,
+            label: `removeBatchItemAction ${batchId}`,
+          });
+        }
+        await assertVariantStockInvariant(
+          tx,
+          item.variantId,
+          `removeBatchItemAction ${batchId}`,
+        );
+
+        await auditInTx(tx, user?.id ?? null, {
+          action: "IMPORT_BATCH_ITEM_REMOVED",
+          entity: "ImportBatch",
+          entityId: batchId,
+          metadata: { itemId },
+        });
+
+        await resetBatchCostingState(tx, batchId);
+        await syncBatchHeaderFromItems(tx, batchId);
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 15000 },
     );
-
-    await auditInTx(tx, user?.id ?? null, {
-      action: "IMPORT_BATCH_ITEM_REMOVED",
-      entity: "ImportBatch",
-      entityId: batchId,
-      metadata: { itemId },
-    });
-
-    await resetBatchCostingState(tx, batchId);
-    await syncBatchHeaderFromItems(tx, batchId);
-  });
+  } catch (error) {
+    if (error instanceof BatchNotFoundError) {
+      return;
+    }
+    if (error instanceof BatchClosedError) {
+      throw new Error(error.message);
+    }
+    if (isSerializationConflict(error)) {
+      throw new Error("Conflicto al eliminar el item. Intenta nuevamente.");
+    }
+    throw error;
+  }
 
   revalidatePath(`/lotes/${batchId}`);
 }
@@ -878,6 +936,10 @@ export async function recalculateBatchAction(
 
   try {
     await prisma.$transaction(async (tx) => {
+      // AUD-DATA-010: revalidar CLOSED dentro de la transacción Serializable
+      // (ya usaba Serializable, pero el chequeo vivía solo antes de abrirla).
+      await assertBatchNotClosed(tx, batchId, "No puedes recalcular un lote cerrado.");
+
       for (const ci of result.items) {
         await tx.importBatchItem.update({
           where: { id: ci.id },
@@ -934,6 +996,9 @@ export async function recalculateBatchAction(
       timeout: 15000,
     });
   } catch (err) {
+    if (err instanceof BatchClosedError || err instanceof BatchNotFoundError) {
+      return { ok: false, message: err.message };
+    }
     if (
       err instanceof Prisma.PrismaClientKnownRequestError &&
       (err.code === "P2034" || err.message.includes("serialization"))

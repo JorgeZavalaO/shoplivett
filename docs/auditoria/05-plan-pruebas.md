@@ -19,7 +19,7 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 | Ajuste manual concurrente | Dos ajustes simultaneos no pierden updates ni rompen invariantes. | Inventario | `AUD-DATA-005` | Integracion con `scripts/test-incidents.ts`; concurrencia recomendada | Resultado final equivale a ambos ajustes o uno falla con conflicto controlado. |
 | Validar pago contra pedido cerrado | Bloquea aplicaciones a `CANCELLED` o `EXPIRED`. | Pagos, pedidos | `AUD-DATA-014` | Integracion con `scripts/test-payment-reservation-closure.ts` | La validacion falla con mensaje claro. |
 | Cierre de reserva con pago aplicado por `PaymentApplication` | Pagos pendientes aplicados se resuelven correctamente. | Reservas, pagos | `AUD-DATA-013` | Integracion con `scripts/test-payment-reservation-closure.ts` | No quedan pagos pendientes huerfanos. |
-| Cliente bloqueado en venta rapida | El servidor impide venta o exige override aprobado. | Clientes, ventas | `AUD-UX-009` | Integracion/e2e | Venta a `BLOCKED` falla o requiere permiso especial. |
+| Cliente bloqueado en venta rapida | El servidor impide venta o exige override aprobado. | Clientes, ventas | `AUD-UX-009` | Dominio con `scripts/test-customer-blocked-sale.ts` | Venta a `BLOCKED` falla con `OrderError CUSTOMER_BLOCKED`; cliente `ACTIVE` sigue pudiendo comprar. |
 | Login con multiples intentos fallidos | Rate limiting funciona por IP/email. | Autenticacion | `AUD-SEC-002` | Integracion con `scripts/test-auth-rate-limit.ts`; manual UI recomendado | Intentos repetidos son limitados sin revelar si el email existe. |
 | Usuario desactivado con sesion activa | Sesion queda invalidada segun politica. | Autenticacion, permisos | `AUD-SEC-001` | Integracion/e2e; politica de 15 minutos definida en `auth.ts` | Usuario desactivado no accede a dashboard ni actions tras expirar la ventana definida. |
 | Matriz de rutas por rol | Cada rol puede abrir solo rutas autorizadas. | Autorizacion | `AUD-SEC-004`, `AUD-SEC-005`, `AUD-UX-002`, `AUD-UX-003` | E2E; `pnpm typecheck` aplicado para 0.33.0 | ADMIN/SELLER/DISPATCH cumplen matriz esperada. |
@@ -45,7 +45,7 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 | Reporte de lives multiple | Cada live muestra totales propios. | Reportes operativos | `AUD-PERF-009` | Integracion | Dos lives con ventas distintas no comparten metricas. |
 | Top productos historico | Revenue no muestra cero falso. | Reportes | `AUD-PERF-012` | Integracion | Ingresos historicos se calculan o se ocultan claramente. |
 | Gastos edicion vs anulacion concurrente | No se edita gasto anulado. | Gastos | `AUD-DATA-016` | Concurrencia | Una de las operaciones falla limpiamente. |
-| Lote cerrado vs edicion concurrente | No se modifica lote cerrado. | Lotes | `AUD-DATA-010` | Concurrencia | Edicion falla si cierre gana carrera. |
+| Lote cerrado vs edicion concurrente | No se modifica lote cerrado. | Lotes | `AUD-DATA-010` | Concurrencia con `scripts/test-batch-closed-race.ts` | Edicion falla (revalidacion o conflicto de serializacion) si el cierre gana la carrera; el lote nunca queda CLOSED con los cambios de la edicion aplicados. |
 | Codigos concurrentes | No hay error visible por colision secuencial. | Pedidos, lotes | `AUD-DATA-017` | Concurrencia | Colisiones se reintentan o evitan. |
 | WhatsApp sin contexto | Plantillas no rompen si faltan order/payment/credit. | WhatsApp, cliente | `AUD-UX-001` | Unitario/render | No hay TypeError y solo aparecen plantillas validas. |
 | Dashboard dispatch | Links y metricas son coherentes con permisos. | Dashboard, envios | `AUD-UX-002`, `AUD-UX-012` | E2E; `pnpm typecheck` aplicado para 0.33.0 | No hay links muertos y conteos son reales. |
@@ -53,11 +53,11 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 | Menu movil | Navegacion aparece en sheet movil por rol. | Layout | `AUD-UX-011` | E2E viewport movil | Links visibles y navegables. |
 | Acciones destructivas con confirmacion | Ajuste de stock, variantes y categorias piden confirmacion o feedback. | UI critica | `AUD-UX-005`, `AUD-UX-006`, `AUD-UX-007` | E2E/manual | Accion no se ejecuta accidentalmente. |
 | Motivo de cancelacion de envio | Motivo obligatorio o decision documentada. | Envios | `AUD-UX-008` | E2E | Cancelacion sin motivo se bloquea si aplica. |
-| Historial de cliente | Detalle muestra pedidos/pagos reales. | Clientes | `AUD-FUNC-001` | E2E | No hay placeholders y datos enlazan. |
-| Operaciones de creditos | Crear, aplicar y devolver creditos desde UI. | Creditos | `AUD-FUNC-002` | E2E | Credito afecta pedido/saldo correctamente. |
+| Historial de cliente | Detalle muestra pedidos/pagos reales. | Clientes | `AUD-FUNC-001` | E2E + typecheck + lint | No hay placeholders y datos enlazan. Componentes: CustomerOrdersHistory, CustomerPaymentsHistory. Regresiones: test-order-batch-fifo.ts 14/14, test-financial-reports.ts 12/12, test-upload-validation.ts ok. |
+| Operaciones de creditos | Crear, aplicar y devolver creditos desde UI. | Creditos | `AUD-FUNC-002` | E2E + typecheck + lint | Credito afecta pedido/saldo correctamente. Componentes: CreateManualCreditForm, ApplyCreditToOrderForm, RefundCreditForm. Regresiones: test-order-batch-fifo.ts 14/14, test-financial-reports.ts 12/12, test-upload-validation.ts ok. |
 | Editar aplicaciones de pago | Pago pendiente permite corregir aplicaciones. | Pagos | `AUD-FUNC-003` | E2E | Aplicaciones actualizadas recalculan validacion esperada. |
 | Editar envio | Tracking/agencia/costo/direccion se editan segun estado. | Envios | `AUD-FUNC-004` | E2E | Cambios persisten y se auditan. |
-| Gestion de lotes UI | Editar lote, items y estado desde detalle. | Lotes | `AUD-FUNC-005` | E2E | Lote no cerrado se gestiona y cerrado se bloquea. |
+| Gestion de lotes UI | Editar lote, items y estado desde detalle. | Lotes | `AUD-FUNC-005` | E2E + typecheck + lint | Lote no cerrado se gestiona y cerrado se bloquea. Componentes: BatchEditForm, AddBatchItemForm, RemoveBatchItemButton, BatchDetailActions. Regresiones: test-order-batch-fifo.ts 14/14, test-financial-reports.ts 12/12, test-upload-validation.ts ok. |
 
 ## Tests deseables
 

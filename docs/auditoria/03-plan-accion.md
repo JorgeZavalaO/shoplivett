@@ -48,7 +48,7 @@ Hallazgos incluidos:
 * `AUD-DATA-009` - Costos 4 decimales truncados.
 * `AUD-DATA-013` - Pagos pendientes via aplicaciones no se cierran correctamente.
 * `AUD-DATA-014` - Validacion de pago no valida estado del pedido.
-* `AUD-UX-009` - Cliente bloqueado no impide venta.
+* `AUD-UX-009` - Cliente bloqueado no impide venta. **Corregido** (`scripts/test-customer-blocked-sale.ts`).
 
 Orden recomendado:
 

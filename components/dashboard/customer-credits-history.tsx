@@ -1,4 +1,9 @@
+"use client";
+
+import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { MessageCircle, Plus } from "lucide-react";
 import type { PaymentMethod } from "@prisma/client";
 
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +20,9 @@ import {
   buildWhatsappLink,
   buildWhatsappMessage,
 } from "@/lib/whatsapp";
-import { MessageCircle } from "lucide-react";
+import { CreateManualCreditForm } from "@/components/forms/create-manual-credit-form";
+import { ApplyCreditToOrderForm } from "@/components/forms/apply-credit-to-order-form";
+import { RefundCreditForm } from "@/components/forms/refund-credit-form";
 
 type CreditApplication = {
   id: string;
@@ -72,6 +79,11 @@ const STATUS_CLASS: Record<CreditItem["status"], string> = {
 };
 
 export function CustomerCreditsHistory({ credits, customer }: Props) {
+  const router = useRouter();
+  const [showCreate, setShowCreate] = useState(false);
+  const [applyTarget, setApplyTarget] = useState<CreditItem | null>(null);
+  const [refundTarget, setRefundTarget] = useState<CreditItem | null>(null);
+
   const totalAvailable = credits
     .filter((c) => c.status === "AVAILABLE" || c.status === "PARTIALLY_USED")
     .reduce((acc, c) => acc + Number(c.availableAmount), 0);
@@ -88,6 +100,13 @@ export function CustomerCreditsHistory({ credits, customer }: Props) {
     }),
   );
 
+  const handleSuccess = useCallback(() => {
+    setShowCreate(false);
+    setApplyTarget(null);
+    setRefundTarget(null);
+    router.refresh();
+  }, [router]);
+
   return (
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -99,35 +118,69 @@ export function CustomerCreditsHistory({ credits, customer }: Props) {
               : `${credits.length} crédito(s). Disponible: S/ ${totalAvailable.toFixed(2)}`}
           </CardDescription>
         </div>
-        <div className="text-xs text-muted-foreground">
-          Contacto:{" "}
-          <Link
-            href={`https://wa.me/${customer.whatsapp.replace(/[^\d]/g, "")}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:underline"
-          >
-            {formatWhatsAppDisplay(customer.whatsapp)}
-          </Link>
-          {creditMessageLink ? (
-            <Button
-              size="xs"
-              variant="ghost"
-              className="ml-2"
-              render={
-                <a
-                  href={creditMessageLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <MessageCircle className="size-3" /> Avisar crédito
-                </a>
-              }
-            />
-          ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowCreate(true)}>
+            <Plus className="size-4" /> Crédito manual
+          </Button>
+          <div className="text-xs text-muted-foreground">
+            Contacto:{" "}
+            <Link
+              href={`https://wa.me/${customer.whatsapp.replace(/[^\d]/g, "")}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline"
+            >
+              {formatWhatsAppDisplay(customer.whatsapp)}
+            </Link>
+            {creditMessageLink ? (
+              <Button
+                size="xs"
+                variant="ghost"
+                className="ml-2"
+                render={
+                  <a
+                    href={creditMessageLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <MessageCircle className="size-3" /> Avisar crédito
+                  </a>
+                }
+              />
+            ) : null}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
+        {showCreate && (
+          <div className="mb-4 rounded-lg border border-border bg-muted/10 p-4">
+            <h3 className="mb-2 text-sm font-medium">Nuevo crédito manual</h3>
+            <CreateManualCreditForm customerId={customer.id} onSuccess={handleSuccess} />
+          </div>
+        )}
+
+        {applyTarget && (
+          <div className="mb-4 rounded-lg border border-border bg-muted/10 p-4">
+            <h3 className="mb-2 text-sm font-medium">
+              Aplicar crédito S/ {applyTarget.availableAmount} a un pedido
+            </h3>
+            <ApplyCreditToOrderForm
+              creditId={applyTarget.id}
+              customerId={customer.id}
+              onSuccess={handleSuccess}
+            />
+          </div>
+        )}
+
+        {refundTarget && (
+          <div className="mb-4 rounded-lg border border-border bg-muted/10 p-4">
+            <h3 className="mb-2 text-sm font-medium">
+              Devolver crédito S/ {refundTarget.amount}
+            </h3>
+            <RefundCreditForm creditId={refundTarget.id} onSuccess={handleSuccess} />
+          </div>
+        )}
+
         {credits.length === 0 ? (
           <div className="rounded-md border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground">
             Los créditos se generan cuando un pago validado cubre más de lo
@@ -164,9 +217,30 @@ export function CustomerCreditsHistory({ credits, customer }: Props) {
                         : null}
                     </p>
                   </div>
-                  <Badge className={STATUS_CLASS[c.status]}>
-                    {STATUS_LABELS[c.status]}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    {(c.status === "AVAILABLE" || c.status === "PARTIALLY_USED") && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setApplyTarget(c)}
+                      >
+                        Aplicar a pedido
+                      </Button>
+                    )}
+                    {c.status === "USED" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-amber-600"
+                        onClick={() => setRefundTarget(c)}
+                      >
+                        Devolver
+                      </Button>
+                    )}
+                    <Badge className={STATUS_CLASS[c.status]}>
+                      {STATUS_LABELS[c.status]}
+                    </Badge>
+                  </div>
                 </div>
                 {c.notes ? (
                   <p className="mt-2 text-xs text-muted-foreground">

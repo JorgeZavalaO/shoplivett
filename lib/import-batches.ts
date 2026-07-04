@@ -3,6 +3,44 @@ import type { ImportBatchStatus, Prisma } from "@prisma/client";
 
 export { IMPORT_BATCH_STATUS_LABELS, BATCH_STATUS_OPTIONS } from "@/lib/import-batches-shared";
 
+// AUD-DATA-010: revalidar `status !== CLOSED` dentro de la transacción
+// Serializable de cada mutación de lote, en vez de solo antes de abrirla.
+// Antes cada action leía el estado con un `findUnique` previo a la
+// transacción, dejando una ventana de carrera entre esa lectura y el
+// commit: un cierre concurrente del lote podía colarse. Centralizar la
+// revalidación aquí permite reusarla desde las 4 acciones y probarla de
+// forma aislada (sin pasar por `requireRole`/sesión).
+export class BatchClosedError extends Error {
+  constructor(message = "El lote está cerrado.") {
+    super(message);
+    this.name = "BatchClosedError";
+  }
+}
+
+export class BatchNotFoundError extends Error {
+  constructor(message = "El lote ya no existe.") {
+    super(message);
+    this.name = "BatchNotFoundError";
+  }
+}
+
+export async function assertBatchNotClosed(
+  tx: Prisma.TransactionClient,
+  batchId: string,
+  closedMessage = "El lote está cerrado.",
+): Promise<void> {
+  const current = await tx.importBatch.findUnique({
+    where: { id: batchId },
+    select: { status: true },
+  });
+  if (!current) {
+    throw new BatchNotFoundError();
+  }
+  if (current.status === "CLOSED") {
+    throw new BatchClosedError(closedMessage);
+  }
+}
+
 const PADDING = 3;
 
 export function buildBatchCode(year: number, sequential: number): string {

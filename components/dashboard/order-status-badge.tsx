@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 
-type Status =
+export type OrderStatus =
   | "PAYMENT_VALIDATION_PENDING"
   | "RESERVED"
   | "PARTIALLY_PAID"
@@ -8,7 +8,7 @@ type Status =
   | "CANCELLED"
   | "EXPIRED";
 
-const LABEL: Record<Status, string> = {
+const LABEL: Record<OrderStatus, string> = {
   PAYMENT_VALIDATION_PENDING: "Validación pendiente",
   RESERVED: "Reservada",
   PARTIALLY_PAID: "Saldo pendiente",
@@ -17,7 +17,7 @@ const LABEL: Record<Status, string> = {
   EXPIRED: "Vencida",
 };
 
-const VARIANT: Record<Status, "default" | "secondary" | "outline" | "destructive"> = {
+const VARIANT: Record<OrderStatus, "default" | "secondary" | "outline" | "destructive"> = {
   PAYMENT_VALIDATION_PENDING: "secondary",
   RESERVED: "outline",
   PARTIALLY_PAID: "outline",
@@ -26,7 +26,7 @@ const VARIANT: Record<Status, "default" | "secondary" | "outline" | "destructive
   EXPIRED: "destructive",
 };
 
-const CLASS: Record<Status, string> = {
+const CLASS: Record<OrderStatus, string> = {
   PAYMENT_VALIDATION_PENDING: "bg-amber-500 text-white",
   RESERVED: "bg-purple-500 text-white",
   PARTIALLY_PAID: "bg-blue-200 text-blue-900",
@@ -35,7 +35,7 @@ const CLASS: Record<Status, string> = {
   EXPIRED: "",
 };
 
-export function OrderStatusBadge({ status }: { status: Status }) {
+export function OrderStatusBadge({ status }: { status: OrderStatus }) {
   return (
     <Badge variant={VARIANT[status]} className={CLASS[status]}>
       {LABEL[status]}

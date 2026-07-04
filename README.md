@@ -209,6 +209,17 @@ La versión 0.39.1 cierra `AUD-PERF-001`, `AUD-PERF-003` y `AUD-PERF-005` optimi
 - **Duplicación de dashboard** (`AUD-PERF-001`): `getFinancialAlerts` acepta `precomputed`; `dashboard/page.tsx` pasa `overview` y `lowRotationCount` ya calculados, evitando recalcularlos.
 - Regresión: `pnpm exec dotenv -e .env -- tsx scripts/_with-env.ts scripts/test-perf-fixes.ts` → 5/5 tests (query count constante + wall-clock ≤ 2s).
 
+### Auditoría técnica — correcciones 0.40.0
+
+La versión 0.40.0 cierra `AUD-FUNC-001`, `AUD-FUNC-002`, `AUD-FUNC-005`, `AUD-UX-009` y `AUD-DATA-010` implementando historial real de cliente, UI de créditos, gestión completa de lotes, bloqueo efectivo de clientas `BLOCKED` y revalidación de lotes cerrados bajo concurrencia:
+
+- **Historial real de cliente** (`AUD-FUNC-001`): `listCustomerOrdersAction` y `listCustomerPaymentsAction` exponen paginación server-side. Los componentes `CustomerOrdersHistory` y `CustomerPaymentsHistory` reemplazan los placeholders en la ficha de cliente con tablas paginadas reales.
+- **UI de créditos** (`AUD-FUNC-002`): `CreateManualCreditForm`, `ApplyCreditToOrderForm` y `RefundCreditForm` usando `useActionState`. `CustomerCreditsHistory` se reescribe como client component con formularios inline para crear, aplicar y devolver créditos.
+- **Gestión completa de lotes** (`AUD-FUNC-005`): `BatchEditForm` (edición multi-campo), `AddBatchItemForm` (búsqueda de variante + cantidad/costo) y `RemoveBatchItemButton` (ConfirmDialog destructivo). La página de detalle de lote incluye toolbar de acciones y columna de eliminar, ocultos si el lote está `CLOSED`.
+- **Bloqueo efectivo de cliente `BLOCKED`** (`AUD-UX-009`): `createQuickSale` rechaza con `OrderError("CUSTOMER_BLOCKED")` si la clienta está bloqueada, revalidando el estado dentro de la transacción `Serializable` (no solo antes de abrirla). Decisión de negocio: bloqueo duro, sin override de ningún rol. `QuickSaleForm` muestra el estado de la clienta seleccionada y deshabilita el submit si está bloqueada.
+- **Lotes cerrados bajo concurrencia** (`AUD-DATA-010`): `assertBatchNotClosed(tx, batchId)` (`lib/import-batches.ts`) centraliza la revalidación de `status !== CLOSED` y se invoca dentro de la transacción `Serializable` de las 4 mutaciones de lote (`updateBatchAction`, `addBatchItemAction`, `removeBatchItemAction`, `recalculateBatchAction`), en vez de validarlo solo antes de abrirla. Se agrega manejo explícito de conflictos de serialización (`P2034`).
+- Regresión: `pnpm tsx scripts/_with-env.ts scripts/test-order-batch-fifo.ts` → 14/14 tests. `pnpm tsx scripts/_with-env.ts scripts/test-financial-reports.ts` → 12/12 tests. `pnpm tsx scripts/_with-env.ts scripts/test-customer-blocked-sale.ts` → 4/4 tests. `pnpm tsx scripts/_with-env.ts scripts/test-batch-closed-race.ts` → 4/4 tests, incluida una carrera real cierre-vs-edición contra Postgres.
+
 ### Sprint 24 — Dashboard financiero (versión 0.25.0)
 
 El panel `/dashboard` para ADMIN combina las métricas operativas del Sprint 11 con un nuevo bloque financiero. Los agregadores viven en `lib/financial-dashboard.ts` y operan con `select` mínimos, `Cents` enteros y sin cache persistente (cada request recalcula para mantener consistencia entre instancias serverless).

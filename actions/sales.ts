@@ -250,6 +250,6 @@ export async function searchCustomersForSaleAction(
     },
     take: 20,
     orderBy: { name: "asc" },
-    select: { id: true, name: true, whatsapp: true },
+    select: { id: true, name: true, whatsapp: true, status: true },
   });
 }

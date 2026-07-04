@@ -11,6 +11,8 @@ import { StockHealthBadge } from "@/components/financial/stock-health-badge";
 import { BatchStatusBadge } from "@/components/tables/batch-status-badge";
 import { Button } from "@/components/ui/button";
 import { RecalculateBatchButton } from "@/components/forms/recalculate-batch-button";
+import { BatchDetailActions } from "@/components/forms/batch-detail-actions";
+import { RemoveBatchItemButton } from "@/components/forms/remove-batch-item-button";
 import { getSettings } from "@/lib/settings";
 import { COST_ALLOCATION_METHOD_LABELS } from "@/lib/settings-defaults";
 import { getItemPricing } from "@/lib/import-batch-costing";
@@ -156,6 +158,20 @@ export default async function LoteDetailPage({
         {items.length > 0 && (
           <RecalculateBatchButton batchId={batch.id} />
         )}
+        <BatchDetailActions
+          batchId={batch.id}
+          isClosed={batch.status === "CLOSED"}
+          defaultValues={{
+            purchaseDate: new Date(batch.purchaseDate).toISOString().split("T")[0],
+            shopper: batch.shopper,
+            agency: batch.agency,
+            totalCostUsd: Number(batch.totalCostUsd.toString()).toFixed(2),
+            totalAdditionalCostsUsd: Number(batch.totalAdditionalCostsUsd.toString()).toFixed(2),
+            totalAdditionalCostsPen: Number(batch.totalAdditionalCostsPen.toString()).toFixed(2),
+            exchangeRate: Number(batch.exchangeRate.toString()).toFixed(4),
+            notes: batch.notes ?? "",
+          }}
+        />
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -274,6 +290,9 @@ export default async function LoteDetailPage({
                       <th className="p-3 font-medium">Margen actual</th>
                     </>
                   )}
+                  {batch.status !== "CLOSED" && (
+                    <th className="p-3 font-medium w-12"></th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -333,6 +352,15 @@ export default async function LoteDetailPage({
                             <MarginBadge percent={pricing.currentMarginPercent} />
                           </td>
                         </>
+                      )}
+                      {batch.status !== "CLOSED" && (
+                        <td className="p-3">
+                          <RemoveBatchItemButton
+                            batchId={batch.id}
+                            itemId={item.id}
+                            productName={item.variant.product.name}
+                          />
+                        </td>
                       )}
                     </tr>
                   );

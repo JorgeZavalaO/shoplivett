@@ -84,6 +84,49 @@ export async function listOrdersAction(args?: {
   };
 }
 
+export type CustomerOrderItem = {
+  id: string;
+  orderNumber: string;
+  status: string;
+  total: string;
+  balance: string;
+  createdAt: Date;
+};
+
+export async function listCustomerOrdersAction(
+  customerId: string,
+  args?: { page?: number; perPage?: number },
+) {
+  await requireRole(["ADMIN", "SELLER"]);
+  if (!customerId) return { items: [], total: 0, page: 1, perPage: 20 };
+  const safePage = Math.max(1, args?.page ?? 1);
+  const safePerPage = Math.min(50, Math.max(1, args?.perPage ?? 10));
+  const prisma = getPrisma();
+  const [total, items] = await Promise.all([
+    prisma.order.count({ where: { customerId } }),
+    prisma.order.findMany({
+      where: { customerId },
+      orderBy: { createdAt: "desc" },
+      skip: (safePage - 1) * safePerPage,
+      take: safePerPage,
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        total: true,
+        balance: true,
+        createdAt: true,
+      },
+    }),
+  ]);
+  return {
+    items: items.map((o) => ({ ...o, total: o.total.toString(), balance: o.balance.toString() })),
+    total,
+    page: safePage,
+    perPage: safePerPage,
+  };
+}
+
 export async function getOrderDetailAction(orderId: string) {
   await requireRole(["ADMIN", "SELLER"]);
   if (!orderId) return null;
