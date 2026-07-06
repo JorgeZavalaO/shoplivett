@@ -53,8 +53,8 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 | Smoke E2E limpia datos | El alta de cliente del smoke no deja residuos entre corridas. | E2E, fixtures DB | `AUD-TEST-002` | E2E en `e2e/smoke.spec.ts` con `cleanupCustomersByPrefix()` | Dos corridas consecutivas reutilizan el prefijo `E2E-SMOKE` sin contaminar la base. |
 | Costo real de envio | Crear, editar y cancelar envio recalcula costo y utilidad del pedido. | Envios, utilidad, reportes | `AUD-FUNC-007` | Integracion con `scripts/test-shipment-real-cost.ts` | `deliveryBusinessCostPen` y `netProfitPen` se recalculan al crear, editar o cancelar un envio con costo real. |
 | Nuevo envio preseleccionado dispatch | Despacho abre formulario con cliente/pedido precargado. | Envios | `AUD-UX-003` | E2E; `pnpm typecheck` aplicado para 0.33.0 | Form carga y permite crear envio elegible. |
-| Menu movil | Navegacion aparece en sheet movil por rol. | Layout | `AUD-UX-011` | E2E viewport movil | Links visibles y navegables. |
-| Acciones destructivas con confirmacion | Ajuste de stock, variantes y categorias piden confirmacion o feedback. | UI critica | `AUD-UX-005`, `AUD-UX-006`, `AUD-UX-007` | E2E; ConfirmDialog implementado | Accion no se ejecuta accidentalmente. |
+| Menu movil | El `Sheet` movil renderiza `SidebarNav` real y respeta permisos por rol. | Layout | `AUD-UX-011` | E2E viewport movil | Links visibles y navegables segun permisos del usuario. |
+| Acciones destructivas con confirmacion | Ajuste de stock, variantes y categorias piden confirmacion y muestran feedback visible. | UI critica | `AUD-UX-005`, `AUD-UX-006`, `AUD-UX-007` | E2E; ConfirmDialog implementado | La accion requiere confirmacion explicita y comunica exito/error al terminar. |
 | Motivo de cancelacion de envio | Motivo obligatorio (minimo 5 caracteres) en CancelSchema y UI. | Envios | `AUD-UX-008` | E2E + accion | Cancelacion sin motivo (< 5 chars) se bloquea en UI y server. |
 | Historial de cliente | Detalle muestra pedidos/pagos reales. | Clientes | `AUD-FUNC-001` | E2E + typecheck + lint | No hay placeholders y datos enlazan. Componentes: CustomerOrdersHistory, CustomerPaymentsHistory. Regresiones: test-order-batch-fifo.ts 14/14, test-financial-reports.ts 12/12, test-upload-validation.ts ok. |
 | Operaciones de creditos | Crear, aplicar y devolver creditos desde UI. | Creditos | `AUD-FUNC-002` | E2E + typecheck + lint | Credito afecta pedido/saldo correctamente. Componentes: CreateManualCreditForm, ApplyCreditToOrderForm, RefundCreditForm. Regresiones: test-order-batch-fifo.ts 14/14, test-financial-reports.ts 12/12, test-upload-validation.ts ok. |
@@ -67,17 +67,19 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 | Prueba | Que valida | Modulo afectado | Hallazgo cubierto | Tipo de test | Criterio de exito |
 | --- | --- | --- | --- | --- | --- |
 | Unit tests de dinero | Conversiones, redondeo, negativos y 4dp. | Money/costeo | `AUD-DATA-009` | Unitario | Resultados exactos para casos borde. |
-| Unit tests de permisos | `rolesFor`, `hasPermission` y matriz final. | Permisos | `AUD-ARCH-001` | Unitario | Matriz coincide con decision documentada. |
+| Matriz de permisos | `scripts/test-permissions.ts` valida la matriz final de roles/permisos y el uso de `requirePermission()`. | Permisos | `AUD-ARCH-001` | Integracion/script | La matriz pasa completa y la navegacion solo expone modulos autorizados por permiso. |
 | Snapshot de reportes financieros | Cambios en agregadores detectan regresiones. | Reportes | `AUD-ARCH-002` | Integracion | La modularizacion en barrels + submodulos mantiene exactamente los mismos totales y contratos de salida. |
 | Indice financiero con dataset representativo | La decision de indexar se toma con volumen realista, no con seed minimo. | Prisma, reportes financieros | `AUD-PERF-004` | Manual/performance con `scripts/explain-financial-index.ts` | Antes de agregar `@@index([status, profitCalculatedAt])` se ejecuta `EXPLAIN ANALYZE` sobre un dataset representativo y se documenta la decision final. |
-| Producto con muchas variantes | Detalle de producto no se degrada. | Productos | `AUD-PERF-011` | Performance/manual | Tiempo de carga dentro de limite definido. |
+| Producto con muchas variantes | Detalle de producto carga solo tabs pesados cuando corresponden y pagina variantes/imagenes. | Productos | `AUD-PERF-011` | Performance/manual | La pagina no trae todas las variantes/imagenes de golpe y navega por `query params` del tab/paginacion. |
 | Historial de inventario grande | Paginacion mantiene respuesta rapida. | Inventario | `AUD-PERF-010` | Performance; paginada (25 por pagina) | No carga todos los movimientos. |
-| Buscador global | Si se implementa, navega a resultados correctos. | Layout/busqueda | `AUD-UX-010` | E2E | Buscar cliente/producto/pedido abre resultados. |
-| Loading por modulo | Skeleton no confunde por ruta. | UX | `AUD-UX-015` | Manual | Loading corresponde a tipo de pantalla. |
-| Error boundaries contextuales | Errores ofrecen recuperacion util. | UX | `AUD-UX-016` | Manual | Mensaje y CTA son claros por modulo. |
-| Restore de backup | Backup Neon se restaura en staging. | Produccion | `AUD-PROD-005` | Manual/runbook | Restore documentado y probado. |
-| Rollback de release | Version anterior puede restaurarse. | Produccion | `AUD-PROD-005` | Manual/runbook | Procedimiento validado en staging. |
-| Secret scanning | Repo no contiene secretos rastreados. | Seguridad/produccion | `AUD-SEC-009`, `AUD-PROD-003` | CI/manual | `secret-scan.yml` corre y el workspace no comparte `.env` reales. |
+| Header sin buscador decorativo | El header ya no muestra un input sin funcionalidad real. | Layout/busqueda | `AUD-UX-010` | Manual/UI | El header muestra solo orientacion estatica y no induce a buscar algo que no existe. |
+| Loading por modulo | El skeleton compartido no confunde modulos distintos. | UX | `AUD-UX-015` | Manual | El loading es neutro y no simula cards especificas del dashboard. |
+| Error boundaries contextuales | Errores ofrecen recuperacion util segun `pathname`. | UX | `AUD-UX-016` | Manual | Mensaje y CTA cambian por contexto y ofrecen una accion util. |
+| Configuracion Vercel explicita | `vercel.json` declara la decision operativa para rutas pesadas. | Produccion | `AUD-PROD-002` | Revision documental/deploy preview | Existe `vercel.json` con `maxDuration` explicito para reportes y recibos. |
+| Operacion productiva documentada | `docs/OPERACIONES_PRODUCCION.md` cubre secretos, observabilidad, backup/restore y rollback. | Produccion | `AUD-PROD-003`, `AUD-PROD-005` | Revision manual/runbook | El documento lista secretos requeridos, checklist de deploy y pasos minimos de restore/rollback. |
+| Restore de backup | Backup Neon se restaura en staging siguiendo el runbook. | Produccion | `AUD-PROD-005` | Manual/runbook | Restore documentado y probado contra `docs/OPERACIONES_PRODUCCION.md`. |
+| Rollback de release | Version anterior puede restaurarse siguiendo el runbook. | Produccion | `AUD-PROD-005` | Manual/runbook | Procedimiento validado en staging y documentado en `docs/OPERACIONES_PRODUCCION.md`. |
+| Secret scanning y checklist | Repo no contiene secretos rastreados y la operacion documenta variables productivas. | Seguridad/produccion | `AUD-SEC-009`, `AUD-PROD-003` | CI/manual | `secret-scan.yml` corre y `docs/OPERACIONES_PRODUCCION.md` cubre checklist de secretos sin exponer valores. |
 | Trace de Playwright en fallo | Artefactos ayudan a diagnosticar. | Testing | `AUD-TEST-003` | CI/Playwright | En CI un fallo retiene trace, screenshot y video; genera reporter HTML y el workflow sube `playwright-report` y `test-results`. |
 
 ## Reglas para agregar pruebas

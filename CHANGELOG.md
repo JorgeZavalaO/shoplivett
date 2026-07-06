@@ -31,6 +31,12 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Arquitectura
 - `lib/financial-reports.ts` y `lib/financial-dashboard.ts` se modularizan a submódulos por sección con barrels de entrada y helpers compartidos (`AUD-ARCH-002`).
 
+### Arquitectura y Operación
+- `lib/authorization.ts` agrega `requirePermission()`, suma permisos `dashboard.read`, `reports.read`, `expenses.read` e `incidents.read`, y la navegación reutiliza `SidebarNav` basada en permisos. Se agrega `scripts/test-permissions.ts` como regresión de la matriz (`AUD-ARCH-001`).
+- Se agrega `vercel.json` con `maxDuration` explícito para `app/api/reportes/[section]/route.ts` y `app/api/payment-receipts/[id]/route.ts` (`AUD-PROD-002`).
+- Nuevo `docs/OPERACIONES_PRODUCCION.md` documenta secretos, deploy, observabilidad mínima, backup/restore y rollback (`AUD-PROD-003`, `AUD-PROD-005`).
+- `cross-env` se agrega a `devDependencies` para soportar los scripts y la configuración E2E ya existentes.
+
 ### Operaciones
 - CI E2E cambia de `pnpm db:push` a `pnpm db:deploy` antes de seed y Playwright.
 - README, AGENTS y auditoria documentan la adopcion controlada del baseline para bases existentes con `prisma migrate resolve --applied 20260704000000_init`.
@@ -64,6 +70,11 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `app/(dashboard)/auditoria/page.tsx`: agrega `SHIPMENT_UPDATED` a `ACTION_LABELS` y `ACTION_TONE`.
 - El dashboard de despacho muestra conteos reales por estado de envio (`AUD-UX-012`).
 - Las vistas financieras muestran avisos visibles de truncamiento cuando el reporte supera el limite (`AUD-PERF-002`, `AUD-PERF-006`).
+- `app/(dashboard)/productos/[id]/page.tsx` carga solo el tab activo y pagina variantes/imagenes con `query params`, evitando traer todo el detalle pesado de una vez (`AUD-PERF-011`).
+- `components/tables/categories-table.tsx` agrega `ConfirmDialog`, estado `pending` y feedback visible al activar/desactivar categorias (`AUD-UX-006`).
+- `components/forms/product-lifecycle-actions.tsx` confirma cambios sensibles de estado de variante antes de ejecutar la accion (`AUD-UX-007`).
+- El buscador global decorativo se retira del header y el menu movil renderiza `SidebarNav` real dentro del `Sheet`, respetando permisos por rol (`AUD-UX-010`, `AUD-UX-011`).
+- `app/(dashboard)/loading.tsx` usa un skeleton neutro y `app/error.tsx` + `app/(dashboard)/error.tsx` muestran mensajes/CTAs contextuales por modulo (`AUD-UX-015`, `AUD-UX-016`).
 
 ### Testing
 - Se agrega `scripts/run-domain-tests.ts` y el script `pnpm test:domain` para agrupar la bateria de regresiones de dominio; CI lo ejecuta despues de `pnpm db:seed` y antes de Playwright (`AUD-TEST-001`).
@@ -76,11 +87,14 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `AUD-UX-009`, `AUD-DATA-010`, `AUD-DATA-016`, `AUD-DATA-017`, `AUD-UX-001`, `AUD-UX-005`, `AUD-PERF-010` y `AUD-UX-013` quedan marcados como `Corregido`.
 - `AUD-FUNC-003`, `AUD-UX-014`, `AUD-FUNC-004`, `AUD-UX-008` y `AUD-DATA-015` quedan marcados como `Corregido` (Fase 2).
 - Fase 3 deja corregidos `AUD-FUNC-007`, `AUD-ARCH-002`, `AUD-PERF-002`, `AUD-PERF-006`, `AUD-PERF-007`, `AUD-PERF-008`, `AUD-PERF-009`, `AUD-PERF-012` y `AUD-UX-012`.
+- Fase 6 deja corregidos `AUD-ARCH-001`, `AUD-ARCH-003`, `AUD-ARCH-004`, `AUD-PERF-011`, `AUD-UX-006`, `AUD-UX-007`, `AUD-UX-010`, `AUD-UX-011`, `AUD-UX-015`, `AUD-UX-016`, `AUD-PROD-002`, `AUD-PROD-003` y `AUD-PROD-005`.
 - `AUD-PERF-004` queda evaluado con `EXPLAIN ANALYZE`; no se agrega indice nuevo todavia.
 
 ### Verificación
 - `pnpm typecheck` + `pnpm lint` → 0 errores.
 - `pnpm test:domain` ejecutado en CI despues de `pnpm db:seed` y antes de Playwright.
+- `pnpm tsx scripts/_with-env.ts scripts/test-permissions.ts` → 4/4 tests.
+- `pnpm test:domain` → ok.
 - `pnpm tsx scripts/_with-env.ts scripts/test-order-batch-fifo.ts` → 14/14 tests.
 - `pnpm tsx scripts/_with-env.ts scripts/test-financial-reports.ts` → 12/12 tests.
 - `pnpm tsx scripts/test-upload-validation.ts` → ok.

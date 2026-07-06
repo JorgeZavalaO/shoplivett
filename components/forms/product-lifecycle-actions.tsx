@@ -37,7 +37,18 @@ export function ProductLifecycleActions({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [variantStatuses, setVariantStatuses] = useState(
+    Object.fromEntries(variants.map((variant) => [variant.id, variant.status])) as Record<
+      string,
+      "ACTIVE" | "HIDDEN" | "ARCHIVED"
+    >,
+  );
   const [confirmToggle, setConfirmToggle] = useState(false);
+  const [pendingVariantStatus, setPendingVariantStatus] = useState<{
+    id: string;
+    current: "ACTIVE" | "HIDDEN" | "ARCHIVED";
+    next: "ACTIVE" | "HIDDEN" | "ARCHIVED";
+  } | null>(null);
   const [pendingImageDelete, setPendingImageDelete] = useState<{
     id: string;
     url: string;
@@ -76,10 +87,6 @@ export function ProductLifecycleActions({
         );
       }
     });
-  }
-
-  function handleVariantStatus(variantId: string, status: "ACTIVE" | "HIDDEN" | "ARCHIVED") {
-    run(() => setVariantStatusAction(variantId, status));
   }
 
   function handlePrimary(imageId: string) {
@@ -122,13 +129,14 @@ export function ProductLifecycleActions({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <select
-                defaultValue={v.status}
+                value={variantStatuses[v.id] ?? v.status}
                 disabled={pending}
                 onChange={(e) =>
-                  handleVariantStatus(
-                    v.id,
-                    e.target.value as "ACTIVE" | "HIDDEN" | "ARCHIVED",
-                  )
+                  setPendingVariantStatus({
+                    id: v.id,
+                    current: variantStatuses[v.id] ?? v.status,
+                    next: e.target.value as "ACTIVE" | "HIDDEN" | "ARCHIVED",
+                  })
                 }
                 className="h-8 rounded-md border border-input bg-transparent px-2 text-xs"
                 aria-label="Cambiar estado de variante"
@@ -203,6 +211,39 @@ export function ProductLifecycleActions({
           {error}
         </p>
       ) : null}
+
+      <ConfirmDialog
+        open={pendingVariantStatus !== null}
+        onOpenChange={(next) => {
+          if (!pending) {
+            if (!next) setPendingVariantStatus(null);
+            setError(null);
+          }
+        }}
+        title="Confirmar cambio de estado"
+        description={
+          pendingVariantStatus
+            ? `La variante ${pendingVariantStatus.id.slice(0, 8)} pasará de ${VARIANT_STATUS_LABELS[pendingVariantStatus.current]} a ${VARIANT_STATUS_LABELS[pendingVariantStatus.next]}.`
+            : undefined
+        }
+        confirmLabel="Aplicar cambio"
+        cancelLabel="Cancelar"
+        tone={pendingVariantStatus?.next === "ARCHIVED" ? "destructive" : "default"}
+        pending={pending}
+        onConfirm={() => {
+          if (!pendingVariantStatus) return;
+          runAndClose(
+            () => setVariantStatusAction(pendingVariantStatus.id, pendingVariantStatus.next),
+            () => {
+              setVariantStatuses((current) => ({
+                ...current,
+                [pendingVariantStatus.id]: pendingVariantStatus.next,
+              }));
+              setPendingVariantStatus(null);
+            },
+          );
+        }}
+      />
 
       <ConfirmDialog
         open={confirmToggle}

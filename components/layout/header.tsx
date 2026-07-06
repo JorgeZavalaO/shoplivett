@@ -1,9 +1,8 @@
 "use client";
 
-import { Menu, Search, UserCircle2 } from "lucide-react";
+import { Menu, UserCircle2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Sidebar } from "@/components/layout/sidebar";
+import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { Badge } from "@/components/ui/badge";
 import { logoutAction } from "@/actions/auth";
 import type { Role } from "@/lib/permissions";
@@ -53,17 +52,22 @@ export function Header({ user }: HeaderProps) {
             </Button>
           }
         />
-        <SheetContent side="left" className="p-0 w-64">
-          <Sidebar role={user.role} />
+        <SheetContent side="left" className="w-72 p-0">
+          <div className="flex h-full flex-col bg-card">
+            <div className="border-b border-border px-4 py-4">
+              <p className="text-sm font-semibold">Shoplivett</p>
+              <p className="text-xs text-muted-foreground">Navegación móvil</p>
+            </div>
+            <SidebarNav role={user.role} mobile />
+          </div>
         </SheetContent>
       </Sheet>
 
-      <div className="relative flex-1 max-w-xl">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Buscar productos, clientes o pedidos…"
-          className="pl-9"
-        />
+      <div className="flex-1">
+        <p className="text-sm font-medium text-foreground">Operación diaria</p>
+        <p className="text-xs text-muted-foreground">
+          Navega por módulos según tu rol. El buscador global fue retirado hasta tener resultados reales.
+        </p>
       </div>
 
       <div className="ml-auto flex items-center gap-2">

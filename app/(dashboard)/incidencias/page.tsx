@@ -9,7 +9,7 @@ import type {
 
 import { Button } from "@/components/ui/button";
 import { IncidentsTable } from "@/components/tables/incidents-table";
-import { requireRole } from "@/lib/permissions";
+import { requirePermission } from "@/lib/authorization";
 import { listIncidentsAction } from "@/actions/incidents";
 import {
   INCIDENT_DECISION_OPTIONS,
@@ -45,7 +45,7 @@ export default async function IncidenciasPage({
 }: {
   searchParams: SearchParams;
 }) {
-  await requireRole(["ADMIN"]);
+  await requirePermission("incidents.read");
   const sp = await searchParams;
 
   const q = first(sp.q) ?? "";

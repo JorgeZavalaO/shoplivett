@@ -572,3 +572,55 @@ El sistema debe superar una prueba donde varios pedidos se agrupan en un envío.
 ## RF-S15-07 — Documentar instalación
 
 El sistema debe incluir documentación para instalación, variables de entorno, migraciones, seed y deploy.
+
+---
+
+# Sprint 16 a Sprint 27 — ampliaciones funcionales
+
+## RF-S16-01 — Proteger capturas y endurecer autenticación
+
+El sistema debe servir capturas de pago solo a usuarios autorizados y aplicar rate limiting al login.
+
+## RF-S17-01 — Reforzar invariantes de stock, pagos y reservas
+
+El sistema debe impedir cierres, validaciones o incidencias que dejen stock, reservas o pagos en estados inconsistentes bajo concurrencia.
+
+## RF-S18-01 — Historial y operación real del cliente
+
+La ficha de cliente debe mostrar historial real de pedidos, pagos, créditos y envíos sin placeholders.
+
+## RF-S19-01 — Gestión operativa completa de lotes
+
+El sistema debe permitir editar lotes, agregar y remover ítems y recalcular costos desde UI con auditoría.
+
+## RF-S20-01 — Costeo consistente y exacto
+
+El sistema debe calcular costos aterrizados con precisión operativa, evitando distribuciones silenciosas inválidas y preservando costos unitarios de 4 decimales.
+
+## RF-S21-01 — Utilidad congelada al quedar PAID
+
+El sistema debe reconocer utilidad sobre snapshots financieros congelados al momento en que un pedido queda completamente pagado.
+
+## RF-S22-01 — Gastos operativos y utilidad real
+
+El sistema debe registrar gastos operativos y reflejarlos en la utilidad real mensual junto con pérdidas y recuperos de incidencias.
+
+## RF-S23-01 — Incidencias y recuperos auditables
+
+El sistema debe registrar incidencias, restocks, créditos y pérdidas con impacto auditable en inventario y finanzas.
+
+## RF-S24-01 — Dashboard financiero
+
+El dashboard debe mostrar overview financiero, stock valorizado, capital en lotes, productos sin rotación, rentabilidad por lote y alertas.
+
+## RF-S25-01 — Reportes financieros exportables
+
+El sistema debe exponer reportes financieros descargables con límites visibles, export CSV seguro y metadatos de truncamiento cuando el dataset se recorta.
+
+## RF-S26-01 — Badges y señales de riesgo financiero
+
+La UI debe expresar margen, salud de stock, rotación e impacto financiero con componentes visuales consistentes.
+
+## RF-S27-01 — Seed financiero y verificación reproducible
+
+El proyecto debe incluir seed financiero idempotente, scripts de verificación de dominio y documentación suficiente para reproducir escenarios de negocio reales.

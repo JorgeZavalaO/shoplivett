@@ -10,10 +10,11 @@
 
 import { redirect } from "next/navigation";
 
-import { ROLES, type Role } from "@/lib/permissions";
+import { requireUser, ROLES, type Role } from "@/lib/permissions";
 import { isPaymentValidator } from "@/lib/settings";
 
 export const PERMISSIONS = [
+  "dashboard.read",
   "customers.read",
   "customers.write",
   "products.read",
@@ -33,6 +34,9 @@ export const PERMISSIONS = [
   "credits.read",
   "credits.write",
   "credits.refund",
+  "reports.read",
+  "expenses.read",
+  "incidents.read",
   "settings.read",
   "settings.write",
   "audit.read",
@@ -43,6 +47,7 @@ export type Permission = (typeof PERMISSIONS)[number];
 const STATIC_PERMISSION_MATRIX: Record<Role, ReadonlySet<Permission>> = {
   ADMIN: new Set<Permission>(PERMISSIONS),
   SELLER: new Set<Permission>([
+    "dashboard.read",
     "customers.read",
     "customers.write",
     "products.read",
@@ -55,11 +60,11 @@ const STATIC_PERMISSION_MATRIX: Record<Role, ReadonlySet<Permission>> = {
     "orders.expire",
     "payments.read",
     "payments.create",
-    "shipments.read",
     "credits.read",
     "credits.write",
   ]),
   DISPATCH: new Set<Permission>([
+    "dashboard.read",
     "products.read",
     "inventory.read",
     "lives.read",
@@ -96,6 +101,14 @@ export async function assertPermission(
   if (!role || !(await hasPermission(role, permission))) {
     redirect("/dashboard");
   }
+}
+
+export async function requirePermission(permission: Permission) {
+  const user = await requireUser();
+  if (!(await hasPermission(user.role, permission))) {
+    redirect("/dashboard");
+  }
+  return user;
 }
 
 export function rolesFor(permission: Permission): Role[] {

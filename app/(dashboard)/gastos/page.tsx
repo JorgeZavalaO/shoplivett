@@ -5,7 +5,7 @@ import type { ExpenseCategory, ExpenseStatus, ExpenseType } from "@prisma/client
 
 import { Button } from "@/components/ui/button";
 import { ExpensesTable } from "@/components/tables/expenses-table";
-import { requireRole } from "@/lib/permissions";
+import { requirePermission } from "@/lib/authorization";
 import { listExpensesAction } from "@/actions/expenses";
 import {
   EXPENSE_CATEGORY_OPTIONS,
@@ -41,7 +41,7 @@ export default async function GastosPage({
 }: {
   searchParams: SearchParams;
 }) {
-  await requireRole(["ADMIN"]);
+  await requirePermission("expenses.read");
   const sp = await searchParams;
 
   const q = first(sp.q) ?? "";

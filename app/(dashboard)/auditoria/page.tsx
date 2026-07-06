@@ -1,7 +1,7 @@
 import type { Metadata, Route } from "next";
 import type { AuditAction } from "@prisma/client";
 
-import { requireRole } from "@/lib/permissions";
+import { requirePermission } from "@/lib/authorization";
 import {
   listAuditActorsAction,
   listAuditLogAction,
@@ -146,7 +146,7 @@ export default async function AuditoriaPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireRole("ADMIN");
+  await requirePermission("audit.read");
   const sp = await searchParams;
 
   const fromInput = first(sp, "from") ?? "";

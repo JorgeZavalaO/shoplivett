@@ -472,7 +472,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Coexisten permisos por rol y permisos por accion sin adopcion consistente.
 - Severidad: Media.
 - Categoria: Arquitectura.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/permissions.ts`, `lib/authorization.ts`, `actions/*`, `app/(dashboard)/*`.
 - Descripcion: nueva capa de permisos existe, pero la mayoria de codigo usa `requireRole`.
 - Evidencia encontrada: `lib/authorization.ts:3-6`.
@@ -481,7 +481,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: permisos testeados por rol y accion.
 - Tests recomendados: unit/integracion de matriz.
 - Dependencias: `AUD-SEC-005`.
-- Observaciones: consolidar junto con sidebar.
+- Observaciones: Corregido en 0.40.0. Se agrega `requirePermission()`, permisos nuevos (`dashboard.read`, `reports.read`, `expenses.read`, `incidents.read`), `SidebarNav` basada en permisos y regresion en `scripts/test-permissions.ts`.
 
 ### AUD-ARCH-002 - Archivos grandes y alto acoplamiento en reportes
 
@@ -506,7 +506,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Requerimientos formales llegan a Sprint 15, README a Sprint 27.
 - Severidad: Baja.
 - Categoria: Arquitectura.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `docs/REQUERIMIENTOS_FUNCIONALES.md`, `README.md`, `CHANGELOG.md`.
 - Descripcion: la fuente funcional no documenta formalmente las features financieras recientes.
 - Evidencia encontrada: `docs/REQUERIMIENTOS_FUNCIONALES.md:546-574`.
@@ -515,7 +515,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: docs reflejan estado real y pendientes.
 - Tests recomendados: revision documental.
 - Dependencias: completar o diferir funcionalidades faltantes.
-- Observaciones: esta carpeta inicia la trazabilidad.
+- Observaciones: Corregido en 0.40.0. `docs/REQUERIMIENTOS_FUNCIONALES.md` ya documenta Sprint 16-27 con un bloque de ampliaciones funcionales alineado al estado real.
 
 ### AUD-ARCH-004 - README contradice estrategia de cache
 
@@ -523,7 +523,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: README menciona cache en memoria para settings.
 - Severidad: Baja.
 - Categoria: Arquitectura.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `README.md`, `lib/settings.ts`, `AGENTS.md`.
 - Descripcion: la documentacion antigua habla de cache en memoria, pero las reglas actuales usan cache distribuible de Next con tags.
 - Evidencia encontrada: `README.md:300`, `AGENTS.md`.
@@ -532,7 +532,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: documentacion no recomienda cache en memoria.
 - Tests recomendados: revision documental.
 - Dependencias: ninguna.
-- Observaciones: cambio documental.
+- Observaciones: Corregido en 0.40.0. README elimina la referencia a cache en memoria y alinea settings con cache distribuible de Next.js por tags.
 
 ## Performance
 
@@ -733,7 +733,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Detalle de producto incluye todas las variantes e imagenes.
 - Severidad: Media.
 - Categoria: Performance.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `app/(dashboard)/productos/[id]/page.tsx`.
 - Descripcion: `findUnique` incluye variantes e imagenes sin limite.
 - Evidencia encontrada: auditoria de pagina de producto.
@@ -742,7 +742,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: pagina mantiene performance con catalogo grande.
 - Tests recomendados: fixture con muchas variantes.
 - Dependencias: ninguna.
-- Observaciones: prioridad media.
+- Observaciones: Corregido en 0.40.0. Detalle de producto carga solo el tab activo y pagina variantes/imagenes via query params.
 
 ### AUD-PERF-012 - Top productos historico muestra ingresos cero
 
@@ -863,7 +863,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: usuario confirma o puede ver resultado/error.
 - Tests recomendados: manual/UI.
 - Dependencias: ninguna.
-- Observaciones: prioridad baja.
+- Observaciones: Corregido en 0.40.0. Categorias usa `ConfirmDialog`, estado `pending` y feedback visible de exito/error al activar o desactivar.
 
 ### AUD-UX-007 - Cambio de estado de variante sin confirmacion
 
@@ -871,7 +871,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Select de estado ejecuta cambio inmediato.
 - Severidad: Baja.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `components/forms/product-lifecycle-actions.tsx`.
 - Descripcion: cambiar select dispara `setVariantStatusAction` sin confirmacion.
 - Evidencia encontrada: auditoria del componente.
@@ -880,7 +880,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: archivar/ocultar requiere confirmacion o undo.
 - Tests recomendados: manual/UI.
 - Dependencias: ninguna.
-- Observaciones: prioridad baja.
+- Observaciones: Corregido en 0.40.0. `ProductLifecycleActions` confirma cambios sensibles de estado de variante antes de aplicar.
 
 ### AUD-UX-008 - Cancelacion de envio permite motivo vacio
 
@@ -933,7 +933,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Header muestra buscador sin funcionalidad.
 - Severidad: Baja.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `components/layout/header.tsx`.
 - Descripcion: input de busqueda no tiene accion, navegacion ni handlers.
 - Evidencia encontrada: `components/layout/header.tsx:61-67`.
@@ -942,7 +942,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: input busca o no se muestra.
 - Tests recomendados: manual/UI.
 - Dependencias: decision de producto.
-- Observaciones: mejora futura.
+- Observaciones: Corregido en 0.40.0. El buscador global decorativo se retira del header hasta contar con resultados reales.
 
 ### AUD-UX-011 - Menu movil queda oculto
 
@@ -950,7 +950,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Sheet movil renderiza sidebar con `hidden md:flex`.
 - Severidad: Media.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `components/layout/header.tsx`, `components/layout/sidebar.tsx`.
 - Descripcion: el menu movil abre un `Sidebar` que sigue oculto por clases responsive.
 - Evidencia encontrada: `components/layout/header.tsx:56-58`, `components/layout/sidebar.tsx:65`.
@@ -959,7 +959,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: menu movil muestra links navegables por rol.
 - Tests recomendados: E2E viewport movil.
 - Dependencias: ninguna.
-- Observaciones: importante para uso en tienda/operacion movil.
+- Observaciones: Corregido en 0.40.0. El menu movil renderiza `SidebarNav` real dentro del `Sheet` y respeta links por permiso.
 
 ### AUD-UX-012 - Dashboard despacho tiene metricas placeholder
 
@@ -1027,7 +1027,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: loading representa la pantalla real o no confunde.
 - Tests recomendados: manual.
 - Dependencias: ninguna.
-- Observaciones: baja prioridad.
+- Observaciones: Corregido en 0.40.0. `app/(dashboard)/loading.tsx` usa un skeleton neutro que no asume cards del dashboard.
 
 ### AUD-UX-016 - Error boundaries genericos
 
@@ -1035,7 +1035,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Errores no dan contexto por modulo.
 - Severidad: Baja.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `app/error.tsx`, `app/(dashboard)/error.tsx`.
 - Descripcion: mensaje unico para pagos, inventario, reportes y otros modulos.
 - Evidencia encontrada: auditoria de error boundaries.
@@ -1044,7 +1044,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: errores criticos ofrecen accion util.
 - Tests recomendados: manual.
 - Dependencias: ninguna.
-- Observaciones: mejora futura.
+- Observaciones: Corregido en 0.40.0. `app/error.tsx` y `app/(dashboard)/error.tsx` muestran mensajes y CTAs contextuales segun `pathname`.
 
 ## Testing
 
@@ -1150,7 +1150,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: configuracion productiva documentada o decision de no usarla.
 - Tests recomendados: deploy preview con reportes.
 - Dependencias: optimizaciones performance.
-- Observaciones: no es obligatorio, pero util.
+- Observaciones: Corregido en 0.40.0. Se agrega `vercel.json` con `maxDuration` explicito para `app/api/reportes/[section]/route.ts` y `app/api/payment-receipts/[id]/route.ts`.
 
 ### AUD-PROD-003 - Secretos y rotacion productiva pendientes
 
@@ -1158,7 +1158,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Riesgo operativo de secretos locales y variables productivas.
 - Severidad: Alta.
 - Categoria: Produccion.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `.env`, `.env.example`, Vercel env.
 - Descripcion: hay secretos locales no trackeados y produccion requiere rotacion/gestion segura.
 - Evidencia encontrada: `.env` ignorado, `.env.example` define variables necesarias.
@@ -1167,7 +1167,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: variables productivas configuradas en Vercel y secretos no compartidos.
 - Tests recomendados: secret scanning y revision manual.
 - Dependencias: acceso a proveedores.
-- Observaciones: relacionado con `AUD-SEC-009`.
+- Observaciones: Corregido en 0.40.0. Nuevo `docs/OPERACIONES_PRODUCCION.md` documenta checklist de secretos, deploy y variables productivas.
 
 ### AUD-PROD-004 - Produccion sin migraciones formales
 
@@ -1192,7 +1192,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Operacion productiva no esta completamente definida.
 - Severidad: Media.
 - Categoria: Produccion.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: documentacion de deploy y plataforma.
 - Descripcion: se documenta deploy basico, pero faltan detalles de monitoreo, alertas, backups, restauracion y rollback.
 - Evidencia encontrada: revision de README y docs actuales.
@@ -1201,7 +1201,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: existe runbook minimo de produccion.
 - Tests recomendados: simulacro de restore/rollback en staging.
 - Dependencias: definicion de plataforma final.
-- Observaciones: ver `06-riesgos-produccion.md`.
+- Observaciones: Corregido en 0.40.0. Nuevo `docs/OPERACIONES_PRODUCCION.md` define observabilidad minima, backup/restore y rollback.
 
 ## Funcionalidades faltantes o incompletas
 

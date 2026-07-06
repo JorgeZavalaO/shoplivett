@@ -11,7 +11,13 @@ import { requireRole } from "@/lib/permissions";
 
 
 type Params = Promise<{ id: string }>;
-type SearchParams = Promise<{ tab?: string | string[] }>;
+type SearchParams = Promise<{
+  tab?: string | string[];
+  variantsPage?: string | string[];
+  imagesPage?: string | string[];
+}>;
+
+const TAB_PAGE_SIZE = 24;
 
 export default async function ProductoDetallePage({
   params,
@@ -24,34 +30,57 @@ export default async function ProductoDetallePage({
   const { id } = await params;
   const sp = await searchParams;
   const tabRaw = Array.isArray(sp.tab) ? sp.tab[0] : sp.tab;
+  const variantsPageRaw = Array.isArray(sp.variantsPage) ? sp.variantsPage[0] : sp.variantsPage;
+  const imagesPageRaw = Array.isArray(sp.imagesPage) ? sp.imagesPage[0] : sp.imagesPage;
   const tab: "info" | "variantes" | "imagenes" =
     tabRaw === "variantes" || tabRaw === "imagenes" ? tabRaw : "info";
+  const variantsPage = Math.max(1, Number(variantsPageRaw ?? "1") || 1);
+  const imagesPage = Math.max(1, Number(imagesPageRaw ?? "1") || 1);
 
   const prisma = getPrisma();
   const product = await prisma.product.findUnique({
     where: { id },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      isActive: true,
+      createdAt: true,
       category: true,
-      variants: {
-        orderBy: { createdAt: "asc" },
-        select: {
-          id: true,
-          code: true,
-          color: true,
-          material: true,
-          size: true,
-          stock: true,
-          price: true,
-          status: true,
-        },
-      },
-      images: {
-        orderBy: { createdAt: "asc" },
-        select: { id: true, url: true, isPrimary: true },
-      },
+      _count: { select: { variants: true, images: true } },
     },
   });
   if (!product) notFound();
+
+  const [variants, images] = await Promise.all([
+    tab === "variantes"
+      ? prisma.productVariant.findMany({
+          where: { productId: id },
+          orderBy: { createdAt: "asc" },
+          skip: (variantsPage - 1) * TAB_PAGE_SIZE,
+          take: TAB_PAGE_SIZE,
+          select: {
+            id: true,
+            code: true,
+            color: true,
+            material: true,
+            size: true,
+            stock: true,
+            price: true,
+            status: true,
+          },
+        })
+      : Promise.resolve([]),
+    tab === "imagenes"
+      ? prisma.productImage.findMany({
+          where: { productId: id },
+          orderBy: { createdAt: "asc" },
+          skip: (imagesPage - 1) * TAB_PAGE_SIZE,
+          take: TAB_PAGE_SIZE,
+          select: { id: true, url: true, isPrimary: true },
+        })
+      : Promise.resolve([]),
+  ]);
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
@@ -86,22 +115,8 @@ export default async function ProductoDetallePage({
               <Link href={`/productos/${product.id}/editar`}>
                 <Pencil className="size-4" /> Editar
               </Link>
-            }
-          />
-          <ProductLifecycleActions
-            productId={product.id}
-            productName={product.name}
-            isActive={product.isActive}
-            images={product.images.map((i) => ({
-              id: i.id,
-              url: i.url,
-              isPrimary: i.isPrimary,
-            }))}
-            variants={product.variants.map((v) => ({
-              id: v.id,
-              status: v.status,
-            }))}
-          />
+              }
+            />
         </div>
       </div>
 
@@ -110,10 +125,10 @@ export default async function ProductoDetallePage({
           Información
         </TabLink>
         <TabLink href={`/productos/${id}?tab=variantes`} active={tab === "variantes"}>
-          Variantes ({product.variants.length})
+          Variantes ({product._count.variants})
         </TabLink>
         <TabLink href={`/productos/${id}?tab=imagenes`} active={tab === "imagenes"}>
-          Imágenes ({product.images.length})
+          Imágenes ({product._count.images})
         </TabLink>
       </div>
 
@@ -147,6 +162,14 @@ export default async function ProductoDetallePage({
                 </p>
               </div>
             </div>
+            <Separator className="my-4" />
+            <ProductLifecycleActions
+              productId={product.id}
+              productName={product.name}
+              isActive={product.isActive}
+              images={[]}
+              variants={[]}
+            />
           </CardContent>
         </Card>
       ) : null}
@@ -165,14 +188,25 @@ export default async function ProductoDetallePage({
             />
           </CardHeader>
           <CardContent>
-            {product.variants.length === 0 ? (
+            {product._count.variants === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Aún no hay variantes. Crea la primera para que el producto sea
                 vendible.
               </p>
             ) : (
-              <div className="grid gap-3">
-                {product.variants.map((v) => (
+              <>
+                <ProductLifecycleActions
+                  productId={product.id}
+                  productName={product.name}
+                  isActive={product.isActive}
+                  images={[]}
+                  variants={variants.map((v) => ({
+                    id: v.id,
+                    status: v.status,
+                  }))}
+                />
+                <div className="mt-4 grid gap-3">
+                  {variants.map((v) => (
                   <div
                     key={v.id}
                     className="flex flex-col gap-2 rounded-lg border border-border p-3 sm:flex-row sm:items-center sm:justify-between"
@@ -201,8 +235,17 @@ export default async function ProductoDetallePage({
                       />
                     </div>
                   </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+                <TabPagination
+                  page={variantsPage}
+                  perPage={TAB_PAGE_SIZE}
+                  total={product._count.variants}
+                  buildHref={(next) =>
+                    `/productos/${id}?tab=variantes${next > 1 ? `&variantsPage=${next}` : ""}`
+                  }
+                />
+              </>
             )}
           </CardContent>
         </Card>
@@ -218,12 +261,61 @@ export default async function ProductoDetallePage({
               La primera imagen subida queda como principal. Puedes cambiarla
               desde cada tarjeta.
             </p>
-            {product.images.length === 0 ? (
+            {product._count.images === 0 ? (
               <p className="text-sm text-muted-foreground">Sin imágenes aún.</p>
-            ) : null}
+            ) : (
+              <>
+                <ProductLifecycleActions
+                  productId={product.id}
+                  productName={product.name}
+                  isActive={product.isActive}
+                  images={images.map((i) => ({ id: i.id, url: i.url, isPrimary: i.isPrimary }))}
+                  variants={[]}
+                />
+                <TabPagination
+                  page={imagesPage}
+                  perPage={TAB_PAGE_SIZE}
+                  total={product._count.images}
+                  buildHref={(next) =>
+                    `/productos/${id}?tab=imagenes${next > 1 ? `&imagesPage=${next}` : ""}`
+                  }
+                />
+              </>
+            )}
           </CardContent>
         </Card>
       ) : null}
+    </div>
+  );
+}
+
+function TabPagination({
+  page,
+  perPage,
+  total,
+  buildHref,
+}: {
+  page: number;
+  perPage: number;
+  total: number;
+  buildHref: (page: number) => string;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  if (total <= perPage) return null;
+
+  return (
+    <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
+      <span>
+        Página {page} de {totalPages}
+      </span>
+      <div className="flex gap-2">
+        {page > 1 ? (
+          <Button size="sm" variant="outline" render={<Link href={buildHref(page - 1)}>Anterior</Link>} />
+        ) : null}
+        {page < totalPages ? (
+          <Button size="sm" variant="outline" render={<Link href={buildHref(page + 1)}>Siguiente</Link>} />
+        ) : null}
+      </div>
     </div>
   );
 }

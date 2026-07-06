@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Sparkles } from "lucide-react";
 
-import { requireRole } from "@/lib/permissions";
+import { requirePermission } from "@/lib/authorization";
 import { getSettings } from "@/lib/settings";
 import { coercePaymentMethodFees } from "@/lib/settings-defaults";
 import { SettingsForm } from "@/components/forms/settings-form";
@@ -22,7 +22,7 @@ function formatExchangeRate(value: unknown): string {
 }
 
 export default async function ConfiguracionPage() {
-  await requireRole("ADMIN");
+  await requirePermission("settings.write");
   const settings = await getSettings();
 
   return (

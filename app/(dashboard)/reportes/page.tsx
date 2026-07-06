@@ -7,7 +7,7 @@ import {
   PaymentStatus,
 } from "@prisma/client";
 
-import { requireRole } from "@/lib/permissions";
+import { requirePermission } from "@/lib/authorization";
 import { PAYMENT_METHOD_LABELS } from "@/lib/settings-defaults";
 import {
   getCreditsReportAction,
@@ -256,7 +256,7 @@ export default async function ReportesPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireRole("ADMIN");
+  await requirePermission("reports.read");
   const sp = await searchParams;
 
   const section = parseSection(first(sp, "section"));

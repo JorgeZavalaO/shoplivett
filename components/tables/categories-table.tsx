@@ -1,11 +1,12 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Power, PowerOff, Tag } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Table,
   TableBody,
@@ -25,16 +26,39 @@ type CategoryRow = {
 };
 
 export function CategoriesTable({ items }: { items: CategoryRow[] }) {
-  const [, startTransition] = useTransition();
+  const [pending, startTransition] = useTransition();
+  const [confirmTarget, setConfirmTarget] = useState<CategoryRow | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   function toggle(id: string, isActive: boolean) {
+    setError(null);
+    setMessage(null);
     startTransition(async () => {
-      await setCategoryActiveAction(id, !isActive);
+      try {
+        await setCategoryActiveAction(id, !isActive);
+        setMessage(!isActive ? "Categoría activada." : "Categoría desactivada.");
+      } catch (err) {
+        console.error(err);
+        setError(err instanceof Error ? err.message : "No se pudo actualizar la categoría.");
+      } finally {
+        setConfirmTarget(null);
+      }
     });
   }
 
   return (
     <div className="rounded-lg border border-border bg-card">
+      {message ? (
+        <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700">
+          {message}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="border-b border-destructive/20 bg-destructive/5 px-4 py-2 text-xs text-destructive">
+          {error}
+        </div>
+      ) : null}
       <Table>
         <TableHeader>
           <TableRow>
@@ -89,7 +113,12 @@ export function CategoriesTable({ items }: { items: CategoryRow[] }) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => toggle(c.id, c.isActive)}
+                      disabled={pending}
+                      onClick={() => {
+                        setError(null);
+                        setMessage(null);
+                        setConfirmTarget(c);
+                      }}
                       render={
                         <button type="button" className="flex items-center gap-1">
                           {c.isActive ? (
@@ -111,6 +140,28 @@ export function CategoriesTable({ items }: { items: CategoryRow[] }) {
           )}
         </TableBody>
       </Table>
+      <ConfirmDialog
+        open={confirmTarget !== null}
+        onOpenChange={(open) => {
+          if (!pending && !open) setConfirmTarget(null);
+        }}
+        title={confirmTarget?.isActive ? "Desactivar categoría" : "Activar categoría"}
+        description={
+          confirmTarget
+            ? confirmTarget.isActive
+              ? `La categoría ${confirmTarget.name} dejará de estar disponible para selección en formularios.`
+              : `La categoría ${confirmTarget.name} volverá a estar disponible para productos y formularios.`
+            : undefined
+        }
+        confirmLabel={confirmTarget?.isActive ? "Sí, desactivar" : "Sí, activar"}
+        cancelLabel="Cancelar"
+        tone={confirmTarget?.isActive ? "destructive" : "default"}
+        pending={pending}
+        onConfirm={() => {
+          if (!confirmTarget) return;
+          toggle(confirmTarget.id, confirmTarget.isActive);
+        }}
+      />
     </div>
   );
 }

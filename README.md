@@ -242,6 +242,14 @@ Fase 5 del mismo ciclo 0.40.0 completa testing y hardening:
 - Playwright conserva trazas, screenshots y videos utiles en fallo dentro de CI.
 - Existe una suite E2E basica de permisos por rol en `e2e/permissions.spec.ts`.
 
+Fase 6 del mismo ciclo 0.40.0 deja alineadas estas mejoras futuras ya ejecutadas:
+
+- Navegacion movil y permisos: `SidebarNav` basada en permisos, `requirePermission()` y menu movil real dentro del `Sheet`.
+- Detalle de producto: tabs pesados cargan por seccion y variantes/imagenes se paginan por `query params`.
+- UX operativa: categorias y estados de variante ahora piden confirmacion y muestran feedback visible.
+- Estados transitorios: loading y error boundaries muestran mensajes mas neutros y contextuales segun modulo.
+- Operacion productiva: `vercel.json` y `docs/OPERACIONES_PRODUCCION.md` explicitan duraciones, secretos, deploy, observabilidad minima, backup/restore y rollback.
+
 ### Sprint 24 — Dashboard financiero (versión 0.25.0)
 
 El panel `/dashboard` para ADMIN combina las métricas operativas del Sprint 11 con un nuevo bloque financiero. Los agregadores viven en `lib/financial-dashboard.ts` y operan con `select` mínimos, `Cents` enteros y sin cache persistente (cada request recalcula para mantener consistencia entre instancias serverless).
@@ -379,6 +387,7 @@ Nivel de riesgo actual: **Alto** — la mayoría de hallazgos P0/P1 están corre
 6. Define el comando de build en Vercel como `pnpm verify` para que typecheck y lint fallen rápido en CI.
 7. Tras el primer deploy, ejecuta `pnpm db:deploy && pnpm db:seed` desde la consola one-shot de Vercel CLI (o un workflow puntual) para crear las tablas y los usuarios iniciales.
 8. Si una base existente fue creada previamente con `db:push`, valida que su schema coincida con `prisma/schema.prisma` en staging y marca el baseline como aplicado con `pnpm prisma migrate resolve --applied 20260704000000_init` antes de usar `pnpm db:deploy` para migraciones futuras.
+9. Usa `docs/OPERACIONES_PRODUCCION.md` como runbook minimo para checklist de secretos, deploy, observabilidad, backup/restore y rollback.
 
 > La aplicación está pensada para correr en multi-instancia serverless. Toda la caché compartida se apoya en la cache de Next.js con tags (`lib/settings.ts`); no uses `globalThis`.
 
@@ -456,7 +465,7 @@ Modelo singleton `BusinessSettings` con ajustes centralizados del negocio:
 - **Formulario** dividido en 4 secciones: reservas, moneda y catálogo, envíos, pagos.
 - **Campos**: días de reserva (1–60), adelanto mínimo, moneda (3 letras), prefijo de código, envío gratis + umbral, métodos de pago y envío habilitados, roles que validan pagos, crédito por sobrepago y devolución.
 - **Validación** integral con Zod en server action `updateSettingsAction`.
-- **Caché en memoria** (`lib/settings.ts`) con invalidación automática tras guardar.
+- **Caché distribuible de Next.js** (`lib/settings.ts`) con tags e invalidación explícita; no usar caché en proceso ni `globalThis`.
 - **Helpers**: `getReservationDays()`, `getEnabledPaymentMethods()`, `getPaymentValidatorRoles()`, `isPaymentValidator()`, `getFreeShippingRule()`, etc.
 - **Labels legibles** para métodos de pago (Yape, Plin, Efectivo, Otro) y envío (Delivery propio, Olva, Shalom, Motorizado, Recojo en tienda).
 

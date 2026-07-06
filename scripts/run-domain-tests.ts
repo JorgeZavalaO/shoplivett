@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 
 const TEST_SCRIPTS = [
   "scripts/test-auth-rate-limit.ts",
+  "scripts/test-permissions.ts",
   "scripts/test-upload-validation.ts",
   "scripts/test-order-batch-fifo.ts",
   "scripts/test-payment-reservation-closure.ts",
