@@ -36,10 +36,10 @@ type Props = {
   enabledMethods: ("YAPE" | "PLIN" | "CASH" | "OTHER")[];
 };
 
-function SubmitButton() {
+function SubmitButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" disabled={pending} className="w-full">
+    <Button type="submit" disabled={pending || disabled} className="w-full">
       {pending ? (
         <>
           <Loader2 className="size-4 animate-spin" /> Guardando…
@@ -415,7 +415,7 @@ export function CreatePaymentForm({ enabledMethods }: Props) {
               >
                 Cancelar
               </Button>
-              <SubmitButton />
+              <SubmitButton disabled={!canSubmit} />
             </div>
             {!canSubmit ? (
               <p className="text-xs text-muted-foreground">

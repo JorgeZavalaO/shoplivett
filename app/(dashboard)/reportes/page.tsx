@@ -818,7 +818,7 @@ export default async function ReportesPage({
           baseHref={buildHref(sp, { section: "fin-products" }) as Route}
           extra={extra}
           totalLabel="Variantes en el reporte"
-          totalValue={String(data.rows.length)}
+          totalValue={String(data.meta.totalRows ?? data.rows.length)}
         />
         <ProductProfitabilityReportView
           data={data}
@@ -841,7 +841,7 @@ export default async function ReportesPage({
           query=""
           baseHref={buildHref(sp, { section: "fin-batches" }) as Route}
           totalLabel="Lotes con ventas"
-          totalValue={String(data.rows.length)}
+          totalValue={String(data.meta.totalRows ?? data.rows.length)}
         />
         <BatchProfitabilityReportView
           data={data}
@@ -929,6 +929,9 @@ export default async function ReportesPage({
             </form>
             <p className="mt-3 text-xs text-muted-foreground">
               Variantes valorizadas: <span className="font-medium">{data.rows.length}</span>
+              {typeof data.meta.totalRows === "number" && data.meta.totalRows !== data.rows.length
+                ? ` de ${data.meta.totalRows}`
+                : ""}
             </p>
           </CardContent>
         </Card>
@@ -1045,16 +1048,16 @@ export default async function ReportesPage({
     const type = parseExpenseType(first(sp, "type"));
     const status = parseExpenseStatus(first(sp, "status"));
     const query = first(sp, "q") ?? "";
-    const data = await getExpensesReportAction({
-      year: safeYear,
-      month: safeMonth,
-      category,
-      type,
-      status,
-      query: query || undefined,
-      page: 1,
-      perPage: 1000,
-    });
+      const data = await getExpensesReportAction({
+        year: safeYear,
+        month: safeMonth,
+        category,
+        type,
+        status,
+        query: query || undefined,
+        page: 1,
+        perPage: 5000,
+      });
     const extra = (
       <div className="flex flex-wrap items-end gap-2">
         <input type="hidden" name="section" value="fin-expenses" />
@@ -1220,7 +1223,7 @@ export default async function ReportesPage({
           query={query}
           baseHref={buildHref(sp, { section: "fin-customers" }) as Route}
           totalLabel="Clientes en el reporte"
-          totalValue={String(data.rows.length)}
+          totalValue={String(data.meta.totalRows ?? data.rows.length)}
         />
         <CustomersFinancialReportView
           data={data}
@@ -1307,7 +1310,7 @@ export default async function ReportesPage({
           baseHref={buildHref(sp, { section: "fin-returns" }) as Route}
           extra={extra}
           totalLabel="Incidencias en el reporte"
-          totalValue={String(data.rows.length)}
+          totalValue={String(data.meta.totalRows ?? data.rows.length)}
         />
         <ReturnsLossesReportView
           data={data}

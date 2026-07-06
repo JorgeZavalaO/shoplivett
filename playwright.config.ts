@@ -25,13 +25,15 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: process.env.CI
-    ? [["list"], ["github"]]
+    ? [["list"], ["github"], ["html", { open: "never" }]]
     : "list",
   timeout: 60_000,
   expect: { timeout: 10_000 },
   use: {
     baseURL: BASE_URL,
-    trace: "on-first-retry",
+    trace: process.env.CI ? "retain-on-failure" : "on-first-retry",
+    screenshot: process.env.CI ? "only-on-failure" : "off",
+    video: process.env.CI ? "retain-on-failure" : "off",
     headless: true,
     locale: "es-PE",
   },
@@ -46,7 +48,7 @@ export default defineConfig({
         command: localCommand,
         url: BASE_URL,
         reuseExistingServer: !process.env.CI,
-        timeout: 180_000,
+        timeout: 300_000,
       }
     : undefined,
 });

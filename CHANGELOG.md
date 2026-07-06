@@ -12,6 +12,7 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Datos
 - Se agrega baseline Prisma versionado en `prisma/migrations/20260704000000_init/migration.sql` y `migration_lock.toml`, cerrando `AUD-DATA-012`.
 - Se agrega `pnpm db:deploy` para aplicar migraciones versionadas en CI, staging y produccion; `db:push` queda restringido a bases locales descartables (`AUD-PROD-004`).
+- Se agrega schema + migracion manual `prisma/migrations/20260704130000_add_shipment_real_cost/migration.sql` con `Order.deliveryBusinessCostPen`, `Shipment.realCostPen` y `ShipmentOrder.allocatedShippingCostPen` (`AUD-FUNC-007`).
 - `actions/orders.ts` agrega `listCustomerOrdersAction` con paginación server-side por customerId (`AUD-FUNC-001`).
 - `actions/payments.ts` agrega `listCustomerPaymentsAction` con paginación server-side por customerId (`AUD-FUNC-001`).
 - `lib/sales.ts` (`createQuickSale`) rechaza vender a clientas con `status = BLOCKED` lanzando `OrderError("CUSTOMER_BLOCKED")`, revalidando el estado tanto en la lectura inicial como dentro de la transacción `Serializable` para cerrar la ventana de carrera (`AUD-UX-009`).
@@ -20,10 +21,20 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `actions/expenses.ts` (`updateExpenseAction`, `voidExpenseAction`) mueven la lectura y validación de `status` dentro de la transacción `Serializable`, cerrando la ventana de carrera entre edición y anulación concurrente (`AUD-DATA-016`).
 - `lib/inventory.ts` (`getMovementHistory`) ahora acepta `{ page, perPage }` y devuelve paginación completa (`items`, `total`, `page`, `pageCount`), limitando la carga a `perPage` movimientos (`AUD-PERF-010`).
 - `app/(dashboard)/inventario/[variantId]/page.tsx` agrega navegación Anterior/Siguiente server-side y canaliza `?movementsPage` (`AUD-PERF-010`).
+- `lib/expenses.ts`, `lib/financial-dashboard.ts`, `lib/dashboard.ts`: `realNetProfitCents` ahora suma `incidentRecoveredCents` (recuperos de incidencias), aplicando la regla contable aprobada (`AUD-DATA-015`).
+- `lib/order-batch-allocation.ts` ahora descuenta `deliveryBusinessCostPen` de `netProfitPen` y acepta recálculo explícito (`AUD-FUNC-007`).
+- `lib/reports.ts` corrige métricas por live y revenue histórico de top productos (`AUD-PERF-009`, `AUD-PERF-012`).
+- `lib/financial-reports.ts` agrega `MAX_REPORT_ROWS = 5000`, `meta.truncated`, fallback mensual de 1 query y límites visibles en export (`AUD-PERF-002`, `AUD-PERF-006`, `AUD-PERF-008`).
+- `prisma/schema.prisma`: enum `AuditAction` agrega `SHIPMENT_UPDATED` para distinguir ediciones de datos de cambios de estado en auditoría.
+- `actions/shipments.ts`: `CancelSchema` ahora exige `reason` con mínimo 5 caracteres; cancelación sin motivo se bloquea en server y UI (`AUD-UX-008`).
+
+### Arquitectura
+- `lib/financial-reports.ts` y `lib/financial-dashboard.ts` se modularizan a submódulos por sección con barrels de entrada y helpers compartidos (`AUD-ARCH-002`).
 
 ### Operaciones
 - CI E2E cambia de `pnpm db:push` a `pnpm db:deploy` antes de seed y Playwright.
 - README, AGENTS y auditoria documentan la adopcion controlada del baseline para bases existentes con `prisma migrate resolve --applied 20260704000000_init`.
+- Shipment create/edit/detail captura y muestra costo real de envio.
 
 ### UX
 - `components/dashboard/customer-orders-history.tsx`: nuevo componente que reemplaza el placeholder "PEDIDOS_RECENT" con tabla paginada real de pedidos del cliente.
@@ -43,19 +54,45 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `actions/sales.ts` (`searchCustomersForSaleAction`) agrega `status` al `select` para que la UI pueda mostrar el estado sin queries adicionales.
 - `lib/whatsapp.ts` (`getAvailableTemplates`) corrige filtrado: sin `hasOrder` solo muestra `CREDIT_AVAILABLE` si hay crédito, o lista vacía. Sin `hasPayment` filtra `SEPARATION_CONFIRMED` y `PAYMENT_VALIDATED`. Sin `hasShipment` filtra `SHIPMENT_SENT`. Sin `hasCredit` filtra `CREDIT_AVAILABLE`. Ya no ofrece plantillas que requieren `order` cuando no hay contexto de pedido (`AUD-UX-001`).
 - `components/forms/inventory-adjust-form.tsx`: agrega `ConfirmDialog` con resumen (tipo, cantidad, motivo) antes de ejecutar el ajuste. La confirmación usa tono `destructive` si la cantidad es negativa. Botón de submit queda deshabilitado si cantidad o motivo son inválidos (`AUD-UX-005`).
+- `components/forms/create-payment-form.tsx`: `SubmitButton` local ahora acepta prop `disabled` y se deshabilita cuando `canSubmit` es false (cliente, monto > 0, al menos 1 aplicación) (`AUD-UX-014`).
+- `components/forms/edit-payment-applications-form.tsx`: nuevo componente para editar aplicaciones de un pago pendiente (agregar/quitar pedidos, ajustar montos, confirmación con `ConfirmDialog`). Integrado en `pagos/[id]/page.tsx` cuando `isPending` (`AUD-FUNC-003`).
+- `components/forms/edit-shipment-form.tsx`: nuevo componente para editar datos de un envío (método, costo, agencia, tracking, dirección, notas) con `ConfirmDialog`. Solo visible si el envío no está `DELIVERED` ni `CANCELLED` (`AUD-FUNC-004`).
+- `components/forms/shipment-status-actions.tsx`: motivode cancelación ahora es obligatorio (mínimo 5 caracteres); botón "Confirmar cancelación" se deshabilita si no cumple (`AUD-UX-008`).
+- `app/(dashboard)/envios/[id]/page.tsx`: agrega Card "Editar envío" con `EditShipmentForm` cuando el estado lo permite (`AUD-FUNC-004`).
+- `app/(dashboard)/pagos/[id]/page.tsx`: reemplaza sección "Pedidos aplicados" de solo lectura por `EditPaymentApplicationsForm` cuando el pago está pendiente (`AUD-FUNC-003`).
+- `components/dashboard/financial-overview-cards.tsx`: card "Perdidas por incidencias" ahora muestra hint "Recuperado: S/ X.XX" cuando `incidentRecoveredCents > 0`.
+- `app/(dashboard)/auditoria/page.tsx`: agrega `SHIPMENT_UPDATED` a `ACTION_LABELS` y `ACTION_TONE`.
+- El dashboard de despacho muestra conteos reales por estado de envio (`AUD-UX-012`).
+- Las vistas financieras muestran avisos visibles de truncamiento cuando el reporte supera el limite (`AUD-PERF-002`, `AUD-PERF-006`).
+
+### Testing
+- Se agrega `scripts/run-domain-tests.ts` y el script `pnpm test:domain` para agrupar la bateria de regresiones de dominio; CI lo ejecuta despues de `pnpm db:seed` y antes de Playwright (`AUD-TEST-001`).
+- `e2e/smoke.spec.ts` unifica su prefijo de datos a `E2E-SMOKE` y limpia clientas residuales en `afterAll` mediante `cleanupCustomersByPrefix()` (`AUD-TEST-002`).
+- Se agrega `e2e/permissions.spec.ts` con redireccion a login para anonimos y una matriz basica de acceso por rol (`ADMIN`, `SELLER`, `DISPATCH`); `e2e/fixtures/auth.ts` suma `dispatchPage` (`AUD-TEST-004`).
+- `playwright.config.ts` retiene `trace`, `screenshot` y `video` en fallos de CI, habilita reporter HTML en CI, y `.github/workflows/ci.yml` sube `test-results` ademas de `playwright-report` cuando falla (`AUD-TEST-003`).
+- `cross-env` se agrega a `devDependencies` para soportar los scripts y la configuracion E2E ya existentes.
 
 ### Auditoría
 - `AUD-UX-009`, `AUD-DATA-010`, `AUD-DATA-016`, `AUD-DATA-017`, `AUD-UX-001`, `AUD-UX-005`, `AUD-PERF-010` y `AUD-UX-013` quedan marcados como `Corregido`.
+- `AUD-FUNC-003`, `AUD-UX-014`, `AUD-FUNC-004`, `AUD-UX-008` y `AUD-DATA-015` quedan marcados como `Corregido` (Fase 2).
+- Fase 3 deja corregidos `AUD-FUNC-007`, `AUD-ARCH-002`, `AUD-PERF-002`, `AUD-PERF-006`, `AUD-PERF-007`, `AUD-PERF-008`, `AUD-PERF-009`, `AUD-PERF-012` y `AUD-UX-012`.
+- `AUD-PERF-004` queda evaluado con `EXPLAIN ANALYZE`; no se agrega indice nuevo todavia.
 
 ### Verificación
 - `pnpm typecheck` + `pnpm lint` → 0 errores.
+- `pnpm test:domain` ejecutado en CI despues de `pnpm db:seed` y antes de Playwright.
 - `pnpm tsx scripts/_with-env.ts scripts/test-order-batch-fifo.ts` → 14/14 tests.
 - `pnpm tsx scripts/_with-env.ts scripts/test-financial-reports.ts` → 12/12 tests.
 - `pnpm tsx scripts/test-upload-validation.ts` → ok.
 - `pnpm tsx scripts/_with-env.ts scripts/test-customer-blocked-sale.ts` → 4/4 tests (venta rechazada a cliente `BLOCKED`, permitida a `ACTIVE`).
 - `pnpm tsx scripts/_with-env.ts scripts/test-batch-closed-race.ts` → 4/4 tests, incluyendo carrera real cierre-vs-edición contra Postgres con coordinación determinista (sin depender de temporizadores).
 - `pnpm tsx scripts/_with-env.ts scripts/test-expenses.ts` → 7/7 tests (regresión transaccional de gastos).
-- Regresión adicional de Fase 1: `pnpm typecheck`, `pnpm lint` (0 errores).
+- `pnpm tsx scripts/_with-env.ts scripts/test-incidents.ts` → 16/16 tests (regresión de incidencias).
+- `pnpm tsx scripts/_with-env.ts scripts/test-perf-fixes.ts` → 5/5 tests (regresión de rendimiento con `incidentRecoveredCents` en fixture).
+- `pnpm tsx scripts/_with-env.ts scripts/test-reports.ts` → 3/3.
+- `pnpm tsx scripts/_with-env.ts scripts/test-shipment-real-cost.ts` → 3/3.
+- `pnpm tsx scripts/_with-env.ts scripts/explain-financial-index.ts` ejecutado; con el dataset actual el plan usa `Seq Scan`.
+- Regresión adicional de Fase 1 y 2: `pnpm typecheck`, `pnpm lint` (0 errores).
 
 ## [0.39.0] - Costeo 4dp exacto, hardening de uploads/CSV, bloqueo de costeo manual y secret scanning
 

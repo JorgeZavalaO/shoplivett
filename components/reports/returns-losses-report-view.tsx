@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CsvDownloadButton } from "@/components/reports/csv-download-button";
+import { ReportLimitNotice } from "@/components/reports/report-limit-notice";
 import { IncidentImpactBadge } from "@/components/financial/incident-impact-badge";
 import type { ReturnsLossesReport } from "@/lib/financial-reports";
 
@@ -48,6 +49,8 @@ export function ReturnsLossesReportView({
           tone={data.totals.netCents < 0 ? "destructive" : "success"}
         />
       </div>
+
+      <ReportLimitNotice meta={data.meta} />
 
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

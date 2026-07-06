@@ -1,0 +1,8 @@
+ALTER TABLE "Order"
+ADD COLUMN "deliveryBusinessCostPen" DECIMAL(12, 2) NOT NULL DEFAULT 0;
+
+ALTER TABLE "Shipment"
+ADD COLUMN "realCostPen" DECIMAL(12, 2) NOT NULL DEFAULT 0;
+
+ALTER TABLE "ShipmentOrder"
+ADD COLUMN "allocatedShippingCostPen" DECIMAL(12, 2) NOT NULL DEFAULT 0;

@@ -333,4 +333,10 @@ export async function cleanupTestData() {
   await prisma.category.deleteMany({ where: { slug: "e2e-cartera" } });
 }
 
+export async function cleanupCustomersByPrefix(prefix: string) {
+  await prisma.customer.deleteMany({
+    where: { name: { startsWith: prefix } },
+  });
+}
+
 export { TEST_PREFIX };

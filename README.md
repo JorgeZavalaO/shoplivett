@@ -81,8 +81,9 @@ Por defecto, el seed crea tres usuarios (solo para desarrollo):
 | `pnpm typecheck` | TypeScript sobre `app` y `e2e`. |
 | `pnpm lint` | ESLint sobre el proyecto. |
 | `pnpm verify` | `typecheck` + `lint` + `build`. |
+| `pnpm test:domain` | Ejecuta la batería agrupada de tests de dominio (`scripts/run-domain-tests.ts`). |
 | `pnpm test:e2e:install` | Descarga Chromium para Playwright. |
-| `pnpm test:e2e` | Ejecuta la suite Playwright (smoke + 8 flujos Sprint 15). |
+| `pnpm test:e2e` | Ejecuta la suite Playwright completa. |
 | `pnpm db:generate` | Genera el cliente Prisma. |
 | `pnpm db:push` | Sincroniza schema sin historial; solo para bases locales descartables. No usar en CI, staging ni producción. |
 | `pnpm db:migrate` | Crea/aplica migraciones con historial. |
@@ -224,6 +225,22 @@ La versión 0.40.0 cierra `AUD-FUNC-001`, `AUD-FUNC-002`, `AUD-FUNC-005`, `AUD-U
 - **Confirmación de ajuste** (`AUD-UX-005`): `InventoryAdjustForm` agrega `ConfirmDialog` con resumen (tipo, cantidad, motivo) antes de ejecutar; submit deshabilitado si datos inválidos.
 - **Historial paginado** (`AUD-PERF-010`): `getMovementHistory` acepta `{page, perPage}` (default 25); página de inventario canaliza `?movementsPage` con navegación Anterior/Siguiente server-side.
 - Regresión: `pnpm tsx scripts/_with-env.ts scripts/test-order-batch-fifo.ts` → 14/14 tests. `pnpm tsx scripts/_with-env.ts scripts/test-financial-reports.ts` → 12/12 tests. `pnpm tsx scripts/_with-env.ts scripts/test-customer-blocked-sale.ts` → 4/4 tests. `pnpm tsx scripts/_with-env.ts scripts/test-batch-closed-race.ts` → 4/4 tests, incluida una carrera real cierre-vs-edición contra Postgres. `pnpm tsx scripts/_with-env.ts scripts/test-expenses.ts` → 7/7 tests.
+
+Fase 3 del mismo ciclo 0.40.0 deja documentadas estas correcciones adicionales:
+
+- **Costo real de envío**: el modelo financiero ahora persiste costo real de envío y lo descuenta de la utilidad neta del pedido.
+- **Reportes corregidos**: lives y top productos históricos ya no comparten métricas incorrectas ni muestran revenue dummy en cero.
+- **Exportaciones con truncamiento visible**: los reportes financieros limitan a `MAX_REPORT_ROWS = 5000`, exponen `meta.truncated` en UI y agregan aviso visible en CSV.
+- **Dashboard dispatch real**: las cards de despacho muestran conteos reales por estado de envío.
+- **Modularización Fase 3**: reportes y dashboard financiero se separan en submódulos con barrels y helpers compartidos.
+- **Índice financiero pendiente**: `AUD-PERF-004` fue evaluado con `EXPLAIN ANALYZE`, pero no se agregó un índice nuevo todavía por falta de dataset representativo.
+
+Fase 5 del mismo ciclo 0.40.0 completa testing y hardening:
+
+- CI ahora ejecuta `pnpm test:domain` despues de `pnpm db:seed` y antes de Playwright.
+- El smoke E2E limpia sus datos usando el prefijo `E2E-SMOKE` y `cleanupCustomersByPrefix()`.
+- Playwright conserva trazas, screenshots y videos utiles en fallo dentro de CI.
+- Existe una suite E2E basica de permisos por rol en `e2e/permissions.spec.ts`.
 
 ### Sprint 24 — Dashboard financiero (versión 0.25.0)
 
@@ -367,12 +384,14 @@ Nivel de riesgo actual: **Alto** — la mayoría de hallazgos P0/P1 están corre
 
 ## Pruebas E2E
 
-La suite oficial es Playwright y vive en `e2e/`. Hay cuatro specs:
+La suite oficial es Playwright y vive en `e2e/`. Hay seis specs:
 
-- `e2e/smoke.spec.ts`: smoke E2E (login + alta de cliente).
+- `e2e/smoke.spec.ts`: smoke E2E (login + alta de cliente) con cleanup de clientas `E2E-SMOKE`.
 - `e2e/flows.spec.ts`: los 8 flujos obligatorios de Sprint 15 (venta con adelanto, venta pagada, pago a varios pedidos, sobrepago, reserva vencida, envío agrupado, rechazo de pago, ajuste de stock) ejecutados contra el motor de dominio y la base de datos real.
+- `e2e/batch-fifo.spec.ts`: flujos E2E de lotes y asignacion FIFO sobre inventario por batch.
 - `e2e/concurrency.spec.ts`: escenarios de concurrencia obligatoria de la Fase 3A (doble validación, edición+rechazo paralelo, cancelación atómica de envío, transición de estado única).
 - `e2e/ui-flows.spec.ts`: flujos de UI real de Fase 4 (validación de pago y cancelación de envío con motivo desde la página).
+- `e2e/permissions.spec.ts`: redirección a login para anónimos y matriz básica de acceso por rol (`ADMIN`, `SELLER`, `DISPATCH`).
 
 ### Prerrequisitos
 
@@ -386,12 +405,13 @@ La suite oficial es Playwright y vive en `e2e/`. Hay cuatro specs:
 ```bash
 pnpm test:e2e:install                                # una sola vez
 pnpm db:deploy && pnpm db:seed                      # sobre la base E2E
+pnpm test:domain                                    # regresiones de dominio previas a Playwright
 pnpm test:e2e                                       # build + start, contra .env local
 pnpm test:e2e:env                                   # usa .env.e2e (recomendado)
 pnpm test:e2e:dev                                   # levanta next dev en lugar de build+start
 ```
 
-`E2E_BASE_URL` permite apuntar a un servidor ya levantado. En CI (`.github/workflows/ci.yml`) el flujo es `pnpm db:deploy && pnpm db:seed && pnpm test:e2e` con Playwright levantando el build.
+`E2E_BASE_URL` permite apuntar a un servidor ya levantado. En CI (`.github/workflows/ci.yml`) el flujo es `pnpm db:deploy && pnpm db:seed && pnpm test:domain && pnpm test:e2e` con Playwright levantando el build.
 
 ## Estructura
 

@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CsvDownloadButton } from "@/components/reports/csv-download-button";
+import { ReportLimitNotice } from "@/components/reports/report-limit-notice";
 import type { CustomersFinancialReport } from "@/lib/financial-reports";
 
 function fmtMoney(value: string): string {
@@ -55,6 +56,8 @@ export function CustomersFinancialReportView({
           tone={data.totals.totalPendingCents > 0 ? "warning" : "default"}
         />
       </div>
+
+      <ReportLimitNotice meta={data.meta} />
 
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

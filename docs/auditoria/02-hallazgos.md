@@ -351,7 +351,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Invariantes financieros y de inventario viven solo en aplicacion.
 - Severidad: Media.
 - Categoria: Datos.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `prisma/schema.prisma`.
 - Descripcion: no hay checks DB para negativos, creditos disponibles, balances o stock comprometido.
 - Evidencia encontrada: modelos `ProductVariant`, `Order`, `Payment`, `CustomerCredit`, `ImportBatchItem`, `Expense`, `Incident`.
@@ -428,7 +428,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: reportes reflejan recuperos segun regla acordada.
 - Tests recomendados: reporte mensual con perdida y recupero.
 - Dependencias: decision contable.
-- Observaciones: pendiente de confirmar con negocio.
+- Observaciones: Regla contable aplicada en 0.40.0: recoveredAmount se suma a realNetProfitCents en los 3 modulos (lib/expenses.ts, lib/financial-dashboard.ts, lib/dashboard.ts).
 
 ### AUD-DATA-016 - Gastos validan estado fuera de transaccion
 
@@ -489,7 +489,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Reportes/dashboard concentran demasiadas responsabilidades.
 - Severidad: Media.
 - Categoria: Arquitectura.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `app/(dashboard)/reportes/page.tsx`, `lib/financial-reports.ts`, `lib/financial-dashboard.ts`.
 - Descripcion: multiples secciones, agregadores y reglas financieras viven en archivos grandes.
 - Evidencia encontrada: auditoria de estructura y funciones de reportes/dashboard.
@@ -498,7 +498,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: cada reporte tiene modulo y contrato testeable.
 - Tests recomendados: regression por reporte.
 - Dependencias: corregir bugs P0/P1 antes de refactor grande.
-- Observaciones: no bloquear P0 por este refactor.
+- Observaciones: corregido en 0.40.0 modularizando reportes y dashboard en submodulos `lib/reports/*` y `lib/dashboard/*`, con barrels `lib/financial-reports.ts` y `lib/financial-dashboard.ts`, mas helpers compartidos en `lib/reports/shared/*`.
 
 ### AUD-ARCH-003 - Documentacion funcional desalineada
 
@@ -566,7 +566,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Reportes financieros/exportaciones no tienen limites consistentes.
 - Severidad: Alta.
 - Categoria: Performance.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/financial-reports.ts`, `app/api/reportes/[section]/route.ts`, `lib/csv-export.ts`.
 - Descripcion: varias funciones usan `findMany` sin `take`; CSV se arma completo en memoria.
 - Evidencia encontrada: `lib/financial-reports.ts` reportes de productos, lotes, stock, clientes, devoluciones; `lib/csv-export.ts:42-49`.
@@ -575,7 +575,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: exportaciones grandes no bloquean serverless ni ocultan truncamiento.
 - Tests recomendados: dataset grande y medicion de tiempo/memoria.
 - Dependencias: definicion de volumen esperado.
-- Observaciones: no cachear datos financieros sensibles sin decision.
+- Observaciones: corregido en 0.40.0. `lib/financial-reports.ts` define `MAX_REPORT_ROWS = 5000`, expone `meta.truncated` en los reportes financieros, la UI muestra el aviso de truncamiento y los CSV agregan un comentario `# ...` cuando la exportacion fue recortada.
 
 ### AUD-PERF-003 - Rentabilidad por lote carga grafo completo
 
@@ -616,7 +616,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: plan de consulta usa indice y costo de escritura es aceptable.
 - Tests recomendados: explain antes/despues.
 - Dependencias: migraciones versionadas.
-- Observaciones: no agregar sin medicion.
+- Observaciones: evaluado en 0.40.0 con `scripts/explain-financial-index.ts`. Con el dataset actual el plan sigue usando `Seq Scan` por volumen minimo; no se agrega indice sin dataset representativo, siguiendo `AGENTS.md`.
 
 ### AUD-PERF-005 - Baja rotacion de reportes tiene N+1
 
@@ -648,7 +648,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: CSV de gastos parece completo pero limita a 1000.
 - Severidad: Media.
 - Categoria: Performance.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `app/api/reportes/[section]/route.ts`, `app/(dashboard)/reportes/page.tsx`.
 - Descripcion: `runExpensesReport` usa `perPage: 1000` sin comunicarlo.
 - Evidencia encontrada: `app/api/reportes/[section]/route.ts:289-298`.
@@ -657,7 +657,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: usuario conoce alcance o recibe export completo.
 - Tests recomendados: reporte con mas de 1000 gastos.
 - Dependencias: estrategia CSV.
-- Observaciones: tambien afecta UX/confianza.
+- Observaciones: corregido en 0.40.0. El export de gastos ya no hardcodea 1000/100; usa el `perPage` real, `listExpenses` admite hasta 5000 filas y el truncamiento queda visible en UI y CSV.
 
 ### AUD-PERF-007 - Overview financiero hace aggregates duplicados
 
@@ -665,7 +665,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: `getFinancialOverview()` usa multiples aggregates separadas.
 - Severidad: Media.
 - Categoria: Performance.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/financial-dashboard.ts`.
 - Descripcion: suma campos de orden en varias queries separadas sobre el mismo filtro.
 - Evidencia encontrada: revision de `getFinancialOverview()`.
@@ -674,7 +674,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: una consulta suma multiples campos cuando sea posible.
 - Tests recomendados: snapshot de resultados antes/despues.
 - Dependencias: ninguna.
-- Observaciones: optimizacion posterior a P0.
+- Observaciones: corregido en 0.40.0. `getFinancialOverview()`, `getFinancialPeriod()` y `getDashboardMetrics()` consolidan multiples `_sum` sobre los mismos filtros en menos queries.
 
 ### AUD-PERF-008 - Fallback mensual puede hacer muchas consultas
 
@@ -682,7 +682,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Fallback de ventas por mes escala por cantidad de meses.
 - Severidad: Media.
 - Categoria: Performance.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/financial-reports.ts`.
 - Descripcion: si falla raw SQL, fallback itera meses y hace consultas por mes.
 - Evidencia encontrada: auditoria de `getSalesByMonthReport()`.
@@ -691,7 +691,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: fallback mantiene numero acotado de queries.
 - Tests recomendados: forzar fallback en rango largo.
 - Dependencias: ninguna.
-- Observaciones: raw SQL actual esta parametrizado.
+- Observaciones: corregido en 0.40.0. El fallback de `getSalesByMonthReport()` ya no hace 2N queries por mes; resuelve el rango con 1 query y agrupa en memoria.
 
 ### AUD-PERF-009 - Reporte de lives calcula metricas incorrectamente
 
@@ -699,7 +699,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Agregados de lives se repiten para cada live.
 - Severidad: Media.
 - Categoria: Performance.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/reports.ts`.
 - Descripcion: agrega todos los `liveIds` juntos y asigna el mismo resultado a cada live.
 - Evidencia encontrada: `lib/reports.ts:665-700`.
@@ -708,7 +708,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: cada live muestra metricas propias.
 - Tests recomendados: reporte con dos lives y ventas distintas.
 - Dependencias: ninguna.
-- Observaciones: categorizado como performance por ubicacion, pero es bug funcional de reporte.
+- Observaciones: corregido en 0.40.0. `getLivesReport()` usa `groupBy` por `liveSessionId`, por lo que cada live muestra sus metricas propias y no reusa agregados globales.
 
 ### AUD-PERF-010 - Historial de movimientos sin paginacion
 
@@ -750,7 +750,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Revenue historico de top productos es dummy.
 - Severidad: Media.
 - Categoria: Performance.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `lib/reports.ts`.
 - Descripcion: modo sin rango calcula revenue con expresion que siempre da 0.
 - Evidencia encontrada: `lib/reports.ts:930-934`.
@@ -759,7 +759,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: revenue no muestra cero falso.
 - Tests recomendados: reporte historico con ventas.
 - Dependencias: ninguna.
-- Observaciones: bug funcional de reporte.
+- Observaciones: corregido en 0.40.0. `getTopProductsReport()` historico calcula revenue real via `orderItem.groupBy` en vez de una expresion dummy que devolvia cero.
 
 ## Experiencia de usuario
 
@@ -854,7 +854,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Toggle de categoria ejecuta accion directa.
 - Severidad: Baja.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `components/tables/categories-table.tsx`.
 - Descripcion: toggle llama action inmediatamente, sin pending/error claro.
 - Evidencia encontrada: auditoria de tabla de categorias.
@@ -888,7 +888,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Motivo de cancelacion de envio es opcional.
 - Severidad: Media.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `components/forms/shipment-status-actions.tsx`, `actions/shipments.ts`.
 - Descripcion: UI indica motivo opcional y Zod lo permite.
 - Evidencia encontrada: auditoria de form/action de envio.
@@ -897,7 +897,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: cancelacion guarda motivo no vacio o decision documentada.
 - Tests recomendados: E2E cancelacion sin motivo.
 - Dependencias: decision funcional.
-- Observaciones: pendiente de confirmar.
+- Observaciones: Corregido en 0.40.0. Motivo obligatorio (minimo 5 caracteres) en CancelSchema (Zod) y UI (shipment-status-actions.tsx).
 
 ### AUD-UX-009 - Cliente bloqueado no impide venta
 
@@ -967,7 +967,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Cards de despacho muestran `—`.
 - Severidad: Media.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `app/(dashboard)/dashboard/page.tsx`.
 - Descripcion: estados de envio para `DISPATCH` no muestran conteos reales.
 - Evidencia encontrada: `app/(dashboard)/dashboard/page.tsx:643-667`.
@@ -976,7 +976,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: cards muestran conteos reales.
 - Tests recomendados: E2E o integracion dashboard dispatch.
 - Dependencias: `AUD-UX-002`.
-- Observaciones: funcionalidad incompleta.
+- Observaciones: corregido en 0.40.0. El dashboard de `DISPATCH` muestra conteos reales por estado (`PENDING`, `PREPARING`, `READY`, `SHIPPED`).
 
 ### AUD-UX-013 - Venta rapida pierde WhatsApp seleccionado
 
@@ -1001,7 +1001,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Submit de pago manual no se deshabilita con datos incompletos.
 - Severidad: Baja.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `components/forms/create-payment-form.tsx`.
 - Descripcion: `canSubmit` se calcula, pero `SubmitButton` solo depende de pending.
 - Evidencia encontrada: auditoria de `create-payment-form`.
@@ -1010,7 +1010,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: submit se habilita solo con datos minimos validos.
 - Tests recomendados: UI/manual.
 - Dependencias: ninguna.
-- Observaciones: no sustituye validacion servidor.
+- Observaciones: Corregido en 0.40.0. SubmitButton local ahora acepta prop disabled y se deshabilita cuando canSubmit es false.
 
 ### AUD-UX-015 - Loading generico para todo dashboard group
 
@@ -1018,7 +1018,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Skeleton de dashboard se usa para rutas heterogeneas.
 - Severidad: Baja.
 - Categoria: UX.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `app/(dashboard)/loading.tsx`.
 - Descripcion: loading no corresponde a formularios, detalles o reportes.
 - Evidencia encontrada: auditoria de loading.
@@ -1054,7 +1054,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Pruebas financieras se ejecutan manualmente.
 - Severidad: Media.
 - Categoria: Testing.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `package.json`, `.github/workflows/ci.yml`, `scripts/test-*.ts`.
 - Descripcion: scripts de dominio existen, pero no estan agrupados en package/CI.
 - Evidencia encontrada: `package.json` solo expone `typecheck`, `lint`, `verify`, `test:e2e`.
@@ -1063,7 +1063,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: CI ejecuta tests de dominio relevantes.
 - Tests recomendados: los propios scripts.
 - Dependencias: `AUD-PROD-001`.
-- Observaciones: no reemplaza E2E.
+- Observaciones: corregido en 0.40.0. Se agrego `scripts/run-domain-tests.ts` y el script `pnpm test:domain`; CI lo ejecuta despues de `pnpm db:seed` y antes de Playwright. No reemplaza E2E.
 
 ### AUD-TEST-002 - Smoke E2E deja datos persistentes
 
@@ -1071,7 +1071,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: Smoke crea clientes sin cleanup alineado.
 - Severidad: Baja.
 - Categoria: Testing.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `e2e/smoke.spec.ts`, `e2e/fixtures/db.ts`.
 - Descripcion: crea `Cliente E2E ...` y cleanup compartido no parece cubrir ese patron.
 - Evidencia encontrada: `e2e/smoke.spec.ts:10-27`.
@@ -1080,7 +1080,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: E2E no acumula datos residuales.
 - Tests recomendados: dos corridas consecutivas.
 - Dependencias: ninguna.
-- Observaciones: relevante si se reutiliza DB E2E.
+- Observaciones: corregido en 0.40.0. `e2e/smoke.spec.ts` usa el prefijo `E2E-SMOKE` y ejecuta cleanup en `afterAll` mediante `cleanupCustomersByPrefix()` desde `e2e/fixtures/db.ts`.
 
 ### AUD-TEST-003 - Playwright no genera trace actualmente
 
@@ -1088,7 +1088,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: `trace: on-first-retry` con `retries: 0` no produce trazas.
 - Severidad: Baja.
 - Categoria: Testing.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `playwright.config.ts`.
 - Descripcion: al no haber retry, no hay first retry.
 - Evidencia encontrada: `playwright.config.ts:26`, `playwright.config.ts:34`.
@@ -1097,7 +1097,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: fallo E2E genera artefacto util.
 - Tests recomendados: forzar fallo controlado en rama temporal.
 - Dependencias: ninguna.
-- Observaciones: cambio de config, no de negocio.
+- Observaciones: corregido en 0.40.0. `playwright.config.ts` usa `trace: retain-on-failure` en CI, conserva `screenshot` y `video` on failure, habilita reporter HTML en CI y el workflow sube `test-results` ademas de `playwright-report` cuando falla.
 
 ### AUD-TEST-004 - Faltan pruebas de permisos y seguridad
 
@@ -1105,7 +1105,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: No hay suite integral de autorizacion por rol.
 - Severidad: Media.
 - Categoria: Testing.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `e2e/*`, `actions/*`, `lib/authorization.ts`.
 - Descripcion: los hallazgos de RBAC no estan protegidos por pruebas sistematicas.
 - Evidencia encontrada: auditoria de rutas/actions/sidebar.
@@ -1114,7 +1114,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: rutas/actions criticas tienen expectativas por rol.
 - Tests recomendados: E2E y tests de integracion de server actions.
 - Dependencias: `AUD-SEC-005`.
-- Observaciones: obligatorio antes de produccion.
+- Observaciones: corregido en 0.40.0. La nueva suite `e2e/permissions.spec.ts` valida redireccion a login para usuarios no autenticados y una matriz basica de acceso por rol (`ADMIN`, `SELLER`, `DISPATCH`); `e2e/fixtures/auth.ts` agrega `dispatchPage`.
 
 ## Produccion
 
@@ -1245,7 +1245,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: `updatePaymentApplicationsAction` no tiene consumidor UI.
 - Severidad: Media.
 - Categoria: Funcionalidades faltantes.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `actions/payments.ts`, `app/(dashboard)/pagos/[id]/page.tsx`.
 - Descripcion: si un pago pendiente fue mal aplicado, no hay flujo visible de correccion.
 - Evidencia encontrada: accion existe y detalle solo muestra aplicaciones.
@@ -1254,7 +1254,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: pago pendiente permite modificar aplicaciones con validacion.
 - Tests recomendados: E2E editar aplicaciones.
 - Dependencias: `AUD-DATA-014`.
-- Observaciones: P2.
+- Observaciones: Corregido en 0.40.0. Nuevo componente EditPaymentApplicationsForm integrado en pagos/[id]/page.tsx para pagos pendientes.
 
 ### AUD-FUNC-004 - Edicion de envios sin UI
 
@@ -1262,7 +1262,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: `updateShipmentAction` no esta expuesta en detalle de envio.
 - Severidad: Media.
 - Categoria: Funcionalidades faltantes.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `actions/shipments.ts`, `app/(dashboard)/envios/[id]/page.tsx`.
 - Descripcion: no hay formulario para tracking, agencia, costo, direccion o notas despues de crear.
 - Evidencia encontrada: auditoria de detalle de envio y action existente.
@@ -1271,7 +1271,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: admin/dispatch edita datos permitidos y queda auditado.
 - Tests recomendados: E2E editar envio.
 - Dependencias: `AUD-DATA-008`.
-- Observaciones: P2.
+- Observaciones: Corregido en 0.40.0. Nuevo componente EditShipmentForm integrado en envios/[id]/page.tsx. Enum SHIPMENT_UPDATED agregado a AuditAction.
 
 ### AUD-FUNC-005 - Gestion de lotes sin UI completa
 
@@ -1313,7 +1313,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Titulo: No existen campos financieros para costo real de delivery asumido.
 - Severidad: Media.
 - Categoria: Funcionalidades faltantes.
-- Estado: Pendiente.
+- Estado: Corregido.
 - Archivo, ruta o modulo afectado: `prisma/schema.prisma`, reportes financieros, envios.
 - Descripcion: documentacion financiera menciona costos reales de envio, pero `Order`/`ShipmentOrder` no modelan asignacion de costo real.
 - Evidencia encontrada: `prisma/schema.prisma:418-441`, `prisma/schema.prisma:649-659`.
@@ -1322,4 +1322,4 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: costo real de envio queda modelado y reportado, o diferido explicitamente.
 - Tests recomendados: reporte financiero con envio gratis asumido por negocio.
 - Dependencias: migraciones versionadas y decision contable.
-- Observaciones: pendiente de confirmar con negocio.
+- Observaciones: corregido en 0.40.0. El schema agrega `Order.deliveryBusinessCostPen`, `Shipment.realCostPen` y `ShipmentOrder.allocatedShippingCostPen`; crear, editar o cancelar un envio recalcula la utilidad del pedido afectado.

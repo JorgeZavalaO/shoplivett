@@ -35,6 +35,7 @@ export async function logout(page: Page) {
 export const test = base.extend<{
   adminPage: Page;
   sellerPage: Page;
+  dispatchPage: Page;
 }>({
   adminPage: async ({ browser }, use) => {
     const context = await browser.newContext();
@@ -48,6 +49,14 @@ export const test = base.extend<{
     const context = await browser.newContext();
     const page = await context.newPage();
     await login(page, SELLER);
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    await use(page);
+    await context.close();
+  },
+  dispatchPage: async ({ browser }, use) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await login(page, DISPATCH);
     // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(page);
     await context.close();

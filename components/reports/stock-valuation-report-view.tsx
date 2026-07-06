@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CsvDownloadButton } from "@/components/reports/csv-download-button";
+import { ReportLimitNotice } from "@/components/reports/report-limit-notice";
 import { StockHealthBadge } from "@/components/financial/stock-health-badge";
 import type { StockValuationReport } from "@/lib/financial-reports";
 
@@ -61,6 +62,8 @@ export function StockValuationReportView({
           Hay {data.totals.variantsWithoutBatches} variante(s) usando costo legado. El valor total puede cambiar cuando migren a lotes.
         </div>
       ) : null}
+
+      <ReportLimitNotice meta={data.meta} />
 
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

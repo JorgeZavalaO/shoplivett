@@ -74,6 +74,11 @@ function csvResponse(section: Section, content: string) {
   });
 }
 
+function withCsvNotice(content: string, notice?: string) {
+  if (!notice) return content;
+  return `\uFEFF# ${notice}\r\n${content.slice(1)}`;
+}
+
 function notFound() {
   return new NextResponse("Not found", { status: 404 });
 }
@@ -121,6 +126,7 @@ export async function GET(
         grossProfit: string;
         paymentFee: string;
         packagingCost: string;
+        deliveryBusinessCost: string;
         netProfit: string;
         marginBps: number;
       };
@@ -134,6 +140,7 @@ export async function GET(
         { header: "Utilidad bruta (PEN)", value: (r) => r.grossProfit },
         { header: "Fee medio pago (PEN)", value: (r) => r.paymentFee },
         { header: "Costo empaque (PEN)", value: (r) => r.packagingCost },
+        { header: "Costo real envio (PEN)", value: (r) => r.deliveryBusinessCost },
         { header: "Utilidad neta (PEN)", value: (r) => r.netProfit },
         { header: "Margen (%)", value: (r) => (r.marginBps / 100).toFixed(2) },
       ];
@@ -143,6 +150,10 @@ export async function GET(
       );
       const totalPackagingCents = report.rows.reduce(
         (acc, r) => acc + r.packagingCostCents,
+        0,
+      );
+      const totalDeliveryBusinessCostCents = report.rows.reduce(
+        (acc, r) => acc + r.deliveryBusinessCostCents,
         0,
       );
       const data: SalesCsvRow[] = [
@@ -156,6 +167,7 @@ export async function GET(
           grossProfit: r.grossProfit,
           paymentFee: r.paymentFee,
           packagingCost: r.packagingCost,
+          deliveryBusinessCost: r.deliveryBusinessCost,
           netProfit: r.netProfit,
           marginBps: r.marginBps,
         })),
@@ -169,6 +181,7 @@ export async function GET(
           grossProfit: report.totals.grossProfit,
           paymentFee: (totalPaymentFeeCents / 100).toFixed(2),
           packagingCost: (totalPackagingCents / 100).toFixed(2),
+          deliveryBusinessCost: (totalDeliveryBusinessCostCents / 100).toFixed(2),
           netProfit: report.totals.netProfit,
           marginBps:
             report.totals.revenueCents > 0
@@ -200,7 +213,12 @@ export async function GET(
         { header: "Margen (%)", value: (r) => (r.marginBps / 100).toFixed(2) },
         { header: "Stock", value: (r) => r.stock },
       ];
-      const csv = buildCsv(report.rows, cols);
+      const csv = withCsvNotice(
+        buildCsv(report.rows, cols),
+        report.meta.truncated
+          ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
+          : undefined,
+      );
       return csvResponse("products", csv);
     });
   }
@@ -223,7 +241,12 @@ export async function GET(
         { header: "ROI (%)", value: (r) => (r.roiBps / 100).toFixed(2) },
         { header: "Uds disponibles", value: (r) => r.availableUnits },
       ];
-      const csv = buildCsv(report.rows, cols);
+      const csv = withCsvNotice(
+        buildCsv(report.rows, cols),
+        report.meta.truncated
+          ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
+          : undefined,
+      );
       return csvResponse("batches", csv);
     });
   }
@@ -247,7 +270,12 @@ export async function GET(
         { header: "Costo unitario (PEN)", value: (r) => r.unitCost },
         { header: "Costo total (PEN)", value: (r) => r.totalCost },
       ];
-      const csv = buildCsv(report.rows, cols);
+      const csv = withCsvNotice(
+        buildCsv(report.rows, cols),
+        report.meta.truncated
+          ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
+          : undefined,
+      );
       return csvResponse("stock", csv);
     });
   }
@@ -271,7 +299,12 @@ export async function GET(
         { header: "Ultima venta", value: (r) => r.lastSoldAt?.toISOString().slice(0, 10) ?? "Nunca" },
         { header: "Dias sin venta", value: (r) => r.daysSinceLastSale ?? "Nunca" },
       ];
-      const csv = buildCsv(report.rows, cols);
+      const csv = withCsvNotice(
+        buildCsv(report.rows, cols),
+        report.meta.truncated
+          ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
+          : undefined,
+      );
       return csvResponse("rotation", csv);
     });
   }
@@ -294,7 +327,7 @@ export async function GET(
       status: status as never,
       query,
       page: 1,
-      perPage: 1000,
+      perPage: 5000,
     }).then((report) => {
       const cols: Array<CsvColumn<(typeof report.rows)[number]>> = [
         { header: "Fecha", value: (r) => r.expenseDate.toISOString().slice(0, 10) },
@@ -306,7 +339,12 @@ export async function GET(
         { header: "Estado", value: (r) => r.status },
         { header: "Notas", value: (r) => r.notes ?? "" },
       ];
-      const csv = buildCsv(report.rows, cols);
+      const csv = withCsvNotice(
+        buildCsv(report.rows, cols),
+        report.meta.truncated
+          ? `Mostrando ${report.meta.returnedRows} de ${report.meta.totalRows ?? report.meta.returnedRows} gastos.`
+          : undefined,
+      );
       return csvResponse("expenses", csv);
     });
   }
@@ -327,7 +365,12 @@ export async function GET(
         { header: "Saldo pendiente (PEN)", value: (r) => r.totalPending },
         { header: "Credito disponible (PEN)", value: (r) => r.creditAvailable },
       ];
-      const csv = buildCsv(report.rows, cols);
+      const csv = withCsvNotice(
+        buildCsv(report.rows, cols),
+        report.meta.truncated
+          ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
+          : undefined,
+      );
       return csvResponse("customers", csv);
     });
   }
@@ -354,7 +397,12 @@ export async function GET(
         { header: "Perdido (PEN)", value: (r) => r.lost },
         { header: "Descripcion", value: (r) => r.description },
       ];
-      const csv = buildCsv(report.rows, cols);
+      const csv = withCsvNotice(
+        buildCsv(report.rows, cols),
+        report.meta.truncated
+          ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
+          : undefined,
+      );
       return csvResponse("returns", csv);
     });
   }

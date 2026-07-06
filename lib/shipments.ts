@@ -9,6 +9,8 @@ import { getPrisma } from "@/lib/prisma";
 import { SHIPPING_METHOD_LABELS } from "@/lib/settings-defaults";
 import { toCents, centsToDecimalString, type Cents } from "@/lib/money";
 import { auditInTx } from "@/lib/audit";
+import { recognizeOrderProfit, distributeOrderDiscount } from "@/lib/order-batch-allocation";
+import { coercePaymentMethodFees, type PaymentMethodFees } from "@/lib/settings-defaults";
 
 export class ShipmentError extends Error {
   constructor(
@@ -44,6 +46,7 @@ export type CreateShipmentInput = {
   shippingMethod: ShippingMethod;
   orderIds: string[];
   shippingCost: string;
+  realCost?: string;
   forceFreeShipping?: boolean;
   agencyName?: string | null;
   trackingCode?: string | null;
@@ -58,6 +61,7 @@ export type CreateShipmentInput = {
 export type UpdateShipmentInput = {
   shipmentId: string;
   shippingCost?: string;
+  realCost?: string;
   isFreeShipping?: boolean;
   shippingMethod?: ShippingMethod;
   agencyName?: string | null;
@@ -81,6 +85,57 @@ const STATUS_FLOW: Record<ShipmentStatus, ShipmentStatus[]> = {
 
 export function canTransition(from: ShipmentStatus, to: ShipmentStatus): boolean {
   return STATUS_FLOW[from]?.includes(to) ?? false;
+}
+
+function allocateShipmentRealCost(
+  orders: Array<{ id: string; total: { toString(): string } }>,
+  realCostCents: Cents,
+) {
+  const allocations = distributeOrderDiscount(
+    orders.map((order) => ({
+      variantId: order.id,
+      quantity: 1,
+      lineSubtotalCents: shipmentToCents(order.total.toString()),
+    })),
+    realCostCents,
+  );
+  return new Map(orders.map((order) => [order.id, allocations.get(order.id) ?? 0]));
+}
+
+async function recognizeShipmentOrderProfit(
+  tx: Prisma.TransactionClient,
+  orderIds: string[],
+  actorId: string | null,
+  source: "SHIPMENT_CREATED" | "SHIPMENT_UPDATED" | "SHIPMENT_CANCELLED",
+) {
+  if (orderIds.length === 0) return;
+  const settings = await tx.businessSettings.findUnique({ where: { id: "default" } });
+  const fees: PaymentMethodFees = settings
+    ? coercePaymentMethodFees(settings.paymentMethodFees)
+    : { YAPE: 0, PLIN: 0, CASH: 0, OTHER: 0 };
+  const packaging = settings ? settings.standardPackagingCostPen.toString() : "0.00";
+
+  for (const orderId of orderIds) {
+    const profit = await recognizeOrderProfit(tx, orderId, {
+      paymentMethodFees: fees,
+      packagingCostPen: packaging,
+      recalculate: true,
+    });
+    await auditInTx(tx, actorId, {
+      action: "ORDER_PROFIT_RECOGNIZED",
+      entity: "Order",
+      entityId: orderId,
+      metadata: {
+        source,
+        productCostPen: centsToDecimalString(profit.productCostCents),
+        grossProfitPen: centsToDecimalString(profit.grossProfitCents),
+        paymentFeePen: centsToDecimalString(profit.paymentFeeCents),
+        packagingCostPen: centsToDecimalString(profit.packagingCostCents),
+        deliveryBusinessCostPen: centsToDecimalString(profit.deliveryBusinessCostCents),
+        netProfitPen: centsToDecimalString(profit.netProfitCents),
+      },
+    });
+  }
 }
 
 export async function createShipment(
@@ -156,6 +211,7 @@ export async function createShipment(
         );
 
         const shippingCents = shipmentToCents(input.shippingCost || "0");
+        const realCostCents = shipmentToCents(input.realCost || "0");
         let finalCostCents = shippingCents;
         let isFree = false;
         if (input.forceFreeShipping) {
@@ -177,12 +233,15 @@ export async function createShipment(
             !input.forceFreeShipping && isFree && freeShippingEnabled,
         };
 
+        const realCostByOrder = allocateShipmentRealCost(orders, realCostCents);
+
         const shipment = await tx.shipment.create({
           data: {
             customerId: input.customerId,
             shippingMethod: input.shippingMethod,
             status: "PENDING",
             shippingCost: centsToDecimalString(finalCostCents),
+            realCostPen: centsToDecimalString(realCostCents),
             isFreeShipping: isFree,
             freeShippingRule,
             agencyName: input.agencyName ?? null,
@@ -197,9 +256,22 @@ export async function createShipment(
 
         for (const o of orders) {
           await tx.shipmentOrder.create({
-            data: { shipmentId: shipment.id, orderId: o.id },
+            data: {
+              shipmentId: shipment.id,
+              orderId: o.id,
+              allocatedShippingCostPen: centsToDecimalString(
+                realCostByOrder.get(o.id) ?? 0,
+              ),
+            },
           });
         }
+
+        await recognizeShipmentOrderProfit(
+          tx,
+          uniqueIds,
+          input.actorId ?? input.createdById ?? null,
+          "SHIPMENT_CREATED",
+        );
 
         await auditInTx(tx, input.actorId ?? input.createdById ?? null, {
           action: "SHIPMENT_CREATED",
@@ -211,6 +283,7 @@ export async function createShipment(
             ordersCount: uniqueIds.length,
             orderIds: uniqueIds,
             shippingCost: centsToDecimalString(finalCostCents),
+            realCostPen: centsToDecimalString(realCostCents),
             isFreeShipping: isFree,
             agencyName: input.agencyName ?? null,
             trackingCode: input.trackingCode ?? null,
@@ -252,6 +325,14 @@ export async function updateShipment(
           );
         }
 
+        const shipmentOrders = await tx.shipmentOrder.findMany({
+          where: { shipmentId: input.shipmentId },
+          select: {
+            orderId: true,
+            order: { select: { id: true, total: true } },
+          },
+        });
+
         const data: Prisma.ShipmentUpdateInput = {};
         if (input.shippingMethod) data.shippingMethod = input.shippingMethod;
         if (typeof input.agencyName !== "undefined") data.agencyName = input.agencyName;
@@ -265,6 +346,13 @@ export async function updateShipment(
         if (typeof input.notes !== "undefined") data.notes = input.notes;
         if (typeof input.updatedById !== "undefined" && input.updatedById) {
           data.updatedBy = { connect: { id: input.updatedById } };
+        }
+        const nextRealCostCents =
+          typeof input.realCost !== "undefined"
+            ? shipmentToCents(input.realCost)
+            : shipmentToCents(shipment.realCostPen.toString());
+        if (typeof input.realCost !== "undefined") {
+          data.realCostPen = centsToDecimalString(nextRealCostCents);
         }
 
         if (typeof input.isFreeShipping === "boolean") {
@@ -284,9 +372,32 @@ export async function updateShipment(
           }
         }
 
+        if (shipmentOrders.length > 0) {
+          const realCostByOrder = allocateShipmentRealCost(
+            shipmentOrders.map((link) => link.order),
+            nextRealCostCents,
+          );
+          for (const link of shipmentOrders) {
+            await tx.shipmentOrder.updateMany({
+              where: { shipmentId: input.shipmentId, orderId: link.orderId },
+              data: {
+                allocatedShippingCostPen: centsToDecimalString(
+                  realCostByOrder.get(link.orderId) ?? 0,
+                ),
+              },
+            });
+          }
+        }
+
         await tx.shipment.update({ where: { id: input.shipmentId }, data });
+        await recognizeShipmentOrderProfit(
+          tx,
+          shipmentOrders.map((link) => link.orderId),
+          input.actorId ?? input.updatedById ?? null,
+          "SHIPMENT_UPDATED",
+        );
         await auditInTx(tx, input.actorId ?? input.updatedById ?? null, {
-          action: "SHIPMENT_STATUS_CHANGED",
+          action: "SHIPMENT_UPDATED",
           entity: "Shipment",
           entityId: input.shipmentId,
           metadata: {
@@ -331,6 +442,13 @@ export async function changeShipmentStatus(
             "INVALID_STATUS_TRANSITION",
           );
         }
+        const shipmentOrders =
+          input.to === "CANCELLED"
+            ? await tx.shipmentOrder.findMany({
+                where: { shipmentId: input.shipmentId },
+                select: { orderId: true },
+              })
+            : [];
         const now = new Date();
         const data: Prisma.ShipmentUpdateInput = { status: input.to };
         if (input.to === "PREPARING") data.preparedAt = now;
@@ -341,6 +459,14 @@ export async function changeShipmentStatus(
           if (input.notes) data.notes = input.notes;
         }
         await tx.shipment.update({ where: { id: input.shipmentId }, data });
+        if (input.to === "CANCELLED") {
+          await recognizeShipmentOrderProfit(
+            tx,
+            shipmentOrders.map((link) => link.orderId),
+            input.actorId ?? null,
+            "SHIPMENT_CANCELLED",
+          );
+        }
         await auditInTx(tx, input.actorId ?? null, {
           action:
             input.to === "CANCELLED" ? "SHIPMENT_CANCELLED" : "SHIPMENT_STATUS_CHANGED",
@@ -434,6 +560,7 @@ export async function listShipments(args?: {
       status: s.status,
       shippingMethod: s.shippingMethod,
       shippingCost: s.shippingCost.toString(),
+      realCostPen: s.realCostPen.toString(),
       isFreeShipping: s.isFreeShipping,
       agencyName: s.agencyName,
       trackingCode: s.trackingCode,
@@ -552,9 +679,10 @@ export async function listCustomerShipments(customerId: string) {
   return rows.map((s) => ({
     id: s.id,
     status: s.status,
-    shippingMethod: s.shippingMethod,
-    shippingCost: s.shippingCost.toString(),
-    isFreeShipping: s.isFreeShipping,
+      shippingMethod: s.shippingMethod,
+      shippingCost: s.shippingCost.toString(),
+      realCostPen: s.realCostPen.toString(),
+      isFreeShipping: s.isFreeShipping,
     agencyName: s.agencyName,
     trackingCode: s.trackingCode,
     createdAt: s.createdAt,

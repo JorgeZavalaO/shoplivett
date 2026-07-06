@@ -131,10 +131,15 @@ export function ShipmentStatusActions({
             name="reason"
             rows={2}
             maxLength={500}
-            placeholder="Motivo de cancelación (opcional)"
+            placeholder="Motivo de cancelación (obligatorio, mínimo 5 caracteres)"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
           />
+          {reason.trim().length > 0 && reason.trim().length < 5 ? (
+            <p className="text-xs text-destructive">
+              El motivo debe tener al menos 5 caracteres.
+            </p>
+          ) : null}
           {cancelState.message && !cancelState.ok ? (
             <p className="text-xs text-destructive">{cancelState.message}</p>
           ) : null}
@@ -154,6 +159,7 @@ export function ShipmentStatusActions({
               type="button"
               variant="destructive"
               className="flex-1"
+              disabled={reason.trim().length < 5}
               onClick={() => {
                 setCancelError(null);
                 setConfirmCancel(true);

@@ -5,6 +5,7 @@ import { ArrowLeft, Image as ImageIcon } from "lucide-react";
 import { getPaymentDetailAction } from "@/actions/payments";
 import { PaymentStatusBadge } from "@/components/dashboard/payment-status-badge";
 import { PaymentActions } from "@/components/forms/payment-actions";
+import { EditPaymentApplicationsForm } from "@/components/forms/edit-payment-applications-form";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -177,11 +178,25 @@ export default async function PagoDetallePage({ params }: { params: Params }) {
           <CardHeader>
             <CardTitle className="text-base">Pedidos aplicados</CardTitle>
             <CardDescription>
-              Los saldos de los pedidos solo se actualizan al validar.
+              {isPending
+                ? "Edita las aplicaciones antes de validar."
+                : "Los saldos de los pedidos solo se actualizan al validar."}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {payment.applications.length === 0 ? (
+            {isPending ? (
+              <EditPaymentApplicationsForm
+                paymentId={payment.id}
+                paymentAmount={payment.amount.toString()}
+                customerId={payment.customer.id}
+                initialApplications={payment.applications.map((a) => ({
+                  orderId: a.order.id,
+                  orderNumber: a.order.orderNumber,
+                  balance: a.order.balance.toString(),
+                  amount: a.amount.toString(),
+                }))}
+              />
+            ) : payment.applications.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Este pago aún no tiene pedidos aplicados.
               </p>

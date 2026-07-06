@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CsvDownloadButton } from "@/components/reports/csv-download-button";
+import { ReportLimitNotice } from "@/components/reports/report-limit-notice";
 import { RotationBadge } from "@/components/financial/rotation-badge";
 import { StockHealthBadge } from "@/components/financial/stock-health-badge";
 import type { LowRotationReport } from "@/lib/financial-reports";
@@ -55,6 +56,8 @@ export function LowRotationReportView({
           Estos productos mantienen capital inmovilizado sin ventas recientes. Prioriza rotacion, rebundles o ajuste de precio.
         </div>
       ) : null}
+
+      <ReportLimitNotice meta={data.meta} />
 
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

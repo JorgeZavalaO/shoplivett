@@ -647,25 +647,25 @@ function DispatchDashboard({
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <DashboardMetricCard
           title="Pendientes"
-          value="—"
+          value={String(metrics.shipmentsPendingCount)}
           hint="Ver envíos pendientes"
           href={ROUTES.shipmentsPending}
         />
         <DashboardMetricCard
           title="Preparando"
-          value="—"
+          value={String(metrics.shipmentsPreparingCount)}
           hint="Ver envíos en preparación"
           href={ROUTES.shipmentsPreparing}
         />
         <DashboardMetricCard
           title="Listos"
-          value="—"
+          value={String(metrics.shipmentsReadyCount)}
           hint="Ver envíos listos para despachar"
           href={ROUTES.shipmentsReady}
         />
         <DashboardMetricCard
           title="Enviados"
-          value="—"
+          value={String(metrics.shipmentsShippedCount)}
           hint="Ver envíos en ruta"
           href={ROUTES.shipmentsShipped}
         />

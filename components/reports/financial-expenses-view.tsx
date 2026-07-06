@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CsvDownloadButton } from "@/components/reports/csv-download-button";
+import { ReportLimitNotice } from "@/components/reports/report-limit-notice";
 import type { FinancialExpensesReport } from "@/lib/financial-reports";
 
 function fmtMoney(value: string): string {
@@ -52,6 +53,8 @@ export function FinancialExpensesView({
             .join(" · ") || "Sin filtro"}
         />
       </div>
+
+      <ReportLimitNotice meta={data.meta} />
 
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { getShipmentDetailAction } from "@/actions/shipments";
 import { ShipmentStatusBadge } from "@/components/dashboard/shipment-status-badge";
 import { ShipmentStatusActions } from "@/components/forms/shipment-status-actions";
+import { EditShipmentForm } from "@/components/forms/edit-shipment-form";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -149,7 +150,7 @@ export default async function EnvioDetallePage({ params }: { params: Params }) {
         ) : null}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader>
             <CardDescription>Costo</CardDescription>
@@ -163,6 +164,17 @@ export default async function EnvioDetallePage({ params }: { params: Params }) {
           </CardHeader>
           <CardContent className="text-xs text-muted-foreground">
             {shipment.isFreeShipping ? "Marcado como envío gratis." : "Costo registrado al crear."}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardDescription>Costo real negocio</CardDescription>
+            <CardTitle className="text-2xl">
+              S/ {shipment.realCostPen.toString()}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-muted-foreground">
+            Monto realmente asumido por la empresa para este envío.
           </CardContent>
         </Card>
         <Card>
@@ -234,6 +246,34 @@ export default async function EnvioDetallePage({ params }: { params: Params }) {
             </div>
           </CardContent>
         </Card>
+
+        {shipment.status !== "DELIVERED" && shipment.status !== "CANCELLED" ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Editar envío</CardTitle>
+              <CardDescription>
+                Modifica datos del envío antes de finalizar.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <EditShipmentForm
+                shipmentId={shipment.id}
+                defaultValues={{
+                  shippingMethod: shipment.shippingMethod,
+                  shippingCost: shipment.shippingCost.toString(),
+                  realCostPen: shipment.realCostPen.toString(),
+                  isFreeShipping: shipment.isFreeShipping,
+                  agencyName: shipment.agencyName,
+                  trackingCode: shipment.trackingCode,
+                  addressSnapshot: shipment.addressSnapshot,
+                  districtSnapshot: shipment.districtSnapshot,
+                  referenceSnapshot: shipment.referenceSnapshot,
+                  notes: shipment.notes,
+                }}
+              />
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardHeader>

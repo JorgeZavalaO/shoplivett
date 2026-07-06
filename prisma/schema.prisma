@@ -186,6 +186,7 @@ enum AuditAction {
   SHIPMENT_CREATED
   SHIPMENT_STATUS_CHANGED
   SHIPMENT_CANCELLED
+  SHIPMENT_UPDATED
   PRODUCT_PRICE_CHANGED
   CUSTOMER_DEACTIVATED
   CUSTOMER_STATUS_CHANGED
@@ -437,6 +438,7 @@ model Order {
   grossProfitPen  Decimal       @default(0) @db.Decimal(12, 2)
   paymentFeePen   Decimal       @default(0) @db.Decimal(12, 2)
   packagingCostPen Decimal      @default(0) @db.Decimal(12, 2)
+  deliveryBusinessCostPen Decimal @default(0) @db.Decimal(12, 2)
   netProfitPen    Decimal       @default(0) @db.Decimal(12, 2)
   profitCalculatedAt DateTime?
   createdAt      DateTime     @default(now())
@@ -617,6 +619,7 @@ model Shipment {
   shippingMethod     ShippingMethod
   status             ShipmentStatus  @default(PENDING)
   shippingCost       Decimal         @db.Decimal(12, 2) @default(0)
+  realCostPen        Decimal         @db.Decimal(12, 2) @default(0)
   isFreeShipping     Boolean         @default(false)
   freeShippingRule   Json?
   agencyName         String?
@@ -652,6 +655,7 @@ model ShipmentOrder {
   shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   orderId    String
   order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  allocatedShippingCostPen Decimal @db.Decimal(12, 2) @default(0)
   createdAt  DateTime @default(now())
 
   @@index([shipmentId])

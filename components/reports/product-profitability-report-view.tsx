@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CsvDownloadButton } from "@/components/reports/csv-download-button";
+import { ReportLimitNotice } from "@/components/reports/report-limit-notice";
 import { MarginBadge } from "@/components/financial/margin-badge";
 import { StockHealthBadge } from "@/components/financial/stock-health-badge";
 import type { ProductProfitabilityReport } from "@/lib/financial-reports";
@@ -60,6 +61,8 @@ export function ProductProfitabilityReportView({
           {lowMarginRows.length} variante(s) del reporte tienen margen por debajo de 15%.
         </div>
       ) : null}
+
+      <ReportLimitNotice meta={data.meta} />
 
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

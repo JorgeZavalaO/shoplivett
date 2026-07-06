@@ -127,7 +127,7 @@ export async function listExpenses(
 ): Promise<ExpenseListResult> {
   const prisma = getPrisma();
   const safePage = Math.max(1, Math.floor(filter.page ?? 1));
-  const safePerPage = Math.min(100, Math.max(1, Math.floor(filter.perPage ?? 20)));
+  const safePerPage = Math.min(5000, Math.max(1, Math.floor(filter.perPage ?? 20)));
   const trimmed = filter.query?.trim() ?? "";
   const where = buildWhere(filter);
 
@@ -262,6 +262,7 @@ export type FinancialPeriod = {
   grossProfitCents: number;
   paymentFeeCents: number;
   packagingCostCents: number;
+  deliveryBusinessCostCents: number;
   netProfitCents: number; // utilidad operativa antes de gastos
   expensesCents: number;
   incidentLossCents: number;
@@ -276,43 +277,23 @@ export async function getFinancialPeriod(
 ): Promise<FinancialPeriod> {
   const prisma = getPrisma();
   const { gte, lte } = monthRange(year, month);
+  const paidWhere: Prisma.OrderWhereInput = {
+    status: "PAID",
+    profitCalculatedAt: { gte, lte },
+  };
 
-  const [revenueAgg, productCostAgg, grossProfitAgg, paymentFeeAgg, packagingAgg, expensesAgg, incidentsLossAgg] =
+  const [ordersAgg, expensesAgg, incidentsLossAgg] =
     await Promise.all([
       prisma.order.aggregate({
-        where: {
-          status: "PAID",
-          profitCalculatedAt: { gte, lte },
+        where: paidWhere,
+        _sum: {
+          total: true,
+          productCostPen: true,
+          grossProfitPen: true,
+          paymentFeePen: true,
+          packagingCostPen: true,
+          deliveryBusinessCostPen: true,
         },
-        _sum: { total: true },
-      }),
-      prisma.order.aggregate({
-        where: {
-          status: "PAID",
-          profitCalculatedAt: { gte, lte },
-        },
-        _sum: { productCostPen: true },
-      }),
-      prisma.order.aggregate({
-        where: {
-          status: "PAID",
-          profitCalculatedAt: { gte, lte },
-        },
-        _sum: { grossProfitPen: true },
-      }),
-      prisma.order.aggregate({
-        where: {
-          status: "PAID",
-          profitCalculatedAt: { gte, lte },
-        },
-        _sum: { paymentFeePen: true },
-      }),
-      prisma.order.aggregate({
-        where: {
-          status: "PAID",
-          profitCalculatedAt: { gte, lte },
-        },
-        _sum: { packagingCostPen: true },
       }),
       prisma.expense.aggregate({
         where: { status: "ACTIVE", expenseDate: { gte, lte } },
@@ -324,17 +305,20 @@ export async function getFinancialPeriod(
       }),
     ]);
 
-  const revenueCents = toCents(revenueAgg._sum.total);
-  const productCostCents = toCents(productCostAgg._sum.productCostPen, {
+  const revenueCents = toCents(ordersAgg._sum.total);
+  const productCostCents = toCents(ordersAgg._sum.productCostPen, {
     allowNegative: true,
   });
-  const grossProfitCents = toCents(grossProfitAgg._sum.grossProfitPen, {
+  const grossProfitCents = toCents(ordersAgg._sum.grossProfitPen, {
     allowNegative: true,
   });
-  const paymentFeeCents = toCents(paymentFeeAgg._sum.paymentFeePen, {
+  const paymentFeeCents = toCents(ordersAgg._sum.paymentFeePen, {
     allowNegative: true,
   });
-  const packagingCostCents = toCents(packagingAgg._sum.packagingCostPen, {
+  const packagingCostCents = toCents(ordersAgg._sum.packagingCostPen, {
+    allowNegative: true,
+  });
+  const deliveryBusinessCostCents = toCents(ordersAgg._sum.deliveryBusinessCostPen, {
     allowNegative: true,
   });
   const expensesCents = toCents(expensesAgg._sum.amount);
@@ -345,9 +329,10 @@ export async function getFinancialPeriod(
     allowNegative: true,
   });
 
-  const netProfitCents = grossProfitCents - paymentFeeCents - packagingCostCents;
+  const netProfitCents =
+    grossProfitCents - paymentFeeCents - packagingCostCents - deliveryBusinessCostCents;
   const realNetProfitCents =
-    netProfitCents - expensesCents - incidentLossCents;
+    netProfitCents - expensesCents - incidentLossCents + incidentRecoveredCents;
   const marginBps =
     revenueCents > 0
       ? Math.round((realNetProfitCents * 10000) / revenueCents)
@@ -361,6 +346,7 @@ export async function getFinancialPeriod(
     grossProfitCents,
     paymentFeeCents,
     packagingCostCents,
+    deliveryBusinessCostCents,
     netProfitCents,
     expensesCents,
     incidentLossCents,

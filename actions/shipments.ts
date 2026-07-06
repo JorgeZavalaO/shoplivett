@@ -61,6 +61,13 @@ const CreateSchema = z.object({
       message: "Costo inválido.",
     })
     .transform((s) => (s === "" ? "0" : s)),
+  realCost: z
+    .string()
+    .trim()
+    .refine((s) => s === "" || /^\d+(\.\d{1,2})?$/.test(s), {
+      message: "Costo real inválido.",
+    })
+    .transform((s) => (s === "" ? "0" : s)),
   forceFreeShipping: z
     .union([z.boolean(), z.literal("on"), z.literal("true"), z.literal("false")])
     .transform((v) => v === true || v === "on" || v === "true")
@@ -92,6 +99,7 @@ export async function createShipmentAction(
     customerId: String(formData.get("customerId") ?? ""),
     shippingMethod: String(formData.get("shippingMethod") ?? "DELIVERY_PROPIO"),
     shippingCost: String(formData.get("shippingCost") ?? "0"),
+    realCost: String(formData.get("realCost") ?? "0"),
     forceFreeShipping: formData.get("forceFreeShipping") ?? "false",
     orderIds: String(formData.get("orderIds") ?? "[]"),
     agencyName: String(formData.get("agencyName") ?? ""),
@@ -115,6 +123,7 @@ export async function createShipmentAction(
       shippingMethod: parsed.data.shippingMethod,
       orderIds: parsed.data.orderIds,
       shippingCost: parsed.data.shippingCost,
+      realCost: parsed.data.realCost,
       forceFreeShipping: parsed.data.forceFreeShipping ?? false,
       agencyName: parsed.data.agencyName || null,
       trackingCode: parsed.data.trackingCode || null,
@@ -149,6 +158,14 @@ const UpdateSchema = z.object({
     })
     .transform((s) => (s === "" ? undefined : s))
     .optional(),
+  realCost: z
+    .string()
+    .trim()
+    .refine((s) => s === "" || /^\d+(\.\d{1,2})?$/.test(s), {
+      message: "Costo real inválido.",
+    })
+    .transform((s) => (s === "" ? undefined : s))
+    .optional(),
   isFreeShipping: z
     .union([z.boolean(), z.literal("on"), z.literal("true"), z.literal("false")])
     .transform((v) => v === true || v === "on" || v === "true")
@@ -170,6 +187,7 @@ export async function updateShipmentAction(
     shipmentId: String(formData.get("shipmentId") ?? ""),
     shippingMethod: formData.get("shippingMethod") || undefined,
     shippingCost: String(formData.get("shippingCost") ?? ""),
+    realCost: String(formData.get("realCost") ?? ""),
     isFreeShipping: formData.get("isFreeShipping") ?? "false",
     agencyName: String(formData.get("agencyName") ?? ""),
     trackingCode: String(formData.get("trackingCode") ?? ""),
@@ -191,6 +209,7 @@ export async function updateShipmentAction(
       shipmentId: parsed.data.shipmentId,
       shippingMethod: parsed.data.shippingMethod,
       shippingCost: parsed.data.shippingCost,
+      realCost: parsed.data.realCost,
       isFreeShipping: parsed.data.isFreeShipping,
       agencyName: parsed.data.agencyName,
       trackingCode: parsed.data.trackingCode,
@@ -254,7 +273,11 @@ export async function changeShipmentStatusAction(
 
 const CancelSchema = z.object({
   shipmentId: z.string().min(1),
-  reason: z.string().trim().max(500).optional(),
+  reason: z
+    .string()
+    .trim()
+    .min(5, "El motivo debe tener al menos 5 caracteres.")
+    .max(500),
 });
 
 export async function cancelShipmentAction(
@@ -276,7 +299,7 @@ export async function cancelShipmentAction(
     const user = await getCurrentUser();
     await cancelShipment({
       shipmentId: parsed.data.shipmentId,
-      reason: parsed.data.reason || null,
+      reason: parsed.data.reason,
       actorId: user?.id ?? null,
     });
     revalidatePath("/envios");

@@ -156,6 +156,7 @@ export function CreateShipmentForm({
     enabledShippingMethods[0] ?? "DELIVERY_PROPIO",
   );
   const [shippingCost, setShippingCost] = useState("0");
+  const [realCost, setRealCost] = useState("0");
   const [forceFree, setForceFree] = useState(false);
   const [agencyName, setAgencyName] = useState("");
   const [trackingCode, setTrackingCode] = useState("");
@@ -204,6 +205,7 @@ export function CreateShipmentForm({
         value={forceFree ? "true" : "false"}
       />
       <input type="hidden" name="shippingCost" value={shippingCost} />
+      <input type="hidden" name="realCost" value={realCost} />
 
       <div className="flex flex-1 flex-col gap-4">
         <Card>
@@ -380,6 +382,17 @@ export function CreateShipmentForm({
             </div>
 
             <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">Costo real asumido</label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={realCost}
+                onChange={(e) => setRealCost(e.target.value || "0")}
+                placeholder="0.00"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
                 <input
                   type="checkbox"
@@ -414,6 +427,11 @@ export function CreateShipmentForm({
               <span className={cn(isFree && "text-emerald-600 font-medium")}>
                 S/ {finalCost.toFixed(2)}
               </span>
+            </div>
+
+            <div className="flex justify-between rounded-md border border-border bg-muted/20 px-3 py-2 text-sm">
+              <span className="text-muted-foreground">Costo real negocio</span>
+              <span>S/ {(Number(realCost) || 0).toFixed(2)}</span>
             </div>
 
             <div className="flex flex-col gap-1">

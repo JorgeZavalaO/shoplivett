@@ -456,12 +456,14 @@ export async function recognizeOrderProfit(
   opts: {
     paymentMethodFees: Record<string, number>;
     packagingCostPen: string;
+    recalculate?: boolean;
   },
 ): Promise<{
   productCostCents: Cents;
   grossProfitCents: Cents;
   paymentFeeCents: Cents;
   packagingCostCents: Cents;
+  deliveryBusinessCostCents: Cents;
   netProfitCents: Cents;
 }> {
   const order = await tx.order.findUnique({
@@ -475,6 +477,7 @@ export async function recognizeOrderProfit(
       grossProfitPen: true,
       paymentFeePen: true,
       packagingCostPen: true,
+      deliveryBusinessCostPen: true,
       netProfitPen: true,
       payments: {
         where: { status: "VALIDATED" },
@@ -485,6 +488,10 @@ export async function recognizeOrderProfit(
           totalCostPen: true,
           grossProfitPen: true,
         },
+      },
+      shipmentOrders: {
+        where: { shipment: { status: { not: "CANCELLED" } } },
+        select: { allocatedShippingCostPen: true },
       },
     },
   });
@@ -497,7 +504,7 @@ export async function recognizeOrderProfit(
 
   // Guard de idempotencia: si ya se reconoció utilidad, no recalcular ni
   // pisar los snapshots existentes.
-  if (order.profitCalculatedAt) {
+  if (order.profitCalculatedAt && !opts.recalculate) {
     return {
       productCostCents: toCents(order.productCostPen.toString(), {
         allowNegative: true,
@@ -509,6 +516,9 @@ export async function recognizeOrderProfit(
         allowNegative: true,
       }),
       packagingCostCents: toCents(order.packagingCostPen.toString(), {
+        allowNegative: true,
+      }),
+      deliveryBusinessCostCents: toCents(order.deliveryBusinessCostPen.toString(), {
         allowNegative: true,
       }),
       netProfitCents: toCents(order.netProfitPen.toString(), {
@@ -533,7 +543,16 @@ export async function recognizeOrderProfit(
   const packagingCostCents = toCents(opts.packagingCostPen, {
     allowNegative: true,
   });
-  const netProfitCents = grossProfitCents - paymentFeeCents - packagingCostCents;
+  const deliveryBusinessCostCents = order.shipmentOrders.reduce(
+    (acc, shipmentOrder) =>
+      acc +
+      toCents(shipmentOrder.allocatedShippingCostPen.toString(), {
+        allowNegative: true,
+      }),
+    0,
+  );
+  const netProfitCents =
+    grossProfitCents - paymentFeeCents - packagingCostCents - deliveryBusinessCostCents;
 
   await tx.order.update({
     where: { id: orderId },
@@ -542,8 +561,9 @@ export async function recognizeOrderProfit(
       grossProfitPen: centsToDecimalString(grossProfitCents),
       paymentFeePen: centsToDecimalString(paymentFeeCents),
       packagingCostPen: centsToDecimalString(packagingCostCents),
+      deliveryBusinessCostPen: centsToDecimalString(deliveryBusinessCostCents),
       netProfitPen: centsToDecimalString(netProfitCents),
-      profitCalculatedAt: new Date(),
+      profitCalculatedAt: order.profitCalculatedAt ?? new Date(),
     },
   });
 
@@ -552,6 +572,7 @@ export async function recognizeOrderProfit(
     grossProfitCents,
     paymentFeeCents,
     packagingCostCents,
+    deliveryBusinessCostCents,
     netProfitCents,
   };
 }

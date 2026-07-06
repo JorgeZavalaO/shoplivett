@@ -282,14 +282,15 @@ async function recognizePaidOrderProfit(
     action: "ORDER_PROFIT_RECOGNIZED",
     entity: "Order",
     entityId: orderId,
-    metadata: {
-      productCostPen: centsToDecimalString(result.productCostCents),
-      grossProfitPen: centsToDecimalString(result.grossProfitCents),
-      paymentFeePen: centsToDecimalString(result.paymentFeeCents),
-      packagingCostPen: centsToDecimalString(result.packagingCostCents),
-      netProfitPen: centsToDecimalString(result.netProfitCents),
-    },
-  });
+      metadata: {
+        productCostPen: centsToDecimalString(result.productCostCents),
+        grossProfitPen: centsToDecimalString(result.grossProfitCents),
+        paymentFeePen: centsToDecimalString(result.paymentFeeCents),
+        packagingCostPen: centsToDecimalString(result.packagingCostCents),
+        deliveryBusinessCostPen: centsToDecimalString(result.deliveryBusinessCostCents),
+        netProfitPen: centsToDecimalString(result.netProfitCents),
+      },
+    });
 }
 
 export async function validatePayment(

@@ -97,6 +97,10 @@ export type DashboardMetrics = {
   // Operación
   pedidosListosDespachoCount: number;
   enviosEnProcesoCount: number;
+  shipmentsPendingCount: number;
+  shipmentsPreparingCount: number;
+  shipmentsReadyCount: number;
+  shipmentsShippedCount: number;
 
   // Finanzas del mes (Sprint 22)
   monthRevenueCents: number;
@@ -107,6 +111,8 @@ export type DashboardMetrics = {
   monthExpenses: string;
   monthIncidentLossCents: number;
   monthIncidentLoss: string;
+  monthIncidentRecoveredCents: number;
+  monthIncidentRecovered: string;
   monthRealNetProfitCents: number;
   monthRealNetProfit: string;
   monthMarginBps: number;
@@ -134,6 +140,10 @@ function emptyMetrics(): DashboardMetrics {
     creditosDisponibles: ZERO,
     pedidosListosDespachoCount: 0,
     enviosEnProcesoCount: 0,
+    shipmentsPendingCount: 0,
+    shipmentsPreparingCount: 0,
+    shipmentsReadyCount: 0,
+    shipmentsShippedCount: 0,
     monthRevenueCents: 0,
     monthRevenue: ZERO,
     monthGrossProfitCents: 0,
@@ -142,6 +152,8 @@ function emptyMetrics(): DashboardMetrics {
     monthExpenses: ZERO,
     monthIncidentLossCents: 0,
     monthIncidentLoss: ZERO,
+    monthIncidentRecoveredCents: 0,
+    monthIncidentRecovered: ZERO,
     monthRealNetProfitCents: 0,
     monthRealNetProfit: ZERO,
     monthMarginBps: 0,
@@ -181,13 +193,12 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
     deudaAgg,
     creditoAgg,
     pedidosListosDespachoCount,
-    enviosEnProcesoCount,
+    enviosByStatus,
     pendingPaymentsRows,
     reservationsNearExpiryRows,
     ordersReadyForShipmentRows,
     shipmentsInProgressRows,
-    monthRevenueAgg,
-    monthGrossProfitAgg,
+    monthOrderAgg,
     monthExpensesAgg,
     monthIncidentLossAgg,
   ] = await Promise.all([
@@ -234,8 +245,10 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
         shipmentOrders: { none: { shipment: { status: { not: "CANCELLED" } } } },
       },
     }),
-    prisma.shipment.count({
+    prisma.shipment.groupBy({
+      by: ["status"],
       where: { status: { in: SHIPMENT_ACTIVE_STATUSES } },
+      _count: { _all: true },
     }),
     prisma.payment.findMany({
       where: { status: "PENDING" },
@@ -294,14 +307,7 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
         status: "PAID",
         profitCalculatedAt: { gte: monthStart, lte: monthEnd },
       },
-      _sum: { total: true },
-    }),
-    prisma.order.aggregate({
-      where: {
-        status: "PAID",
-        profitCalculatedAt: { gte: monthStart, lte: monthEnd },
-      },
-      _sum: { grossProfitPen: true },
+      _sum: { total: true, grossProfitPen: true },
     }),
     prisma.expense.aggregate({
       where: {
@@ -315,7 +321,7 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
         status: { not: "CANCELLED" },
         incidentDate: { gte: monthStart, lte: monthEnd },
       },
-      _sum: { lostAmount: true },
+      _sum: { lostAmount: true, recoveredAmount: true },
     }),
   ]);
 
@@ -324,8 +330,8 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
   const deudaAcumuladaCents = toCents(deudaAgg._sum.balance);
   const creditosDisponiblesCents = toCents(creditoAgg._sum.availableAmount);
 
-  const monthRevenueCents = toCents(monthRevenueAgg._sum.total);
-  const monthGrossProfitCents = toCents(monthGrossProfitAgg._sum.grossProfitPen, {
+  const monthRevenueCents = toCents(monthOrderAgg._sum.total);
+  const monthGrossProfitCents = toCents(monthOrderAgg._sum.grossProfitPen, {
     allowNegative: true,
   });
   const monthExpensesCents = toCents(monthExpensesAgg._sum.amount);
@@ -333,12 +339,29 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
     monthIncidentLossAgg._sum.lostAmount,
     { allowNegative: true },
   );
+  const monthIncidentRecoveredCents = toCents(
+    monthIncidentLossAgg._sum.recoveredAmount,
+    { allowNegative: true },
+  );
   const monthRealNetProfitCents =
-    monthGrossProfitCents - monthExpensesCents - monthIncidentLossCents;
+    monthGrossProfitCents - monthExpensesCents - monthIncidentLossCents + monthIncidentRecoveredCents;
   const monthMarginBps =
     monthRevenueCents > 0
       ? Math.round((monthRealNetProfitCents * 10000) / monthRevenueCents)
       : 0;
+
+  const shipmentCountByStatus = new Map(
+    enviosByStatus.map((row) => [row.status, row._count._all]),
+  );
+  const shipmentsPendingCount = shipmentCountByStatus.get("PENDING") ?? 0;
+  const shipmentsPreparingCount = shipmentCountByStatus.get("PREPARING") ?? 0;
+  const shipmentsReadyCount = shipmentCountByStatus.get("READY") ?? 0;
+  const shipmentsShippedCount = shipmentCountByStatus.get("SHIPPED") ?? 0;
+  const enviosEnProcesoCount =
+    shipmentsPendingCount +
+    shipmentsPreparingCount +
+    shipmentsReadyCount +
+    shipmentsShippedCount;
 
   return {
     ...emptyMetrics(),
@@ -356,6 +379,10 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
     creditosDisponibles: centsToDecimalString(creditosDisponiblesCents),
     pedidosListosDespachoCount,
     enviosEnProcesoCount,
+    shipmentsPendingCount,
+    shipmentsPreparingCount,
+    shipmentsReadyCount,
+    shipmentsShippedCount,
     monthRevenueCents,
     monthRevenue: centsToDecimalString(monthRevenueCents),
     monthGrossProfitCents,
@@ -364,6 +391,8 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
     monthExpenses: centsToDecimalString(monthExpensesCents),
     monthIncidentLossCents,
     monthIncidentLoss: centsToDecimalString(monthIncidentLossCents),
+    monthIncidentRecoveredCents,
+    monthIncidentRecovered: centsToDecimalString(monthIncidentRecoveredCents),
     monthRealNetProfitCents,
     monthRealNetProfit: centsToDecimalString(monthRealNetProfitCents),
     monthMarginBps,

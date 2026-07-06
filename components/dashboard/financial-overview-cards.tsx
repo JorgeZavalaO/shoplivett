@@ -65,6 +65,7 @@ export function FinancialOverviewCards({
         title="Perdidas por incidencias"
         value={fmtMoney(overview.incidentLoss)}
         tone={overview.incidentLossCents > 0 ? "destructive" : "default"}
+        hint={overview.incidentRecoveredCents > 0 ? `Recuperado: ${fmtMoney(overview.incidentRecovered)}` : undefined}
         href="/incidencias"
       />
       <DashboardMetricCard
@@ -76,6 +77,12 @@ export function FinancialOverviewCards({
         title="Costo de empaque"
         value={fmtMoney(overview.packagingCost)}
         hint="Configuracion financiera del negocio"
+      />
+      <DashboardMetricCard
+        title="Costo real de envíos"
+        value={fmtMoney(overview.deliveryBusinessCost)}
+        hint="Costo asumido por negocio en pedidos con envío"
+        tone={overview.deliveryBusinessCostCents > 0 ? "warning" : "default"}
       />
       <DashboardMetricCard
         title="Utilidad neta real del mes"

@@ -89,6 +89,7 @@ export function SalesByMonthView({
                     <TableHead className="text-right">Costo</TableHead>
                     <TableHead className="text-right">Utilidad bruta</TableHead>
                     <TableHead className="text-right">Empaque</TableHead>
+                    <TableHead className="text-right">Envío real</TableHead>
                     <TableHead className="text-right">Fee</TableHead>
                     <TableHead className="text-right">Utilidad neta</TableHead>
                     <TableHead className="text-right">Margen</TableHead>
@@ -112,6 +113,9 @@ export function SalesByMonthView({
                       </TableCell>
                       <TableCell className="text-right">
                         {fmtMoney(r.packagingCost)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {fmtMoney(r.deliveryBusinessCost)}
                       </TableCell>
                       <TableCell className="text-right">
                         {fmtMoney(r.paymentFee)}

@@ -662,26 +662,23 @@ export async function getLivesReport(filter: LivesReportFilter): Promise<LivesRe
     { pedidos: Cents; cobrado: Cents; pendiente: Cents }
   >();
   if (liveIds.length > 0) {
-    const [ordersAgg, paidAgg, balanceAgg, pendingAgg] = await Promise.all([
-      prisma.order.aggregate({
+    const paidLikeStatuses: OrderStatus[] = ["PAID", "PARTIALLY_PAID", "RESERVED"];
+    const [ordersByLive, paidLikeByLive, pendingByLive] = await Promise.all([
+      prisma.order.groupBy({
+        by: ["liveSessionId"],
         where: { liveSessionId: { in: liveIds } },
         _sum: { total: true },
       }),
-      prisma.order.aggregate({
+      prisma.order.groupBy({
+        by: ["liveSessionId"],
         where: {
           liveSessionId: { in: liveIds },
-          status: { in: ["PAID", "PARTIALLY_PAID", "RESERVED"] },
+          status: { in: paidLikeStatuses },
         },
-        _sum: { validatedPaid: true },
+        _sum: { validatedPaid: true, balance: true },
       }),
-      prisma.order.aggregate({
-        where: {
-          liveSessionId: { in: liveIds },
-          status: { in: ["PAID", "PARTIALLY_PAID", "RESERVED"] },
-        },
-        _sum: { balance: true },
-      }),
-      prisma.order.aggregate({
+      prisma.order.groupBy({
+        by: ["liveSessionId"],
         where: {
           liveSessionId: { in: liveIds },
           status: "PAYMENT_VALIDATION_PENDING",
@@ -690,12 +687,32 @@ export async function getLivesReport(filter: LivesReportFilter): Promise<LivesRe
       }),
     ]);
 
+    const ordersMap = new Map(
+      ordersByLive
+        .filter((row) => row.liveSessionId !== null)
+        .map((row) => [row.liveSessionId as string, row]),
+    );
+    const paidLikeMap = new Map(
+      paidLikeByLive
+        .filter((row) => row.liveSessionId !== null)
+        .map((row) => [row.liveSessionId as string, row]),
+    );
+    const pendingMap = new Map(
+      pendingByLive
+        .filter((row) => row.liveSessionId !== null)
+        .map((row) => [row.liveSessionId as string, row]),
+    );
+
     for (const id of liveIds) {
+      const orders = ordersMap.get(id);
+      const paidLike = paidLikeMap.get(id);
+      const pending = pendingMap.get(id);
       metricsByLive.set(id, {
-        pedidos: toCents(ordersAgg._sum.total, { allowNegative: true }),
-        cobrado: toCents(paidAgg._sum.validatedPaid, { allowNegative: true }),
-        pendiente: toCents(balanceAgg._sum.balance, { allowNegative: true }) +
-          toCents(pendingAgg._sum.total, { allowNegative: true }),
+        pedidos: toCents(orders?._sum.total, { allowNegative: true }),
+        cobrado: toCents(paidLike?._sum.validatedPaid, { allowNegative: true }),
+        pendiente:
+          toCents(paidLike?._sum.balance, { allowNegative: true }) +
+          toCents(pending?._sum.total, { allowNegative: true }),
       });
     }
   }
@@ -896,49 +913,71 @@ export async function getTopProductsReport(
   const hasRange = Object.keys(createdAt).length > 0;
 
   if (!hasRange) {
-    const variants = await prisma.productVariant.findMany({
+    const aggregated = await prisma.orderItem.groupBy({
+      by: ["variantId"],
       where: {
-        ...(categoryId ? { product: { categoryId } } : {}),
+        ...(categoryId ? { variant: { product: { categoryId } } } : {}),
       },
-      orderBy: [{ soldStock: "desc" }, { code: "asc" }],
+      _sum: { quantity: true, lineTotal: true },
+      orderBy: { _sum: { quantity: "desc" } },
       take: limit,
-      select: {
-        id: true,
-        code: true,
-        color: true,
-        size: true,
-        stock: true,
-        reservedStock: true,
-        soldStock: true,
-        product: {
-          select: {
-            name: true,
-            category: { select: { name: true } },
-          },
-        },
-      },
     });
 
-    const rows: TopProductRow[] = variants.map((v) => ({
-      variantId: v.id,
-      code: v.code,
-      productName: v.product.name,
-      categoryName: v.product.category.name,
-      color: v.color,
-      size: v.size,
-      unitsSold: v.soldStock,
-      revenueCents: toCents(
-        (Number(v.soldStock) * Number(v.code.length > 0 ? 0 : 0)).toFixed(2),
-        { allowNegative: true },
-      ),
-      revenue: centsToDecimalString(0),
-      stock: v.stock,
-      available: Math.max(0, v.stock - v.reservedStock - v.soldStock),
-    }));
+    const variantIds = aggregated.map((a) => a.variantId);
+    const variantRows = variantIds.length
+      ? await prisma.productVariant.findMany({
+          where: { id: { in: variantIds } },
+          select: {
+            id: true,
+            code: true,
+            color: true,
+            size: true,
+            stock: true,
+            reservedStock: true,
+            soldStock: true,
+            product: {
+              select: {
+                name: true,
+                category: { select: { name: true } },
+              },
+            },
+          },
+        })
+      : [];
+    const variantMap = new Map(variantRows.map((v) => [v.id, v]));
+
+    let totalUnits = 0;
+    let totalRevenueCents: Cents = 0;
+    const rows: TopProductRow[] = aggregated.map((row) => {
+      const variant = variantMap.get(row.variantId);
+      const units = row._sum.quantity ?? 0;
+      const revenueCents = toCents(row._sum.lineTotal, { allowNegative: true });
+      totalUnits += units;
+      totalRevenueCents += revenueCents;
+      return {
+        variantId: row.variantId,
+        code: variant?.code ?? "—",
+        productName: variant?.product.name ?? "—",
+        categoryName: variant?.product.category.name ?? "—",
+        color: variant?.color ?? null,
+        size: variant?.size ?? null,
+        unitsSold: units,
+        revenueCents,
+        revenue: centsToDecimalString(revenueCents),
+        stock: variant?.stock ?? 0,
+        available: variant
+          ? Math.max(0, variant.stock - variant.reservedStock - variant.soldStock)
+          : 0,
+      };
+    });
 
     return {
       items: rows,
-      totals: { unitsSold: 0, revenueCents: 0, revenue: ZERO },
+      totals: {
+        unitsSold: totalUnits,
+        revenueCents: totalRevenueCents,
+        revenue: centsToDecimalString(totalRevenueCents),
+      },
     };
   }
 

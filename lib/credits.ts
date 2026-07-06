@@ -385,6 +385,7 @@ export async function applyCreditToOrder(
               grossProfitPen: centsToDecimalString(profit.grossProfitCents),
               paymentFeePen: centsToDecimalString(profit.paymentFeeCents),
               packagingCostPen: centsToDecimalString(profit.packagingCostCents),
+              deliveryBusinessCostPen: centsToDecimalString(profit.deliveryBusinessCostCents),
               netProfitPen: centsToDecimalString(profit.netProfitCents),
             },
           });
