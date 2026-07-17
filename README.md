@@ -238,6 +238,7 @@ Fase 3 del mismo ciclo 0.40.0 deja documentadas estas correcciones adicionales:
 Fase 5 del mismo ciclo 0.40.0 completa testing y hardening:
 
 - CI ahora ejecuta `pnpm test:domain` despues de `pnpm db:seed` y antes de Playwright.
+- La batería de dominio incluye `scripts/test-db-constraints.ts`, que valida `CHECK` constraints SQL básicos para evitar estados imposibles fuera de la aplicación.
 - El smoke E2E limpia sus datos usando el prefijo `E2E-SMOKE` y `cleanupCustomersByPrefix()`.
 - Playwright conserva trazas, screenshots y videos utiles en fallo dentro de CI.
 - Existe una suite E2E basica de permisos por rol en `e2e/permissions.spec.ts`.

@@ -360,7 +360,7 @@ Regla: no eliminar hallazgos corregidos. Actualizar estado, observaciones y refe
 - Criterios de aceptacion: DB rechaza invariantes basicos invalidos.
 - Tests recomendados: migracion/check constraints con casos negativos.
 - Dependencias: migraciones versionadas.
-- Observaciones: requiere limpiar datos existentes.
+- Observaciones: corregido en 0.40.0. Se agrega migracion manual `prisma/migrations/20260704150000_add_integrity_checks/migration.sql` con `CHECK` sobre `ProductVariant`, `Order`, `OrderItem`, `Payment`, `CustomerCredit`, `Shipment`, `ImportBatchItem`, `Expense` e `Incident`. Regresion en `scripts/test-db-constraints.ts`.
 
 ### AUD-DATA-012 - No hay migraciones versionadas
 

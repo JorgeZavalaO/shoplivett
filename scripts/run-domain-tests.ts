@@ -7,6 +7,7 @@ const TEST_SCRIPTS = [
   "scripts/test-order-batch-fifo.ts",
   "scripts/test-payment-reservation-closure.ts",
   "scripts/test-customer-blocked-sale.ts",
+  "scripts/test-db-constraints.ts",
   "scripts/test-batch-closed-race.ts",
   "scripts/test-expenses.ts",
   "scripts/test-incidents.ts",

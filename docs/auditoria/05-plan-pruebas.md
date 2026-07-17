@@ -67,6 +67,7 @@ Este plan convierte los hallazgos en pruebas de regresion y hardening. La priori
 | Prueba | Que valida | Modulo afectado | Hallazgo cubierto | Tipo de test | Criterio de exito |
 | --- | --- | --- | --- | --- | --- |
 | Unit tests de dinero | Conversiones, redondeo, negativos y 4dp. | Money/costeo | `AUD-DATA-009` | Unitario | Resultados exactos para casos borde. |
+| Constraints SQL de integridad | `scripts/test-db-constraints.ts` verifica que la BD rechaza negativos y relaciones imposibles en variantes, pedidos, créditos y lotes. | Prisma / integridad | `AUD-DATA-011` | Integracion/script | Updates invalidos fallan por `CHECK` constraint en DB. |
 | Matriz de permisos | `scripts/test-permissions.ts` valida la matriz final de roles/permisos y el uso de `requirePermission()`. | Permisos | `AUD-ARCH-001` | Integracion/script | La matriz pasa completa y la navegacion solo expone modulos autorizados por permiso. |
 | Snapshot de reportes financieros | Cambios en agregadores detectan regresiones. | Reportes | `AUD-ARCH-002` | Integracion | La modularizacion en barrels + submodulos mantiene exactamente los mismos totales y contratos de salida. |
 | Indice financiero con dataset representativo | La decision de indexar se toma con volumen realista, no con seed minimo. | Prisma, reportes financieros | `AUD-PERF-004` | Manual/performance con `scripts/explain-financial-index.ts` | Antes de agregar `@@index([status, profitCalculatedAt])` se ejecuta `EXPLAIN ANALYZE` sobre un dataset representativo y se documenta la decision final. |

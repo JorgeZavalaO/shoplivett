@@ -10,6 +10,7 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [0.40.0] - Historial real de cliente, UI de créditos, gestión completa de lotes y baseline de migraciones
 
 ### Datos
+- `prisma/migrations/20260704150000_add_integrity_checks/migration.sql`: agrega `CHECK` constraints básicos de integridad en `ProductVariant`, `Order`, `OrderItem`, `OrderItemBatchAllocation`, `Payment`, `PaymentApplication`, `CustomerCredit`, `CustomerCreditApplication`, `Shipment`, `ShipmentOrder`, `ImportBatchItem`, `Expense` e `Incident` (`AUD-DATA-011`).
 - Se agrega baseline Prisma versionado en `prisma/migrations/20260704000000_init/migration.sql` y `migration_lock.toml`, cerrando `AUD-DATA-012`.
 - Se agrega `pnpm db:deploy` para aplicar migraciones versionadas en CI, staging y produccion; `db:push` queda restringido a bases locales descartables (`AUD-PROD-004`).
 - Se agrega schema + migracion manual `prisma/migrations/20260704130000_add_shipment_real_cost/migration.sql` con `Order.deliveryBusinessCostPen`, `Shipment.realCostPen` y `ShipmentOrder.allocatedShippingCostPen` (`AUD-FUNC-007`).
@@ -84,6 +85,7 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `cross-env` se agrega a `devDependencies` para soportar los scripts y la configuracion E2E ya existentes.
 
 ### Auditoría
+- `AUD-DATA-011` queda marcado como `Corregido` con constraints SQL de invariantes y regresión de dominio dedicada.
 - `AUD-UX-009`, `AUD-DATA-010`, `AUD-DATA-016`, `AUD-DATA-017`, `AUD-UX-001`, `AUD-UX-005`, `AUD-PERF-010` y `AUD-UX-013` quedan marcados como `Corregido`.
 - `AUD-FUNC-003`, `AUD-UX-014`, `AUD-FUNC-004`, `AUD-UX-008` y `AUD-DATA-015` quedan marcados como `Corregido` (Fase 2).
 - Fase 3 deja corregidos `AUD-FUNC-007`, `AUD-ARCH-002`, `AUD-PERF-002`, `AUD-PERF-006`, `AUD-PERF-007`, `AUD-PERF-008`, `AUD-PERF-009`, `AUD-PERF-012` y `AUD-UX-012`.
