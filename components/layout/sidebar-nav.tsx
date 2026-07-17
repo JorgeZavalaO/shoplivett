@@ -23,8 +23,8 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { hasPermissionSync, type Permission } from "@/lib/authorization";
-import type { Role } from "@/lib/permissions";
+import { hasPermissionSync, type Permission } from "@/lib/authorization-core";
+import type { Role } from "@/lib/roles";
 
 type NavItem = {
   href: Route;

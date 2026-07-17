@@ -7,6 +7,21 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.40.1] - Corrección de frontera cliente-servidor en permisos
+
+### Arquitectura
+- `lib/roles.ts`: nuevo módulo compartido con tipos `ROLES`, `Role` e `isRole`, sin dependencias de Next, Prisma ni Node.
+- `lib/authorization-core.ts`: nuevo módulo compartido con `Permission`, `PERMISSIONS`, `hasPermissionSync` y `rolesFor`, sin dependencias de servidor.
+- `lib/permissions.ts`: delega `ROLES`, `Role` e `isRole` a `lib/roles.ts` mediante re-export.
+- `lib/authorization.ts`: delega la matriz estática y `hasPermissionSync` a `lib/authorization-core.ts`; conserva solo funciones de servidor (`hasPermission`, `assertPermission`, `requirePermission`).
+- Los componentes cliente (`sidebar-nav`, `sidebar`, `header`) importan ahora de `lib/roles` y `lib/authorization-core`, evitando que el bundle del navegador arrastre `next/headers`, `next/cache`, Prisma y `pg`.
+
+### Verificación
+- `pnpm typecheck` → 0 errores.
+- `pnpm lint` → 0 errores (9 warnings preexistentes).
+- `pnpm test:domain` → 95/95 tests de dominio.
+- `pnpm build` → build de producción exitoso (31 rutas).
+
 ## [0.40.0] - Historial real de cliente, UI de créditos, gestión completa de lotes y baseline de migraciones
 
 ### Datos

@@ -2,7 +2,7 @@
 
 import { Sparkles } from "lucide-react";
 
-import type { Role } from "@/lib/permissions";
+import type { Role } from "@/lib/roles";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 
 type SidebarProps = {

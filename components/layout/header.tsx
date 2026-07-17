@@ -15,7 +15,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { Badge } from "@/components/ui/badge";
 import { logoutAction } from "@/actions/auth";
-import type { Role } from "@/lib/permissions";
+import type { Role } from "@/lib/roles";
 
 const ROLE_LABEL: Record<Role, string> = {
   ADMIN: "Administrador",

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { hasPermissionSync, rolesFor } from "../lib/authorization";
+import { hasPermissionSync, rolesFor } from "../lib/authorization-core";
 
 let passed = 0;
 let failed = 0;

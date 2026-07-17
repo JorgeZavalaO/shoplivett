@@ -437,7 +437,7 @@ auth.ts                Configuración de Auth.js v5
 proxy.ts               Middleware (Next 16) de protección de rutas
 actions/               Server actions (auth, settings, customers, etc.)
 components/            UI, layout, forms, tables, dashboard
-lib/                   auth, prisma, validations, permissions, settings, phone, customer-helpers, blob, utils
+lib/                   auth, prisma, validations, roles, permissions, authorization-core, authorization, settings, phone, customer-helpers, blob, utils
 prisma/                schema.prisma y seed
 types/                 Enums compartidos del dominio
 docs/                  Planes de sprints, roadmap financiero, requisitos funcionales/no funcionales, flujos y auditoría técnica
@@ -453,7 +453,7 @@ Sistema de login con sesión JWT en cookie httpOnly, roles y protección de ruta
 - **Login** en `/login` con email y contraseña, validación por campo y redirección automática (`?from=...`).
 - **Roles**: ADMIN, SELLER, DISPATCH. Cada rol accede a diferentes módulos del sidebar.
 - **Middleware** (`proxy.ts`) protege todas las rutas del dashboard; usuarios no autenticados son redirigidos a login.
-- **Permisos**: helpers `requireUser()`, `requireRole()`, `canValidatePayments()`, `canManageConfiguration()`, `canManageShipments()`.
+- **Permisos**: helpers `requireUser()`, `requireRole()`, `canValidatePayments()`, `canManageConfiguration()`, `canManageShipments()`. Matriz de permisos por acción en `lib/authorization-core.ts` con `hasPermissionSync()` y `rolesFor()`.
 - **Hash de contraseñas** con bcryptjs.
 - **Panel de desarrollo** en `/login` con credenciales seed (oculto en producción).
 - **Server actions**: `loginAction` y `logoutAction`.
