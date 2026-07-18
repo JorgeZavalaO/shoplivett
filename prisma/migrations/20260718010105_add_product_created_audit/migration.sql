@@ -1,0 +1,2 @@
+-- Adds PRODUCT_CREATED to the AuditAction enum.
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'PRODUCT_CREATED';

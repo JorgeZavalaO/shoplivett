@@ -1,12 +1,12 @@
 // Tipos compartidos del módulo de clientes.
-import type { CustomerCreateSchema } from "@/lib/validations";
+import type { CustomerUpdateSchema } from "@/lib/validations";
 import type { z } from "zod";
 
 export type CustomerActionResult = {
   ok: boolean;
   message?: string;
   fieldErrors?: Partial<
-    Record<keyof z.infer<typeof CustomerCreateSchema>, string>
+    Record<keyof z.infer<typeof CustomerUpdateSchema>, string>
   >;
   whatsappNormalized?: string;
 };

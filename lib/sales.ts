@@ -5,7 +5,7 @@ import { Prisma, type SalesChannel } from "@prisma/client";
 
 import { getPrisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
-import { reserveStock } from "@/lib/inventory";
+import { InventoryError, reserveStock } from "@/lib/inventory";
 import {
   generateOrderNumber,
   calculateOrderTotals,
@@ -374,6 +374,24 @@ export async function createQuickSale(
         if (error instanceof BatchAllocationError) {
           if (error.code === "INSUFFICIENT_BATCH_STOCK") {
             throw new OrderError(error.message, "INSUFFICIENT_BATCH_STOCK");
+          }
+          if (error.code === "CONFLICT") {
+            throw new OrderError(error.message, "CONFLICT");
+          }
+          throw new OrderError(error.message, "INSUFFICIENT_STOCK");
+        }
+        if (error instanceof InventoryError) {
+          if (error.code === "INSUFFICIENT_STOCK") {
+            throw new OrderError(
+              "No hay stock disponible para completar la venta. El producto ya está reservado en otro pedido o se agotó mientras se procesaba esta operación.",
+              "INSUFFICIENT_STOCK",
+            );
+          }
+          if (error.code === "INSUFFICIENT_RESERVED") {
+            throw new OrderError(
+              "La reserva de stock ya no es válida. Revisa el estado del pedido e intenta nuevamente.",
+              "CONFLICT",
+            );
           }
           if (error.code === "CONFLICT") {
             throw new OrderError(error.message, "CONFLICT");

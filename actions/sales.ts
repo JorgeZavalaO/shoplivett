@@ -20,6 +20,7 @@ export type OrderActionResult = {
   message?: string;
   fieldErrors?: Partial<Record<keyof CreateOrderInput, string>>;
   orderId?: string;
+  code?: string;
 };
 
 function fieldErrorsFromZod(
@@ -105,7 +106,8 @@ export async function createQuickSaleAction(
     redirect(`/pedidos/${result.orderId}`);
   } catch (error) {
     if (error instanceof OrderError) {
-      return { ok: false, message: error.message };
+      revalidatePath("/ventas");
+      return { ok: false, message: error.message, code: error.code };
     }
     throw error;
   }
@@ -140,6 +142,7 @@ export type VariantSearchResult = {
   available: number;
   productName: string;
   categoryName: string;
+  imageUrl: string | null;
   operatesWithBatches?: boolean;
   unitRealCost?: string | null;
   minimumPrice?: string | null;
@@ -148,24 +151,25 @@ export type VariantSearchResult = {
   costSource?: "BATCH" | "LEGACY" | "NONE";
 };
 
-export async function searchVariantsForSaleAction(
-  query: string,
-): Promise<VariantSearchResult[]> {
-  await requireRole(["ADMIN", "SELLER"]);
-  if (!query.trim()) return [];
+async function loadSaleVariants(query?: string): Promise<VariantSearchResult[]> {
   const prisma = getPrisma();
   const settings = await getSettings();
   const rows = await prisma.productVariant.findMany({
     where: {
       status: "ACTIVE",
       product: { isActive: true },
-      OR: [
-        { code: { contains: query, mode: "insensitive" } },
-        { product: { name: { contains: query, mode: "insensitive" } } },
-        { color: { contains: query, mode: "insensitive" } },
-      ],
+      ...(query?.trim()
+        ? {
+            OR: [
+              { code: { contains: query, mode: "insensitive" as const } },
+              { product: { name: { contains: query, mode: "insensitive" as const } } },
+              { color: { contains: query, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
     },
-    take: 20,
+    take: query?.trim() ? 20 : 60,
+    orderBy: { product: { name: "asc" } },
     select: {
       id: true,
       code: true,
@@ -176,11 +180,21 @@ export async function searchVariantsForSaleAction(
       stock: true,
       reservedStock: true,
       soldStock: true,
+      images: {
+        orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+        take: 1,
+        select: { url: true },
+      },
       product: {
         select: {
           id: true,
           name: true,
           category: { select: { name: true } },
+          images: {
+            orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+            take: 1,
+            select: { url: true },
+          },
         },
       },
       batchItems: {
@@ -224,6 +238,7 @@ export async function searchVariantsForSaleAction(
       available,
       productName: v.product.name,
       categoryName: v.product.category.name,
+      imageUrl: v.images[0]?.url ?? v.product.images[0]?.url ?? null,
       operatesWithBatches: v.batchItems.length > 0,
       unitRealCost: unitRealCost !== null ? unitRealCost.toFixed(4) : null,
       minimumPrice: pricing ? pricing.minimumPrice.toFixed(2) : null,
@@ -232,6 +247,19 @@ export async function searchVariantsForSaleAction(
       costSource,
     };
   });
+}
+
+export async function searchVariantsForSaleAction(
+  query: string,
+): Promise<VariantSearchResult[]> {
+  await requireRole(["ADMIN", "SELLER"]);
+  if (!query.trim()) return [];
+  return loadSaleVariants(query);
+}
+
+export async function getSaleCatalogAction(): Promise<VariantSearchResult[]> {
+  await requireRole(["ADMIN", "SELLER"]);
+  return loadSaleVariants();
 }
 
 export async function searchCustomersForSaleAction(

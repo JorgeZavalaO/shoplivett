@@ -491,7 +491,7 @@ Páginas:
 ### Productos y categorías (Sprint 4)
 
 - **Categorías** con slug autogenerado, activar/desactivar y conteo de productos.
-- **Productos** con nombre, descripción, categoría, activar/desactivar.
+- **Productos** con nombre, descripción, categoría, activar/desactivar. Creación en una sola pantalla (Producto → Variantes → Foto) con `ProductCreateForm` y `createProductWithVariantsAction`.
 - **Variantes** con código autogenerado formato `PREFIX-CAT-COLOR-NNNN` (ej. `CART-MANO-NEG-0001`), color, material, tamaño, precio, costo, stock inicial, código de barras opcional.
 - **Imágenes** subidas a Vercel Blob (PNG, JPEG, WebP; máx 5 MB) con imagen principal automática.
 - **Detalle de producto** con tabs: Información, Variantes, Imágenes.
@@ -533,7 +533,7 @@ Páginas:
 
 ### Pedidos y venta rápida (Sprint 7)
 
-- **Venta rápida** con búsqueda asíncrona de clienta y variantes, carrito, cálculo de totales y adelanto.
+- **Venta rápida** con búsqueda asíncrona de clienta y variantes, carrito, cálculo de totales y adelanto. Errores de stock/ reserva/conflicto/cliente bloqueada se muestran via Sonner toast con mensajes específicos; tras un error se refrescan los badges de stock del servidor para evitar datos obsoletos.
 - Pedidos con número autogenerado (`ORD-YYYYMMDD-NNNN`), estado, items, pagos y capturas.
 - Reglas de adelanto configurables desde `BusinessSettings`.
 - Transacción atómica: crear pedido, items, pago pendiente y reserva de stock en un solo paso.
@@ -767,4 +767,4 @@ Capa de cierre del proyecto. Entregables:
 
 ## Versión
 
-Versión actual: **0.39.0**. Rastreada en `package.json` y [CHANGELOG](./CHANGELOG.md).
+Versión actual: **0.41.0**. Rastreada en `package.json` y [CHANGELOG](./CHANGELOG.md).

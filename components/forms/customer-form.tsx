@@ -189,6 +189,7 @@ export function CustomerForm({
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
                 className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                aria-invalid={Boolean(state.fieldErrors?.status)}
               >
                 {CUSTOMER_STATUSES.map((s) => (
                   <option key={s} value={s}>
@@ -196,6 +197,7 @@ export function CustomerForm({
                   </option>
                 ))}
               </select>
+              <FieldError message={state.fieldErrors?.status} />
             </div>
           ) : null}
 

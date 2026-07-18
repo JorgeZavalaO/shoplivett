@@ -7,6 +7,27 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.41.0] - Manejo de errores en venta rápida, creación de producto en una sola pantalla y auditoría PRODUCT_CREATED
+
+### UX
+- `components/forms/quick-sale-form.tsx`: errores de venta rápida (stock insuficiente, reserva, conflicto, cliente bloqueada) ahora muestran toast via Sonner en lugar de solo un mensaje estático en el formulario; se usa `describeQuickSaleError(code, message)` con 11 códigos específicos y mensajes friendly en español. Se agrega `router.refresh()` después de un error para refrescar badges de stock obsoletos del servidor. Guard con `useRef` para prevenir toasts duplicados. Reset de formulario al enviar.
+- `lib/sales.ts`: el catch de `createQuickSale` traduce `InventoryError` a `OrderError` con códigos `INSUFFICIENT_STOCK`, `INSUFFICIENT_RESERVED` y `CONFLICT` en lugar de propagar el error interno 500.
+- `actions/sales.ts`: `OrderActionResult` agrega campo `code?: string`. El bloque catch ahora ejecuta `revalidatePath("/ventas")` para forzar actualización de datos del servidor antes de devolver el error al cliente.
+- `app/(dashboard)/ventas/page.tsx`: agrega `export const dynamic = "force-dynamic"` para evitar datos stale del catálogo en cache.
+- `components/forms/product-create-form.tsx` (nuevo): formulario de creación de producto en una sola pantalla con 3 cards (Producto, Variantes, Foto). Checkbox toggle "Sin variantes / Con variantes". Filas de variantes con color, material, tamaño, precio, costo, stock, código de barras. Upload de imagen con preview en vivo. Errores mostrados via Sonner toast. Submit deshabilitado mientras falten datos obligatorios.
+- `actions/products.ts`: nueva `createProductWithVariantsAction` que valida `ProductCreateWithVariantsSchema`, sube imagen a Blob antes de la transacción, crea producto + variantes (códigos auto) + movimientos de inventario + `ProductImage` en una sola transacción Prisma. Compensa el Blob si falla. Auditoría `PRODUCT_CREATED`.
+- `lib/validations.ts`: nuevo `ProductCreateWithVariantsSchema` y `ProductCreateVariantSchema` con campo `variants` como JSON serializado. Tipos `ProductCreateWithVariantsInput` y `ProductCreateVariantInput`.
+- `app/(dashboard)/productos/nuevo/page.tsx`: re-orientado para usar `ProductCreateForm` con `dynamic = "force-dynamic"`.
+
+### Auditoría
+- `prisma/schema.prisma`: agrega `PRODUCT_CREATED` al enum `AuditAction`.
+- `prisma/migrations/20260718010105_add_product_created_audit/migration.sql`: `ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'PRODUCT_CREATED'`.
+- `app/(dashboard)/auditoria/page.tsx`: agrega `PRODUCT_CREATED` a `ACTION_LABELS` y `ACTION_TONE`.
+
+### Verificación
+- `pnpm typecheck` → 0 errores.
+- `pnpm lint` → 0 errores (warnings preexistentes).
+
 ## [0.40.1] - Corrección de frontera cliente-servidor en permisos
 
 ### Arquitectura

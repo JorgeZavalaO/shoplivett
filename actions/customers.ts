@@ -21,7 +21,7 @@ export async function getCustomerAction(customerId: string) {
 import {
   CustomerCreateSchema,
   CustomerUpdateSchema,
-  type CustomerCreateInput,
+  type CustomerUpdateInput,
 } from "@/lib/validations";
 import {
   type CustomerActionResult,
@@ -36,7 +36,7 @@ function fieldErrorsFromZod(
 ): CustomerActionResult["fieldErrors"] {
   const out: CustomerActionResult["fieldErrors"] = {};
   for (const issue of issues) {
-    const key = issue.path[0] as keyof CustomerCreateInput | undefined;
+    const key = issue.path[0] as keyof CustomerUpdateInput | undefined;
     if (key && !out[key]) out[key] = issue.message;
   }
   return out;
@@ -52,6 +52,7 @@ function readForm(formData: FormData) {
     reference: String(formData.get("reference") ?? "").trim(),
     channel: String(formData.get("channel") ?? "").trim(),
     notes: String(formData.get("notes") ?? "").trim(),
+    status: String(formData.get("status") ?? "").trim(),
   };
 }
 

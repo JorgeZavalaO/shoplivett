@@ -350,6 +350,77 @@ export const ProductVariantUpdateSchema = z.object({
 export type ProductVariantCreateInput = z.infer<typeof ProductVariantCreateSchema>;
 export type ProductVariantUpdateInput = z.infer<typeof ProductVariantUpdateSchema>;
 
+// Esquema para el alta combinada: producto base + N variantes en una sola
+// pantalla. Las variantes llegan como JSON serializado en el FormData para
+// evitar el límite práctico de campos en formularios grandes.
+const ProductCreateVariantSchema = z.object({
+  color: optionalShort,
+  material: optionalShort,
+  size: optionalShort,
+  price: decimalString({ label: "El precio de venta", min: 0.01 }),
+  cost: decimalString({ label: "El costo", allowZero: true }).optional(),
+  stock: z.coerce
+    .number({ message: "El stock inicial es obligatorio." })
+    .int("Debe ser un número entero.")
+    .min(0, "El stock no puede ser negativo.")
+    .max(100000, "Stock máximo 100000."),
+  barcode: optionalBarcode,
+});
+
+export const ProductCreateWithVariantsSchema = z
+  .object({
+    name: ProductCreateSchema.shape.name,
+    description: ProductCreateSchema.shape.description,
+    categoryId: ProductCreateSchema.shape.categoryId,
+    hasVariants: z
+      .union([z.boolean(), z.literal("on"), z.literal("true"), z.literal("false")])
+      .transform((v) => v === true || v === "on" || v === "true")
+      .default(false),
+    variants: z
+      .string()
+      .transform((raw, ctx) => {
+        if (!raw.trim()) return [] as z.infer<typeof ProductCreateVariantSchema>[];
+        try {
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Lista de variantes inválida.",
+            });
+            return z.NEVER;
+          }
+          return parsed;
+        } catch {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Lista de variantes inválida.",
+          });
+          return z.NEVER;
+        }
+      })
+      .pipe(z.array(ProductCreateVariantSchema)),
+  })
+  .superRefine((data, ctx) => {
+    if (data.variants.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["variants"],
+        message: "Agrega al menos una variante.",
+      });
+      return;
+    }
+    if (!data.hasVariants && data.variants.length > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["variants"],
+        message: "Si el producto no tiene variantes, solo puede haber una.",
+      });
+    }
+  });
+
+export type ProductCreateWithVariantsInput = z.infer<typeof ProductCreateWithVariantsSchema>;
+export type ProductCreateVariantInput = z.infer<typeof ProductCreateVariantSchema>;
+
 // =====================================================================
 // Inventory adjustments
 // =====================================================================

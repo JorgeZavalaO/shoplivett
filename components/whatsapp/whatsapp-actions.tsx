@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Check, ClipboardCopy, ExternalLink, MessageCircle } from "lucide-react";
+import { Check, ClipboardCopy, MessageCircle, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   buildWhatsappLink,
   buildWhatsappMessage,
@@ -42,6 +52,7 @@ type Props = {
   defaultTemplate?: OrderTemplateKey;
   variant?: Variant;
   label?: string;
+  trigger?: React.ReactElement;
 };
 
 function findDefault(
@@ -63,12 +74,14 @@ export function WhatsAppActions({
   defaultTemplate,
   variant = "inline",
   label,
+  trigger,
 }: Props) {
   const available = useMemo(() => getAvailableTemplates(context), [context]);
   const [selected, setSelected] = useState<OrderTemplateKey>(() =>
     findDefault(available, defaultTemplate),
   );
   const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(false);
   const [, startTransition] = useTransition();
 
   const message = useMemo(() => {
@@ -146,71 +159,87 @@ export function WhatsAppActions({
     );
   }
 
+  const triggerNode = trigger;
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <label className="text-xs text-muted-foreground">Plantilla</label>
-        <Select
-          value={selected}
-          onValueChange={(value) => setSelected(value as OrderTemplateKey)}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {available.map((key) => (
-              <SelectItem key={key} value={key}>
-                {getTemplateLabel(key)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-[11px] text-muted-foreground">
-          {getTemplateDescription(selected)}
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <label className="text-xs text-muted-foreground">Mensaje</label>
-        <Textarea
-          readOnly
-          value={message}
-          rows={Math.min(10, Math.max(4, message.split("\n").length + 1))}
-          className="text-xs"
-          aria-label="Vista previa del mensaje"
+    <Dialog open={open} onOpenChange={setOpen}>
+      {triggerNode ? (
+        <DialogTrigger render={triggerNode} />
+      ) : (
+        <DialogTrigger
+          render={
+            <Button type="button" size="sm" variant="outline" className="w-fit">
+              <MessageCircle className="size-4" /> Plantillas
+            </Button>
+          }
         />
-        <p className="text-[11px] text-muted-foreground">
-          Se enviará a {formatWhatsAppDisplay(customer.whatsapp)}.
-        </p>
-      </div>
+      )}
+      <DialogContent size="lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <MessageCircle className="size-4 text-primary" /> Mensajes para {customer.name}
+          </DialogTitle>
+          <DialogDescription>
+            Plantillas listas para enviar a {formatWhatsAppDisplay(customer.whatsapp)}. No se envía automáticamente.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Plantilla</label>
+            <Select
+              value={selected}
+              onValueChange={(value) => setSelected(value as OrderTemplateKey)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {available.map((key) => (
+                  <SelectItem key={key} value={key}>
+                    {getTemplateLabel(key)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">
+              {getTemplateDescription(selected)}
+            </p>
+          </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="default"
-          onClick={handleOpen}
-          disabled={!isValid}
-        >
-          <ExternalLink className="size-4" /> Abrir WhatsApp
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={handleCopy}
-          disabled={!isValid}
-        >
-          {copied ? (
-            <>
-              <Check className="size-4" /> Copiado
-            </>
-          ) : (
-            <>
-              <ClipboardCopy className="size-4" /> Copiar mensaje
-            </>
-          )}
-        </Button>
-      </div>
-    </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Mensaje</label>
+            <Textarea
+              readOnly
+              value={message}
+              rows={Math.min(10, Math.max(4, message.split("\n").length + 1))}
+              className="text-xs"
+              aria-label="Vista previa del mensaje"
+            />
+          </div>
+        </DialogBody>
+        <DialogFooter className="gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleCopy}
+            disabled={!isValid}
+          >
+            {copied ? (
+              <>
+                <Check className="size-4" /> Copiado
+              </>
+            ) : (
+              <>
+                <ClipboardCopy className="size-4" /> Copiar mensaje
+              </>
+            )}
+          </Button>
+          <Button type="button" variant="default" onClick={handleOpen} disabled={!isValid}>
+            <Send className="size-4" /> Abrir WhatsApp
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

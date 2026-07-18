@@ -1,9 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Pencil, MessageCircle } from "lucide-react";
+import {
+  ArrowLeft,
+  MapPin,
+  MessageCircle,
+  Pencil,
+  Phone,
+  UserRound,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { CustomerSummary } from "@/components/dashboard/customer-summary";
+import { CustomerStatusBadge } from "@/components/dashboard/customer-status-badge";
 import { CustomerCreditsHistory } from "@/components/dashboard/customer-credits-history";
 import { CustomerShipmentsHistory } from "@/components/dashboard/customer-shipments-history";
 import { CustomerOrdersHistory } from "@/components/dashboard/customer-orders-history";
@@ -20,9 +29,8 @@ import {
   WhatsAppActions,
   WhatsAppQuickButton,
 } from "@/components/whatsapp/whatsapp-actions";
-import { buildWhatsappLink, buildWhatsappMessage } from "@/lib/whatsapp";
 import { DeactivateCustomerButton } from "@/components/forms/deactivate-customer-button";
-
+import { centsToDecimalString, sumCents } from "@/lib/money";
 
 type Params = Promise<{ id: string }>;
 
@@ -40,23 +48,13 @@ export default async function ClienteDetallePage({ params }: { params: Params })
   ]);
 
   const whatsappLink = `https://wa.me/${summary.whatsapp.replace(/[^\d]/g, "")}`;
-  const totalAvailable = credits
-    .filter((c) => c.status === "AVAILABLE" || c.status === "PARTIALLY_USED")
-    .reduce((acc, c) => acc + Number(c.availableAmount), 0);
-  const hasCredit = totalAvailable > 0;
-  const creditMessageLink = hasCredit
-    ? buildWhatsappLink(
-        summary.whatsapp,
-        buildWhatsappMessage({
-          key: "CREDIT_AVAILABLE",
-          customer: { name: summary.name, whatsapp: summary.whatsapp },
-          credit: {
-            totalAmount: totalAvailable.toFixed(2),
-            availableAmount: totalAvailable.toFixed(2),
-          },
-        }),
-      )
-    : null;
+  const totalAvailableCents = sumCents(
+    credits
+      .filter((c) => c.status === "AVAILABLE" || c.status === "PARTIALLY_USED")
+      .map((c) => c.availableAmount),
+  );
+  const totalAvailable = centsToDecimalString(totalAvailableCents);
+  const hasCredit = totalAvailableCents > 0;
 
   async function changeStatus(formData: FormData) {
     "use server";
@@ -69,62 +67,70 @@ export default async function ClienteDetallePage({ params }: { params: Params })
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mb-2 -ml-2"
-            render={<Link href="/clientes"><ArrowLeft className="size-4" /> Clientes</Link>}
-          />
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {summary.name}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            <a
-              href={whatsappLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:underline"
-            >
-              {formatWhatsAppDisplay(summary.whatsapp)}
-            </a>
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <WhatsAppQuickButton
-              customer={{ name: summary.name, whatsapp: summary.whatsapp }}
-              label="Abrir chat"
-            />
-            {creditMessageLink ? (
-              <Button
-                size="sm"
-                variant="outline"
-                render={
-                  <a
-                    href={creditMessageLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <MessageCircle className="size-4" /> Avisar crédito
-                  </a>
-                }
+    <div className="flex flex-1 flex-col gap-6 bg-muted/20 p-4 md:p-6">
+      <div className="flex flex-col gap-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-fit -ml-2"
+          render={<Link href="/clientes"><ArrowLeft className="size-4" /> Clientes</Link>}
+        />
+        <Card className="border-border/70 shadow-sm">
+          <CardContent className="flex flex-col gap-4 py-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-start gap-4">
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+                <UserRound className="size-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="truncate text-2xl font-semibold tracking-tight">{summary.name}</h1>
+                  <CustomerStatusBadge status={summary.status} />
+                  {!summary.isActive ? (
+                    <span className="rounded-md border border-border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                      Inactiva
+                    </span>
+                  ) : null}
+                </div>
+                <a
+                  href={whatsappLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1.5 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:underline"
+                >
+                  <Phone className="size-3.5" /> {formatWhatsAppDisplay(summary.whatsapp)}
+                </a>
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    <MapPin className="size-3.5" />
+                    {summary.district || "Sin distrito"}
+                  </span>
+                  {summary.channel ? (
+                    <span className="inline-flex items-center gap-1">
+                      <MessageCircle className="size-3.5" />
+                      {summary.channel}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <WhatsAppQuickButton
+                customer={{ name: summary.name, whatsapp: summary.whatsapp }}
+                label="Abrir chat"
               />
-            ) : null}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            render={<Link href={`/clientes/${summary.id}/editar`}><Pencil className="size-4" /> Editar</Link>}
-          />
-          {summary.isActive ? (
-            <DeactivateCustomerButton
-              customerId={summary.id}
-              customerName={summary.name}
-            />
-          ) : null}
-        </div>
+              <Button
+                variant="outline"
+                render={<Link href={`/clientes/${summary.id}/editar`}><Pencil className="size-4" /> Editar</Link>}
+              />
+              {summary.isActive ? (
+                <DeactivateCustomerButton
+                  customerId={summary.id}
+                  customerName={summary.name}
+                />
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <CustomerSummary
@@ -133,69 +139,89 @@ export default async function ClienteDetallePage({ params }: { params: Params })
         credit={summary.credit}
       />
 
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <h2 className="text-base font-semibold">Cambiar estado</h2>
-          <p className="text-xs text-muted-foreground">
-            Una clienta con estado &quot;Bloqueada&quot; no puede registrar
-            nuevas ventas: el servidor rechaza la venta rápida de forma
-            explícita.
-          </p>
-        </div>
-        <form action={changeStatus} className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="status" className="text-sm font-medium">
-              Estado
-            </label>
-            <select
-              id="status"
-              name="status"
-              defaultValue={summary.status}
-              className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
-            >
-              <option value="ACTIVE">Activa</option>
-              <option value="FREQUENT">Frecuente</option>
-              <option value="RISKY">Riesgosa</option>
-              <option value="BLOCKED">Bloqueada</option>
-            </select>
+      <Card className="border-border/70 shadow-sm">
+        <CardContent className="flex flex-col gap-4 py-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-2xl">
+            <h2 className="text-base font-semibold">Estado comercial</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Una clienta bloqueada no puede registrar nuevas ventas. El cambio se refleja de inmediato en venta rápida.
+            </p>
           </div>
-          <Button type="submit" variant="secondary">
-            Actualizar estado
-          </Button>
-        </form>
-      </div>
+          <form action={changeStatus} className="flex flex-wrap items-end gap-2">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="status" className="text-xs font-medium text-muted-foreground">Estado</label>
+              <select
+                id="status"
+                name="status"
+                defaultValue={summary.status}
+                className="h-9 rounded-lg border border-input bg-background px-2 text-sm"
+              >
+                <option value="ACTIVE">Activa</option>
+                <option value="FREQUENT">Frecuente</option>
+                <option value="RISKY">Riesgosa</option>
+                <option value="BLOCKED">Bloqueada</option>
+              </select>
+            </div>
+            <Button type="submit" variant="secondary">Actualizar estado</Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <CustomerCreditsHistory
         credits={credits}
         customer={{ id, name: summary.name, whatsapp: summary.whatsapp }}
       />
 
-      <CustomerShipmentsHistory shipments={shipments} />
-
-      <div className="flex flex-col gap-2">
-        <h2 className="text-base font-semibold">Mensajes para WhatsApp</h2>
-        <p className="text-xs text-muted-foreground">
-          Plantillas para enviar a {summary.name}. No se envía automáticamente.
-        </p>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <CustomerShipmentsHistory shipments={shipments} />
+        <div className="flex flex-col gap-4">
+          <Card className="border-border/70 shadow-sm">
+            <CardContent className="flex flex-col gap-3 py-5">
+              <div>
+                <h2 className="text-base font-semibold">Mensajes para WhatsApp</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Selecciona una plantilla, previsualízala y envíala desde WhatsApp.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <WhatsAppActions
+                  customer={{ name: summary.name, whatsapp: summary.whatsapp }}
+                  context={{
+                    hasOrder: false,
+                    hasPayment: false,
+                    hasShipment: false,
+                    hasCredit,
+                  }}
+                  credit={
+                    hasCredit
+                      ? {
+                          totalAmount: totalAvailable,
+                          availableAmount: totalAvailable,
+                        }
+                      : undefined
+                  }
+                  defaultTemplate={hasCredit ? "CREDIT_AVAILABLE" : "BALANCE_REMINDER"}
+                />
+                {hasCredit ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    render={
+                      <a
+                        href={`https://wa.me/${summary.whatsapp.replace(/[^\d]/g, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <MessageCircle className="size-4" /> Abrir chat
+                      </a>
+                    }
+                  />
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
-      <WhatsAppActions
-        customer={{ name: summary.name, whatsapp: summary.whatsapp }}
-        context={{
-          hasOrder: false,
-          hasPayment: false,
-          hasShipment: false,
-          hasCredit,
-        }}
-        credit={
-          hasCredit
-            ? {
-                totalAmount: totalAvailable.toFixed(2),
-                availableAmount: totalAvailable.toFixed(2),
-              }
-            : undefined
-        }
-        defaultTemplate={hasCredit ? "CREDIT_AVAILABLE" : "BALANCE_REMINDER"}
-      />
 
       <div className="grid gap-4 md:grid-cols-2">
         <CustomerOrdersHistory customerId={id} initialData={ordersData} />

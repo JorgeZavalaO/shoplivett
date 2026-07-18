@@ -5,6 +5,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { CircleDollarSign, Landmark, MapPin, ReceiptText } from "lucide-react";
 import { CustomerStatusBadge } from "@/components/dashboard/customer-status-badge";
 import { formatWhatsAppDisplay } from "@/lib/phone";
 
@@ -33,10 +34,10 @@ export function CustomerSummary({ customer, debt, credit }: SummaryProps) {
   }).format(customer.createdAt);
 
   return (
-    <div className="grid gap-4 md:grid-cols-3">
-      <Card>
-        <CardHeader>
-          <CardDescription>Estado</CardDescription>
+    <div className="grid gap-4 lg:grid-cols-3">
+      <Card className="border-border/70 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardDescription className="flex items-center gap-1.5"><ReceiptText className="size-3.5" /> Perfil</CardDescription>
           <CardTitle className="flex items-center gap-2 text-base">
             <CustomerStatusBadge status={customer.status} />
             {!customer.isActive ? (
@@ -46,38 +47,38 @@ export function CustomerSummary({ customer, debt, credit }: SummaryProps) {
             ) : null}
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1 text-sm">
-          <p>
-            <span className="text-muted-foreground">WhatsApp: </span>
+        <CardContent className="space-y-2 text-sm">
+          <p className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">WhatsApp</span>
             <span className="font-medium">{whatsappDisplay}</span>
           </p>
           {customer.document ? (
-            <p>
-              <span className="text-muted-foreground">Documento: </span>
-              {customer.document}
+            <p className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">Documento</span>
+              <span>{customer.document}</span>
             </p>
           ) : null}
-          <p>
-            <span className="text-muted-foreground">Registrada: </span>
-            {registered}
+          <p className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">Registrada</span>
+            <span>{registered}</span>
           </p>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardDescription>Deuda acumulada</CardDescription>
-          <CardTitle className="text-3xl">S/ {debt}</CardTitle>
+      <Card className="border-amber-200/80 bg-amber-50/40 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/15">
+        <CardHeader className="pb-2">
+          <CardDescription className="flex items-center gap-1.5"><Landmark className="size-3.5" /> Deuda acumulada</CardDescription>
+          <CardTitle className="text-3xl tracking-tight">S/ {debt}</CardTitle>
         </CardHeader>
         <CardContent className="text-xs text-muted-foreground">
           Suma de saldos pendientes de pedidos activos.
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardDescription>Crédito disponible</CardDescription>
-          <CardTitle className="text-3xl text-emerald-600">S/ {credit}</CardTitle>
+      <Card className="border-emerald-200/80 bg-emerald-50/40 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-950/15">
+        <CardHeader className="pb-2">
+          <CardDescription className="flex items-center gap-1.5"><CircleDollarSign className="size-3.5" /> Crédito disponible</CardDescription>
+          <CardTitle className="text-3xl tracking-tight text-emerald-700 dark:text-emerald-400">S/ {credit}</CardTitle>
         </CardHeader>
         <CardContent className="text-xs text-muted-foreground">
           Créditos activos por sobrepago, manuales o devoluciones.
@@ -85,9 +86,9 @@ export function CustomerSummary({ customer, debt, credit }: SummaryProps) {
       </Card>
 
       {(customer.address || customer.district || customer.reference) && (
-        <Card className="md:col-span-3">
+        <Card className="border-border/70 shadow-sm lg:col-span-3">
           <CardHeader>
-            <CardTitle className="text-base">Datos de contacto</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-base"><MapPin className="size-4 text-muted-foreground" /> Datos de contacto</CardTitle>
             <CardDescription>
               Información opcional de envío.
             </CardDescription>

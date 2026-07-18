@@ -2,7 +2,6 @@ import { notFound, redirect } from "next/navigation";
 
 import { CustomerForm } from "@/components/forms/customer-form";
 import { updateCustomerAction } from "@/actions/customers";
-import type { CustomerActionResult } from "@/lib/customers-types";
 import { getCustomerSummary } from "@/lib/customer-helpers";
 import { requireRole } from "@/lib/permissions";
 
@@ -16,11 +15,7 @@ export default async function EditarClientaPage({ params }: { params: Params }) 
   if (!summary) notFound();
   if (!summary.isActive) redirect(`/clientes/${id}`);
 
-  const boundUpdate: (
-    prev: CustomerActionResult | undefined,
-    formData: FormData,
-  ) => Promise<CustomerActionResult> = (prev, formData) =>
-    updateCustomerAction(id, prev, formData);
+  const boundUpdate = updateCustomerAction.bind(null, id);
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">

@@ -1,9 +1,9 @@
-import { ProductForm } from "@/components/forms/product-form";
-import { createProductAction } from "@/actions/products";
+import { ProductCreateForm } from "@/components/forms/product-create-form";
 import { getPrisma } from "@/lib/prisma";
-import type { ProductActionResult } from "@/actions/products";
 import { requireRole } from "@/lib/permissions";
 
+
+export const dynamic = "force-dynamic";
 
 export default async function NuevoProductoPage() {
   await requireRole(["ADMIN", "SELLER"]);
@@ -17,19 +17,11 @@ export default async function NuevoProductoPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Nuevo producto</h1>
         <p className="text-sm text-muted-foreground">
-          Crea el producto base. Luego podrás agregar variantes con su código
-          autogenerado.
+          Crea el producto, define sus variantes con precio y stock, y sube su
+          foto principal en una sola pantalla.
         </p>
       </div>
-      <ProductForm
-        mode="create"
-        action={createProductAction as (
-          prev: ProductActionResult | undefined,
-          formData: FormData,
-        ) => Promise<ProductActionResult>}
-        categories={categories}
-        cancelHref="/productos"
-      />
+      <ProductCreateForm categories={categories} cancelHref="/productos" />
     </div>
   );
 }

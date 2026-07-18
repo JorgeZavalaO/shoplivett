@@ -8,13 +8,15 @@ import { requireRole, getCurrentUser } from "@/lib/permissions";
 import { auditAfter } from "@/lib/audit";
 import { getPrisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
-import { uploadImage, deleteImage, ImageUploadError } from "@/lib/blob";
+import { uploadImage, deleteImage, ImageUploadError, validateImageBatch } from "@/lib/blob";
 import {
   ProductCreateSchema,
   ProductUpdateSchema,
   ProductVariantCreateSchema,
   ProductVariantUpdateSchema,
+  ProductCreateWithVariantsSchema,
   type ProductCreateInput,
+  type ProductCreateWithVariantsInput,
   type ProductVariantCreateInput,
 } from "@/lib/validations";
 import {
@@ -27,6 +29,14 @@ export type ProductActionResult = {
   ok: boolean;
   message?: string;
   fieldErrors?: Partial<Record<keyof ProductCreateInput, string>>;
+  code?: string;
+};
+
+export type ProductCreateWithVariantsResult = {
+  ok: boolean;
+  message?: string;
+  fieldErrors?: Partial<Record<keyof ProductCreateWithVariantsInput | "root", string>>;
+  code?: string;
 };
 
 export type VariantActionResult = {
@@ -94,6 +104,226 @@ export async function createProductAction(
   });
   revalidatePath("/productos");
   redirect(`/productos/${product.id}`);
+}
+
+/**
+ * Alta combinada: crea el producto base, sus variantes (con códigos
+ * autogenerados) y, de forma opcional, una imagen principal. Todo se
+ * persiste en una sola transacción; si algo falla, se compensan los blobs
+ * ya subidos.
+ */
+export async function createProductWithVariantsAction(
+  _prev: ProductCreateWithVariantsResult | undefined,
+  formData: FormData,
+): Promise<ProductCreateWithVariantsResult> {
+  await requireRole(["ADMIN", "SELLER"]);
+
+  const parsed = ProductCreateWithVariantsSchema.safeParse({
+    name: String(formData.get("name") ?? "").trim(),
+    description: String(formData.get("description") ?? "").trim(),
+    categoryId: String(formData.get("categoryId") ?? "").trim(),
+    hasVariants: formData.get("hasVariants") ?? "false",
+    variants: String(formData.get("variants") ?? ""),
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: "Revisa los datos del formulario.",
+      fieldErrors: fieldErrors<keyof ProductCreateWithVariantsInput | "root">(
+        parsed.error.issues,
+      ),
+    };
+  }
+
+  const prisma = getPrisma();
+  const category = await prisma.category.findUnique({
+    where: { id: parsed.data.categoryId },
+  });
+  if (!category || !category.isActive) {
+    return {
+      ok: false,
+      message: "La categoría seleccionada no está disponible.",
+      fieldErrors: { categoryId: "Selecciona una categoría activa." },
+    };
+  }
+
+  // Imagen opcional: si llega un File válido se sube al Blob antes de tocar
+  // la base de datos. Si falla la subida, devolvemos error sin crear nada.
+  const imageFile = formData.get("image");
+  let uploadedImage: { url: string; pathname: string } | null = null;
+  if (imageFile instanceof File && imageFile.size > 0) {
+    try {
+      validateImageBatch([imageFile], { maxFiles: 1, maxTotalBytes: 5 * 1024 * 1024 });
+    } catch (error) {
+      if (error instanceof ImageUploadError) {
+        return { ok: false, message: error.message, code: "IMAGE_ERROR" };
+      }
+      throw error;
+    }
+    try {
+      const tempId = `new-${Date.now()}`;
+      const uploaded = await uploadImage(
+        imageFile,
+        `products/${tempId}`,
+        tempId,
+      );
+      uploadedImage = { url: uploaded.url, pathname: uploaded.pathname };
+    } catch (error) {
+      if (error instanceof ImageUploadError) {
+        return { ok: false, message: error.message, code: "IMAGE_ERROR" };
+      }
+      throw error;
+    }
+  }
+
+  const settings = await getSettings();
+  const prefix = settings.productCodePrefix;
+
+  // Cargamos los códigos existentes de la categoría para alimentar
+  // `nextAvailableSuffix`. Se hace fuera de la transacción para no
+  // inflar la duración del bloqueo serializable.
+  const existingCodes = await prisma.productVariant.findMany({
+    where: { product: { categoryId: parsed.data.categoryId } },
+    select: { code: true },
+  });
+  const codeList = existingCodes.map((v) => v.code);
+
+  // Pre-generamos los códigos para cada variante. Si la categoría cambió
+  // de slug entre el `nextAvailableSuffix` y el `create`, el `@@unique` nos
+  // protege (reintentamos con el siguiente sufijo).
+  const variantPlans = parsed.data.variants.map((v) => {
+    const suffix = nextAvailableSuffix(
+      codeList,
+      prefix,
+      category.slug,
+      v.color ?? null,
+    );
+    const code = buildVariantCode(prefix, category.slug, v.color ?? null, suffix);
+    codeList.push(code);
+    return { input: v, code, suffix };
+  });
+
+  let productId: string | null = null;
+  try {
+    const created = await prisma.$transaction(async (tx) => {
+      const product = await tx.product.create({
+        data: {
+          name: parsed.data.name,
+          description: parsed.data.description ?? null,
+          categoryId: parsed.data.categoryId,
+        },
+      });
+      productId = product.id;
+
+      for (const plan of variantPlans) {
+        let attempt = 0;
+        let candidate = plan.code;
+        let succeeded = false;
+        while (attempt < MAX_ATTEMPTS) {
+          try {
+            const createdVariant = await tx.productVariant.create({
+              data: {
+                productId: product.id,
+                code: candidate,
+                color: plan.input.color ?? null,
+                material: plan.input.material ?? null,
+                size: plan.input.size ?? null,
+                price: plan.input.price as string,
+                cost: (plan.input.cost ?? null) as string | null,
+                stock: plan.input.stock,
+                reservedStock: 0,
+                soldStock: 0,
+                barcode: plan.input.barcode ?? null,
+              },
+              select: { id: true },
+            });
+            if (plan.input.stock > 0) {
+              await tx.inventoryMovement.create({
+                data: {
+                  variantId: createdVariant.id,
+                  type: "IN",
+                  quantity: plan.input.stock,
+                  reason: "Stock inicial",
+                },
+              });
+            }
+            succeeded = true;
+            break;
+          } catch (error) {
+            if (
+              error instanceof Prisma.PrismaClientKnownRequestError &&
+              error.code === "P2002"
+            ) {
+              plan.suffix += 1;
+              candidate = buildVariantCode(
+                prefix,
+                category.slug,
+                plan.input.color ?? null,
+                plan.suffix,
+              );
+              attempt += 1;
+              continue;
+            }
+            throw error;
+          }
+        }
+        if (!succeeded) {
+          throw new Error(
+            "No se pudo generar un código único para una variante.",
+          );
+        }
+      }
+
+      if (uploadedImage) {
+        await tx.productImage.create({
+          data: {
+            url: uploadedImage.url,
+            pathname: uploadedImage.pathname,
+            productId: product.id,
+            variantId: null,
+            isPrimary: true,
+          },
+        });
+      }
+
+      return product;
+    });
+    productId = created.id;
+  } catch (error) {
+    // Compensar el blob subido si la transacción falla.
+    if (uploadedImage) {
+      await deleteImage(uploadedImage.pathname).catch(() => {
+        // El fallo de limpieza se ignora: preferimos un blob huérfano a
+        // un error de acción que ya reportó el problema real.
+      });
+    }
+    return {
+      ok: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "No pudimos crear el producto. Intenta nuevamente.",
+      code: "CREATE_FAILED",
+    };
+  }
+
+  const user = await getCurrentUser();
+  auditAfter(user?.id ?? null, {
+    action: "PRODUCT_CREATED",
+    entity: "Product",
+    entityId: productId!,
+    metadata: {
+      name: parsed.data.name,
+      categoryId: parsed.data.categoryId,
+      hasVariants: parsed.data.hasVariants,
+      variantCount: parsed.data.variants.length,
+      hasImage: Boolean(uploadedImage),
+    },
+  });
+
+  revalidatePath("/productos");
+  revalidatePath(`/productos/${productId}`);
+  redirect(`/productos/${productId}`);
 }
 
 export async function updateProductAction(
