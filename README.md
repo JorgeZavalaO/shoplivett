@@ -2,6 +2,8 @@
 
 Administrador interno de ventas para una tienda de carteras que vende principalmente por **TikTok Live**: clientes, productos, variantes, stock, reservas, pagos (Yape/Plin), envíos agrupados, créditos y reportes. La siguiente fase documentada extiende el sistema hacia finanzas por lotes de importación, costo real, gastos, incidencias y rentabilidad.
 
+Manual funcional para operadores: [`docs/GUIA_COMPLETA_USO_SISTEMA.md`](./docs/GUIA_COMPLETA_USO_SISTEMA.md).
+
 ## Stack
 
 - Next.js 16 (App Router) + React 19
