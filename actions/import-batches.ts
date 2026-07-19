@@ -582,8 +582,9 @@ export async function updateBatchAction(
     }
     throw error;
   }
-
   revalidatePath("/lotes");
+  revalidatePath("/inventario");
+  revalidatePath("/dashboard");
   revalidatePath(`/lotes/${batchId}`);
   redirect(`/lotes/${batchId}`);
 }
@@ -710,6 +711,7 @@ export async function addBatchItemAction(
   }
 
   revalidatePath(`/lotes/${batchId}`);
+  revalidatePath("/inventario");
   return { ok: true, message: "Item agregado al lote." };
 }
 
@@ -1022,8 +1024,9 @@ export async function recalculateBatchAction(
     }
     throw err;
   }
-
   revalidatePath(`/lotes/${batchId}`);
+  revalidatePath("/inventario");
+
   revalidatePath("/lotes");
 
   return {

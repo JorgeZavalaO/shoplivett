@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Prisma } from "@prisma/client";
 
 import { requireRole } from "@/lib/permissions";
 import { getPrisma } from "@/lib/prisma";
@@ -68,7 +67,7 @@ export async function createCategoryAction(
     existing.map((c) => c.slug),
   );
 
-  const category = await prisma.category.create({
+  await prisma.category.create({
     data: { name: parsed.data.name, slug },
   });
   revalidatePath("/categorias");
@@ -97,7 +96,10 @@ export async function updateCategoryAction(
   }
 
   const prisma = getPrisma();
-  const existing = await prisma.category.findUnique({ where: { id: categoryId } });
+  const existing = await prisma.category.findUnique({
+    where: { id: categoryId },
+    select: { id: true, name: true },
+  });
   if (!existing) return { ok: false, message: "La categoría ya no existe." };
 
   const base = slugify(parsed.data.name || existing.name);
@@ -166,5 +168,3 @@ export type CategoryListItem = {
   isActive: boolean;
   productCount: number;
 };
-
-void Prisma;

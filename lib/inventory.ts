@@ -282,6 +282,63 @@ export async function confirmSaleStock(
   }
 }
 
+/**
+ * Variante batch de `confirmSaleStock`: dado un orderId, carga todos los
+ * items, agrupa cantidades por variante y aplica los cambios en SQL con
+ * `updateMany` + `createMany`. Reduce N+1 a 1 findMany + 1 updateMany por
+ * variante + 1 createMany de movimientos.
+ *
+ * Pensado para ser llamado cuando un pedido pasa a PAID, dentro de la
+ * misma transacción que el resto de mutaciones del pago.
+ */
+export async function confirmSaleStockForOrder(
+  tx: Tx,
+  orderId: string,
+  reason: string,
+): Promise<void> {
+  const items = await tx.orderItem.findMany({
+    where: { orderId },
+    select: { variantId: true, quantity: true },
+  });
+  if (items.length === 0) return;
+  const byVariant = new Map<string, number>();
+  for (const it of items) {
+    byVariant.set(it.variantId, (byVariant.get(it.variantId) ?? 0) + it.quantity);
+  }
+  const variants = await tx.productVariant.findMany({
+    where: { id: { in: Array.from(byVariant.keys()) } },
+    select: { id: true, reservedStock: true },
+  });
+  for (const v of variants) {
+    const need = byVariant.get(v.id) ?? 0;
+    if (v.reservedStock < need) {
+      throw new InventoryError(
+        `Stock reservado insuficiente para confirmar la venta de la variante ${v.id} (${v.reservedStock} < ${need}).`,
+        "INSUFFICIENT_RESERVED",
+      );
+    }
+  }
+  await Promise.all(
+    Array.from(byVariant.entries()).map(([variantId, quantity]) =>
+      tx.productVariant.update({
+        where: { id: variantId },
+        data: {
+          reservedStock: { decrement: quantity },
+          soldStock: { increment: quantity },
+        },
+      }),
+    ),
+  );
+  await tx.inventoryMovement.createMany({
+    data: Array.from(byVariant.entries()).map(([variantId, quantity]) => ({
+      variantId,
+      type: "SALE" as const,
+      quantity,
+      reason,
+    })),
+  });
+}
+
 /** Cancela stock sin reserva previa (caso de error antes de reservar). */
 export async function cancelStock(
   variantId: string,

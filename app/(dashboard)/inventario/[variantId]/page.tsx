@@ -32,7 +32,20 @@ export default async function VarianteInventarioPage({
   const prisma = getPrisma();
   const variant = await prisma.productVariant.findUnique({
     where: { id: variantId },
-    include: { product: { include: { category: true } } },
+    select: {
+      id: true,
+      code: true,
+      color: true,
+      size: true,
+      productId: true,
+      product: {
+        select: {
+          id: true,
+          name: true,
+          category: { select: { id: true, name: true } },
+        },
+      },
+    },
   });
   if (!variant) notFound();
 

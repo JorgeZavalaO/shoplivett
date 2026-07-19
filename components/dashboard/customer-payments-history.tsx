@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useTransition } from "react";
 import Link from "next/link";
 import { Wallet, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -14,6 +14,11 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { listCustomerPaymentsAction, type CustomerPaymentItem } from "@/actions/payments";
+
+const DATETIME_FORMAT = new Intl.DateTimeFormat("es-PE", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   YAPE: "Yape",
@@ -47,15 +52,18 @@ type Props = {
 export function CustomerPaymentsHistory({ customerId, initialData }: Props) {
   const [page, setPage] = useState(initialData.page);
   const [data, setData] = useState(initialData);
-  const [loading, setLoading] = useState(false);
-  const totalPages = Math.ceil(data.total / data.perPage);
+  const [isPending, startTransition] = useTransition();
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(data.total / data.perPage)),
+    [data.total, data.perPage],
+  );
 
-  async function loadPage(newPage: number) {
-    setLoading(true);
-    const result = await listCustomerPaymentsAction(customerId, { page: newPage, perPage: data.perPage });
-    setData(result);
-    setPage(newPage);
-    setLoading(false);
+  function loadPage(newPage: number) {
+    startTransition(async () => {
+      const result = await listCustomerPaymentsAction(customerId, { page: newPage, perPage: data.perPage });
+      setData(result);
+      setPage(newPage);
+    });
   }
 
   return (
@@ -89,10 +97,7 @@ export function CustomerPaymentsHistory({ customerId, initialData }: Props) {
                     S/ {p.amount} · {PAYMENT_METHOD_LABELS[p.method] ?? p.method}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {new Intl.DateTimeFormat("es-PE", {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    }).format(new Date(p.createdAt))}
+                    {DATETIME_FORMAT.format(new Date(p.createdAt))}
                     {p.orderNumbers.length > 0 && (
                       <> · {p.orderNumbers.join(", ")}</>
                     )}
@@ -112,7 +117,7 @@ export function CustomerPaymentsHistory({ customerId, initialData }: Props) {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={page <= 1 || loading}
+                    disabled={page <= 1 || isPending}
                     onClick={() => loadPage(page - 1)}
                   >
                     <ChevronLeft className="size-4" />
@@ -120,7 +125,7 @@ export function CustomerPaymentsHistory({ customerId, initialData }: Props) {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={page >= totalPages || loading}
+                    disabled={page >= totalPages || isPending}
                     onClick={() => loadPage(page + 1)}
                   >
                     <ChevronRight className="size-4" />

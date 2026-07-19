@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { WhatsAppQuickButton } from "@/components/whatsapp/whatsapp-actions";
 import { PaginatedDataTable } from "./paginated-data-table";
 
+const DATE_FORMAT = new Intl.DateTimeFormat("es-PE", { dateStyle: "short" });
+
 export type OrderRow = {
   id: string;
   orderNumber: string;
@@ -82,11 +84,7 @@ const columns: ColumnDef<OrderRow>[] = [
     header: "Vence",
     cell: ({ row }) => (
       <div className="flex flex-col gap-1">
-        <span>
-          {new Intl.DateTimeFormat("es-PE", { dateStyle: "short" }).format(
-            new Date(row.original.expiresAt),
-          )}
-        </span>
+        <span>{DATE_FORMAT.format(new Date(row.original.expiresAt))}</span>
         <OrderExpiryBadge
           expiresAt={row.original.expiresAt}
           status={row.original.status}

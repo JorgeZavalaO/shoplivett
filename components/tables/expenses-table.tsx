@@ -12,6 +12,8 @@ import {
 } from "@/lib/expenses-shared";
 import type { ExpenseCategory, ExpenseStatus, ExpenseType } from "@prisma/client";
 
+const DATE_FORMAT = new Intl.DateTimeFormat("es-PE", { dateStyle: "short" });
+
 export type ExpenseRow = {
   id: string;
   expenseDate: Date;
@@ -19,7 +21,7 @@ export type ExpenseRow = {
   expenseType: ExpenseType;
   status: ExpenseStatus;
   description: string;
-  amount: { toString(): string };
+  amount: string;
   paymentMethod: string | null;
   createdBy: { id: string; name: string } | null;
 };
@@ -40,10 +42,7 @@ type Props = {
 const columns: ColumnDef<ExpenseRow>[] = [
   {
     header: "Fecha",
-    cell: ({ row }) =>
-      new Intl.DateTimeFormat("es-PE", { dateStyle: "short" }).format(
-        new Date(row.original.expenseDate),
-      ),
+    cell: ({ row }) => DATE_FORMAT.format(new Date(row.original.expenseDate)),
   },
   {
     accessorKey: "description",
@@ -87,7 +86,7 @@ const columns: ColumnDef<ExpenseRow>[] = [
             (isVoided ? "text-muted-foreground line-through" : "font-semibold")
           }
         >
-          S/ {Number(row.original.amount.toString()).toFixed(2)}
+          S/ {row.original.amount}
         </span>
       );
     },

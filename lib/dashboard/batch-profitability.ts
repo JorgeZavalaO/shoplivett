@@ -35,7 +35,10 @@ export async function getBatchProfitability(
   const limit = Math.min(50, Math.max(1, filter.limit ?? 10));
   const range = monthRange(year, month);
 
-  const allocationRows = await prisma.orderItemBatchAllocation.findMany({
+  // GroupBy en SQL: agregar por batchId acotado a los top batches
+  // por inversión, sin traer todas las allocations del mes.
+  const allocationRows = await prisma.orderItemBatchAllocation.groupBy({
+    by: ["batchId"],
     where: {
       orderItem: {
         order: {
@@ -44,41 +47,16 @@ export async function getBatchProfitability(
         },
       },
     },
-    select: {
-      batchId: true,
-      quantity: true,
-      subtotalCostPen: true,
-      orderItem: { select: { lineTotal: true } },
-    },
+    _sum: { quantity: true, subtotalCostPen: true },
+    orderBy: { _sum: { subtotalCostPen: "desc" } },
+    take: limit * 2,
   });
 
-  const batchTotals = new Map<
-    string,
-    {
-      soldUnits: number;
-      allocatedCostCents: number;
-      allocatedRevenueCents: number;
-    }
-  >();
-  for (const a of allocationRows) {
-    const acc = batchTotals.get(a.batchId) ?? {
-      soldUnits: 0,
-      allocatedCostCents: 0,
-      allocatedRevenueCents: 0,
-    };
-    acc.soldUnits += a.quantity;
-    acc.allocatedCostCents += toCents(a.subtotalCostPen, {
-      allowNegative: true,
-    });
-    acc.allocatedRevenueCents += toCents(a.orderItem.lineTotal);
-    batchTotals.set(a.batchId, acc);
-  }
-
-  if (batchTotals.size === 0) {
+  if (allocationRows.length === 0) {
     return { rows: [], filter };
   }
 
-  const batchIds = [...batchTotals.keys()];
+  const batchIds = allocationRows.map((r) => r.batchId);
   const batches = await prisma.importBatch.findMany({
     where: { id: { in: batchIds }, status: { in: ["COMPLETE", "CLOSED"] } },
     select: {
@@ -92,17 +70,46 @@ export async function getBatchProfitability(
   });
   const batchMap = new Map(batches.map((b) => [b.id, b]));
 
+  // Obtener revenue (lineTotal de OrderItem) agregado por batchId.
+  // Cargamos las allocations de los batches top y agregamos en
+  // memoria (ya es un conjunto acotado a limit * 2).
+  const detailAllocations = await prisma.orderItemBatchAllocation.findMany({
+    where: { batchId: { in: batchIds } },
+    select: {
+      batchId: true,
+      quantity: true,
+      subtotalCostPen: true,
+      orderItem: { select: { lineTotal: true } },
+    },
+  });
+
+  const revenueByBatch = new Map<string, Cents>();
+  for (const a of detailAllocations) {
+    const current = revenueByBatch.get(a.batchId) ?? 0;
+    revenueByBatch.set(
+      a.batchId,
+      current + toCents(a.orderItem.lineTotal, { allowNegative: true }),
+    );
+  }
+
   const rows: BatchProfitabilityRow[] = [];
-  for (const [batchId, totals] of batchTotals) {
-    const b = batchMap.get(batchId);
+  for (const a of allocationRows) {
+    const b = batchMap.get(a.batchId);
     if (!b) continue;
 
     const investmentCents = toCents(b.totalInvestmentPen);
-    const grossProfitCents =
-      totals.allocatedRevenueCents - totals.allocatedCostCents;
+    const soldUnits = a._sum.quantity ?? 0;
+    const allocatedCostCents = toCents(a._sum.subtotalCostPen, {
+      allowNegative: true,
+    });
+    const allocatedRevenueCents = revenueByBatch.get(a.batchId) ?? 0;
+
+    if (soldUnits === 0 && allocatedRevenueCents === 0) continue;
+
+    const grossProfitCents = allocatedRevenueCents - allocatedCostCents;
     const marginBps =
-      totals.allocatedRevenueCents > 0
-        ? Math.round((grossProfitCents * 10000) / totals.allocatedRevenueCents)
+      allocatedRevenueCents > 0
+        ? Math.round((grossProfitCents * 10000) / allocatedRevenueCents)
         : 0;
     const roiBps =
       investmentCents > 0
@@ -114,10 +121,6 @@ export async function getBatchProfitability(
       0,
     );
 
-    if (totals.soldUnits === 0 && totals.allocatedRevenueCents === 0) {
-      continue;
-    }
-
     rows.push({
       batchId: b.id,
       batchCode: b.code,
@@ -125,11 +128,11 @@ export async function getBatchProfitability(
       purchaseDate: b.purchaseDate,
       investmentCents,
       investment: centsToDecimalString(investmentCents),
-      soldUnits: totals.soldUnits,
-      allocatedRevenueCents: totals.allocatedRevenueCents,
-      allocatedRevenue: centsToDecimalString(totals.allocatedRevenueCents),
-      allocatedCostCents: totals.allocatedCostCents,
-      allocatedCost: centsToDecimalString(totals.allocatedCostCents),
+      soldUnits,
+      allocatedRevenueCents,
+      allocatedRevenue: centsToDecimalString(allocatedRevenueCents),
+      allocatedCostCents,
+      allocatedCost: centsToDecimalString(allocatedCostCents),
       grossProfitCents,
       grossProfit: centsToDecimalString(grossProfitCents),
       marginBps,

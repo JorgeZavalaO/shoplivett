@@ -4,7 +4,7 @@ import { Prisma, CreditOrigin, CreditStatus } from "@prisma/client";
 
 import { getPrisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
-import { confirmSaleStock } from "@/lib/inventory";
+import { confirmSaleStockForOrder } from "@/lib/inventory";
 import { toCents, centsToDecimalString, type Cents } from "@/lib/money";
 import { auditInTx } from "@/lib/audit";
 import { recognizeOrderProfit } from "@/lib/order-batch-allocation";
@@ -65,10 +65,11 @@ export async function createOverpaymentCredit(
 
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    const customer = await tx.customer.findUnique({ where: { id: input.customerId } });
+    const [customer, payment] = await Promise.all([
+      tx.customer.findUnique({ where: { id: input.customerId }, select: { id: true } }),
+      tx.payment.findUnique({ where: { id: input.paymentId }, select: { id: true, customerId: true } }),
+    ]);
     if (!customer) throw new CreditError("La clienta ya no existe.", "CUSTOMER_NOT_FOUND");
-
-    const payment = await tx.payment.findUnique({ where: { id: input.paymentId } });
     if (!payment) throw new CreditError("El pago ya no existe.", "CREDIT_NOT_FOUND");
     if (payment.customerId !== input.customerId) {
       throw new CreditError("El pago no pertenece a la clienta.", "CUSTOMER_MISMATCH");
@@ -114,7 +115,10 @@ export async function createManualCredit(
   }
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    const customer = await tx.customer.findUnique({ where: { id: input.customerId } });
+    const customer = await tx.customer.findUnique({
+      where: { id: input.customerId },
+      select: { id: true },
+    });
     if (!customer) throw new CreditError("La clienta ya no existe.", "CUSTOMER_NOT_FOUND");
     const credit = await tx.customerCredit.create({
       data: {
@@ -145,7 +149,7 @@ export type RefundCreditInput = {
 
 export async function refundCredit(
   input: RefundCreditInput,
-): Promise<{ creditId: string }> {
+): Promise<{ creditId: string; customerId: string }> {
   const reason = input.reason.trim();
   if (reason.length < 5) {
     throw new CreditError(
@@ -164,7 +168,10 @@ export async function refundCredit(
   try {
     return await prisma.$transaction(
       async (tx) => {
-        const credit = await tx.customerCredit.findUnique({ where: { id: input.creditId } });
+        const credit = await tx.customerCredit.findUnique({
+          where: { id: input.creditId },
+          select: { id: true, status: true, availableAmount: true, customerId: true },
+        });
         if (!credit) throw new CreditError("El crédito ya no existe.", "CREDIT_NOT_FOUND");
         if (credit.status === CreditStatus.REFUNDED) {
           throw new CreditError("El crédito ya fue devuelto.", "ALREADY_REFUNDED");
@@ -194,7 +201,7 @@ export async function refundCredit(
           entityId: input.creditId,
           metadata: { reason },
         });
-        return { creditId: input.creditId };
+        return { creditId: input.creditId, customerId: credit.customerId };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 15000 },
     );
@@ -243,6 +250,14 @@ export async function applyCreditToOrder(
       async (tx) => {
         const credit = await tx.customerCredit.findUnique({
           where: { id: input.creditId },
+          select: {
+            id: true,
+            status: true,
+            availableAmount: true,
+            customerId: true,
+            amount: true,
+            _count: { select: { applications: true } },
+          },
         });
         if (!credit) throw new CreditError("El crédito ya no existe.", "CREDIT_NOT_FOUND");
         if (credit.status === CreditStatus.REFUNDED) {
@@ -352,18 +367,14 @@ export async function applyCreditToOrder(
 
         // Si con el crédito el pedido quedó pagado, mover stock reservado → vendido.
         if (newStatus === "PAID") {
-          const items = await tx.orderItem.findMany({
-            where: { orderId: order.id },
-            select: { variantId: true, quantity: true },
-          });
-          for (const item of items) {
-            await confirmSaleStock(item.variantId, item.quantity, {
-              reason: `Crédito ${credit.id} aplicado a pedido`,
-              tx,
-            });
-          }
+          await confirmSaleStockForOrder(
+            tx,
+            order.id,
+            `Crédito ${credit.id} aplicado a pedido`,
+          );
           const settings = await tx.businessSettings.findUnique({
             where: { id: "default" },
+            select: { paymentMethodFees: true, standardPackagingCostPen: true },
           });
           const fees: PaymentMethodFees = settings
             ? coercePaymentMethodFees(settings.paymentMethodFees)
@@ -430,12 +441,14 @@ export async function listCustomerCredits(customerId: string) {
   const credits = await prisma.customerCredit.findMany({
     where: { customerId },
     orderBy: { createdAt: "desc" },
+    take: 20,
     include: {
       applications: {
         include: {
           order: { select: { id: true, orderNumber: true } },
         },
         orderBy: { createdAt: "desc" },
+        take: 10,
       },
       payment: {
         select: { id: true, method: true, amount: true, createdAt: true },

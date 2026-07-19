@@ -663,56 +663,52 @@ export async function getLivesReport(filter: LivesReportFilter): Promise<LivesRe
   >();
   if (liveIds.length > 0) {
     const paidLikeStatuses: OrderStatus[] = ["PAID", "PARTIALLY_PAID", "RESERVED"];
-    const [ordersByLive, paidLikeByLive, pendingByLive] = await Promise.all([
-      prisma.order.groupBy({
-        by: ["liveSessionId"],
-        where: { liveSessionId: { in: liveIds } },
-        _sum: { total: true },
-      }),
-      prisma.order.groupBy({
-        by: ["liveSessionId"],
-        where: {
-          liveSessionId: { in: liveIds },
-          status: { in: paidLikeStatuses },
+    const liveMetrics = await prisma.order.groupBy({
+      by: ["liveSessionId", "status"],
+      where: {
+        liveSessionId: { in: liveIds },
+        status: {
+          in: [...paidLikeStatuses, "PAYMENT_VALIDATION_PENDING"],
         },
-        _sum: { validatedPaid: true, balance: true },
-      }),
-      prisma.order.groupBy({
-        by: ["liveSessionId"],
-        where: {
-          liveSessionId: { in: liveIds },
-          status: "PAYMENT_VALIDATION_PENDING",
-        },
-        _sum: { total: true },
-      }),
-    ]);
+      },
+      _sum: { total: true, validatedPaid: true, balance: true },
+    });
 
-    const ordersMap = new Map(
-      ordersByLive
-        .filter((row) => row.liveSessionId !== null)
-        .map((row) => [row.liveSessionId as string, row]),
-    );
-    const paidLikeMap = new Map(
-      paidLikeByLive
-        .filter((row) => row.liveSessionId !== null)
-        .map((row) => [row.liveSessionId as string, row]),
-    );
-    const pendingMap = new Map(
-      pendingByLive
-        .filter((row) => row.liveSessionId !== null)
-        .map((row) => [row.liveSessionId as string, row]),
-    );
+    const paidMap = new Map<string, { total: Cents; validatedPaid: Cents; balance: Cents }>();
+    for (const row of liveMetrics) {
+      if (row.liveSessionId === null) continue;
+      const id = row.liveSessionId;
+      const prev = paidMap.get(id) ?? {
+        total: 0,
+        validatedPaid: 0,
+        balance: 0,
+      };
+      const isPaidLike = paidLikeStatuses.includes(
+        row.status as (typeof paidLikeStatuses)[number],
+      );
+      paidMap.set(id, {
+        total:
+          prev.total +
+          toCents(row._sum.total, { allowNegative: true }),
+        validatedPaid:
+          prev.validatedPaid +
+          (isPaidLike
+            ? toCents(row._sum.validatedPaid, { allowNegative: true })
+            : 0),
+        balance:
+          prev.balance +
+          (isPaidLike
+            ? toCents(row._sum.balance, { allowNegative: true })
+            : 0),
+      });
+    }
 
     for (const id of liveIds) {
-      const orders = ordersMap.get(id);
-      const paidLike = paidLikeMap.get(id);
-      const pending = pendingMap.get(id);
+      const m = paidMap.get(id) ?? { total: 0, validatedPaid: 0, balance: 0 };
       metricsByLive.set(id, {
-        pedidos: toCents(orders?._sum.total, { allowNegative: true }),
-        cobrado: toCents(paidLike?._sum.validatedPaid, { allowNegative: true }),
-        pendiente:
-          toCents(paidLike?._sum.balance, { allowNegative: true }) +
-          toCents(pending?._sum.total, { allowNegative: true }),
+        pedidos: m.total,
+        cobrado: m.validatedPaid,
+        pendiente: m.balance,
       });
     }
   }

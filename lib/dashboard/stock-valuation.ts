@@ -26,7 +26,8 @@ export async function getStockValuation(): Promise<StockValuation> {
   const prisma = getPrisma();
 
   const variants = await prisma.productVariant.findMany({
-    where: { status: { not: "ARCHIVED" } },
+    where: { status: { not: "ARCHIVED" }, stock: { gt: 0 } },
+    take: 10000,
     select: {
       id: true,
       stock: true,

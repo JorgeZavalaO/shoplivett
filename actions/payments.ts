@@ -135,21 +135,23 @@ export async function createPaymentAction(
 
     if (receiptFiles.length > 0) {
       const prisma = getPrisma();
-      for (const file of receiptFiles) {
-        const uploaded = await uploadImage(
-          file,
-          "payments/receipts",
-          `manual-${result.paymentId}`,
-          { access: "private" },
-        );
-        await prisma.paymentReceipt.create({
-          data: {
-            paymentId: result.paymentId,
-            url: uploaded.url,
-            pathname: uploaded.pathname,
-          },
-        });
-      }
+      const uploadedReceipts = await Promise.all(
+        receiptFiles.map((file) =>
+          uploadImage(
+            file,
+            "payments/receipts",
+            `manual-${result.paymentId}`,
+            { access: "private" },
+          ),
+        ),
+      );
+      await prisma.paymentReceipt.createMany({
+        data: uploadedReceipts.map((uploaded) => ({
+          paymentId: result.paymentId,
+          url: uploaded.url,
+          pathname: uploaded.pathname,
+        })),
+      });
     }
 
     revalidatePath("/pagos");

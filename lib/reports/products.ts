@@ -78,7 +78,7 @@ export async function getProductProfitabilityReport(
       grossProfitPen: true,
     },
     orderBy: { _sum: { grossProfitPen: "desc" } },
-    take: MAX_REPORT_ROWS + 1,
+    take: (MAX_REPORT_ROWS + 1) * 3,
   });
 
   const { rows: limitedGrouped, truncated } = trimReportRows(grouped);

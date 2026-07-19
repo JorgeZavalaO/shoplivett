@@ -88,7 +88,7 @@ export default async function GastosPage({
     expenseType: it.expenseType,
     status: it.status,
     description: it.description,
-    amount: { toString: () => it.amount.toString() },
+    amount: it.amount,
     paymentMethod: it.paymentMethod,
     createdBy: it.createdBy,
   }));

@@ -155,15 +155,7 @@ export async function getOrderDetailAction(orderId: string) {
       netProfitPen: true,
       profitCalculatedAt: true,
       customer: {
-        select: {
-          id: true,
-          name: true,
-          whatsapp: true,
-          address: true,
-          district: true,
-          reference: true,
-          status: true,
-        },
+        select: { id: true, name: true, whatsapp: true },
       },
       liveSession: {
         select: { id: true, name: true, channel: true, status: true },
@@ -203,7 +195,6 @@ export async function getOrderDetailAction(orderId: string) {
               quantity: true,
               unitCostPen: true,
               subtotalCostPen: true,
-              createdAt: true,
             },
           },
         },
@@ -222,15 +213,11 @@ export async function getOrderDetailAction(orderId: string) {
             select: { id: true, createdAt: true },
           },
           applications: {
-            select: {
-              id: true,
-              amount: true,
-              createdAt: true,
-              order: { select: { id: true, orderNumber: true } },
-            },
+            select: { id: true, amount: true, createdAt: true, orderId: true },
           },
         },
         orderBy: { createdAt: "desc" },
+        take: 20,
       },
       shipmentOrders: {
         where: { shipment: { status: { not: "CANCELLED" } } },

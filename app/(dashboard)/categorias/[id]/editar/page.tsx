@@ -12,7 +12,10 @@ type Params = Promise<{ id: string }>;
 export default async function EditarCategoriaPage({ params }: { params: Params }) {
   await requireRole(["ADMIN", "SELLER"]);
   const { id } = await params;
-  const category = await getPrisma().category.findUnique({ where: { id } });
+  const category = await getPrisma().category.findUnique({
+    where: { id },
+    select: { id: true, name: true, slug: true, isActive: true },
+  });
   if (!category) notFound();
 
   const boundAction = updateCategoryAction.bind(null, id) as (

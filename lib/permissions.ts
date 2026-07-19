@@ -1,4 +1,5 @@
 // Helpers de permisos y guards por rol.
+import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -63,4 +64,29 @@ export async function requirePaymentValidator() {
     redirect("/dashboard");
   }
   return user;
+}
+
+/**
+ * Guard pensado para API routes (route handlers de Next.js).
+ *
+ * A diferencia de `requireRole`, este helper **no** redirige: devuelve
+ * una `NextResponse` con código HTTP 401/403 para que el cliente
+ * reciba una respuesta adecuada (JSON/texto) en lugar de un 307 a
+ * una página HTML. Úsalo así:
+ *
+ *   const denied = await requireApiRole("ADMIN");
+ *   if (denied) return denied;
+ */
+export async function requireApiRole(
+  roles: Role | Role[],
+): Promise<NextResponse | null> {
+  const session = await auth();
+  if (!session?.user) {
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
+  const allowed = Array.isArray(roles) ? roles : [roles];
+  if (!allowed.includes(session.user.role)) {
+    return new NextResponse("Forbidden", { status: 403 });
+  }
+  return null;
 }

@@ -9,6 +9,11 @@ import { LiveStatusBadge } from "@/components/dashboard/live-status-badge";
 import { Button } from "@/components/ui/button";
 import { PaginatedDataTable } from "./paginated-data-table";
 
+const DATETIME_FORMAT = new Intl.DateTimeFormat("es-PE", {
+  dateStyle: "short",
+  timeStyle: "short",
+});
+
 export type LiveRow = {
   id: string;
   name: string;
@@ -73,11 +78,7 @@ const columns: ColumnDef<LiveRow>[] = [
   {
     accessorKey: "startedAt",
     header: "Inicio",
-    cell: ({ row }) =>
-      new Intl.DateTimeFormat("es-PE", {
-        dateStyle: "short",
-        timeStyle: "short",
-      }).format(new Date(row.original.startedAt)),
+    cell: ({ row }) => DATETIME_FORMAT.format(new Date(row.original.startedAt)),
   },
   {
     id: "actions",

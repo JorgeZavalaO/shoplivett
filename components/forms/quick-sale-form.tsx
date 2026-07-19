@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AsyncSearchList } from "@/components/ui/async-search-list";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { MarginBadge } from "@/components/financial/margin-badge";
 import { StockHealthBadge } from "@/components/financial/stock-health-badge";
 import { CustomerStatusBadge } from "@/components/dashboard/customer-status-badge";
@@ -214,14 +215,22 @@ export function QuickSaleForm({
       : catalogVariants.filter((variant) => variant.categoryName === activeCategory),
     [activeCategory, catalogVariants],
   );
-  const searchVar = useCallback(async (q: string) => {
+  const searchVar = useCallback((q: string) => {
     setVariantQuery(q);
-    if (q.length < 2) { setVariantResults([]); setVariantError(null); return; }
+  }, []);
+
+  const debouncedVariantQuery = useDebouncedValue(variantQuery, 300);
+  useEffect(() => {
+    if (debouncedVariantQuery.length < 2) {
+      setVariantResults([]);
+      setVariantError(null);
+      return;
+    }
     setVariantLoading(true);
     setVariantError(null);
     searchVariant(async () => {
       try {
-        const res = await searchVariantsForSaleAction(q);
+        const res = await searchVariantsForSaleAction(debouncedVariantQuery);
         setVariantResults(res);
       } catch (err) {
         console.error(err);
@@ -231,7 +240,7 @@ export function QuickSaleForm({
         setVariantLoading(false);
       }
     });
-  }, []);
+  }, [debouncedVariantQuery]);
 
   const displayedVariants = variantQuery.trim().length >= 2
     ? variantResults

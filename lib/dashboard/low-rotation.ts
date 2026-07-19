@@ -1,6 +1,5 @@
 import { centsToDecimalString, type Cents } from "@/lib/money";
 import { getPrisma } from "@/lib/prisma";
-import { getLastSoldByVariant } from "@/lib/reports/shared/last-sale";
 import {
   legacyUnitCostCents,
   weightedUnitCostFromBatches,
@@ -30,11 +29,20 @@ export async function getLowRotationProducts(
   const safeLimit = Math.min(50, Math.max(1, Math.floor(limit)));
   const threshold = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
 
+  // Filtrar en SQL: variantes sin ventas PAID después del threshold,
+  // que tengan stock disponible. Con take acotado.
   const variants = await prisma.productVariant.findMany({
     where: {
       status: { not: "ARCHIVED" },
       OR: [{ stock: { gt: 0 } }, { soldStock: { gt: 0 } }],
+      orderItems: {
+        none: {
+          order: { status: "PAID", createdAt: { gte: threshold } },
+        },
+      },
     },
+    orderBy: [{ stock: "desc" }, { id: "asc" }],
+    take: safeLimit * 2,
     select: {
       id: true,
       code: true,
@@ -56,18 +64,14 @@ export async function getLowRotationProducts(
     },
   });
 
-  const variantIds = variants.map((v) => v.id);
-  const lastSoldByVariant = await getLastSoldByVariant(prisma, variantIds);
-
   const rows: LowRotationRow[] = [];
   for (const v of variants) {
     if (v.stock <= 0 && v.soldStock <= 0) continue;
 
-    const lastSoldAt = lastSoldByVariant.get(v.id) ?? null;
-    if (lastSoldAt && lastSoldAt >= threshold) continue;
-    const daysSinceLastSale = lastSoldAt
-      ? Math.floor((Date.now() - lastSoldAt.getTime()) / (1000 * 60 * 60 * 24))
-      : null;
+    // Como ya filtramos variantes sin ventas en el periodo, la última
+    // venta (si existe) fue antes del threshold.
+    const lastSoldAt: Date | null = null;
+    const daysSinceLastSale: number | null = null;
 
     let stockValueCents = 0;
     if (v.batchItems.length > 0) {

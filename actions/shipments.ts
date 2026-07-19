@@ -138,6 +138,7 @@ export async function createShipmentAction(
     revalidatePath(`/envios/${result.shipmentId}`);
     revalidatePath("/pedidos");
     revalidatePath(`/clientes/${parsed.data.customerId}`);
+    revalidatePath("/dashboard");
     return { ok: true, message: "Envío creado.", shipmentId: result.shipmentId };
   } catch (error) {
     if (error instanceof ShipmentError) {
@@ -222,6 +223,7 @@ export async function updateShipmentAction(
     });
     revalidatePath("/envios");
     revalidatePath(`/envios/${parsed.data.shipmentId}`);
+    revalidatePath("/dashboard");
     return { ok: true, message: "Envío actualizado." };
   } catch (error) {
     if (error instanceof ShipmentError) {
@@ -262,6 +264,7 @@ export async function changeShipmentStatusAction(
     revalidatePath("/envios");
     revalidatePath(`/envios/${parsed.data.shipmentId}`);
     revalidatePath("/pedidos");
+    revalidatePath("/dashboard");
     return { ok: true, message: "Estado actualizado." };
   } catch (error) {
     if (error instanceof ShipmentError) {
@@ -305,6 +308,7 @@ export async function cancelShipmentAction(
     revalidatePath("/envios");
     revalidatePath(`/envios/${parsed.data.shipmentId}`);
     revalidatePath("/pedidos");
+    revalidatePath("/dashboard");
     return { ok: true, message: "Envío cancelado." };
   } catch (error) {
     if (error instanceof ShipmentError) {

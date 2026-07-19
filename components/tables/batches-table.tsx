@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { BATCH_STATUS_OPTIONS } from "@/lib/import-batches-shared";
 import { PaginatedDataTable } from "./paginated-data-table";
 
+const DATE_FORMAT = new Intl.DateTimeFormat("es-PE", { dateStyle: "short" });
+
 export type BatchRow = {
   id: string;
   code: string;
@@ -46,10 +48,7 @@ const columns: ColumnDef<BatchRow>[] = [
   {
     accessorKey: "purchaseDate",
     header: "Fecha compra",
-    cell: ({ row }) =>
-      new Intl.DateTimeFormat("es-PE", {
-        dateStyle: "short",
-      }).format(new Date(row.original.purchaseDate)),
+    cell: ({ row }) => DATE_FORMAT.format(new Date(row.original.purchaseDate)),
   },
   {
     accessorKey: "shopper",

@@ -130,8 +130,8 @@ export type IncidentListItem = {
   decision: IncidentReturnDecision;
   quantity: number;
   description: string;
-  recoveredAmount: { toString(): string };
-  lostAmount: { toString(): string };
+  recoveredAmount: string;
+  lostAmount: string;
   restockQuantity: number;
   createdAt: Date;
   resolvedAt: Date | null;
@@ -262,7 +262,11 @@ export async function listIncidents(
   const recoveredCents = toCents(recoveredAgg._sum.recoveredAmount);
 
   return {
-    items: items as unknown as IncidentListItem[],
+    items: items.map((it) => ({
+      ...it,
+      lostAmount: it.lostAmount.toString(),
+      recoveredAmount: it.recoveredAmount.toString(),
+    })),
     total,
     page: safePage,
     perPage: safePerPage,
@@ -335,67 +339,62 @@ export async function createIncident(
   try {
     return await prisma.$transaction(
       async (tx) => {
-        let variant: { id: string; stock: number; soldStock: number; reservedStock: number } | null =
-          null;
-        if (input.variantId) {
-          const v = await tx.productVariant.findUnique({
-            where: { id: input.variantId },
-            select: { id: true, stock: true, soldStock: true, reservedStock: true },
-          });
-          if (!v) {
-            throw new IncidentError(
-              "La variante seleccionada ya no existe.",
-              "VARIANT_NOT_FOUND",
-            );
-          }
-          variant = v;
-        }
+        const [variant, order, item, customer] = await Promise.all([
+          input.variantId
+            ? tx.productVariant.findUnique({
+                where: { id: input.variantId },
+                select: { id: true, stock: true, soldStock: true, reservedStock: true },
+              })
+            : Promise.resolve(null),
+          input.orderId
+            ? tx.order.findUnique({
+                where: { id: input.orderId },
+                select: { id: true, status: true, customerId: true },
+              })
+            : Promise.resolve(null),
+          input.orderItemId
+            ? tx.orderItem.findUnique({
+                where: { id: input.orderItemId },
+                select: { id: true, orderId: true, quantity: true },
+              })
+            : Promise.resolve(null),
+          input.customerId
+            ? tx.customer.findUnique({
+                where: { id: input.customerId },
+                select: { id: true },
+              })
+            : Promise.resolve(null),
+        ]);
 
-        let order: { id: string; status: string; customerId: string } | null = null;
-        if (input.orderId) {
-          const o = await tx.order.findUnique({
-            where: { id: input.orderId },
-            select: { id: true, status: true, customerId: true },
-          });
-          if (!o) {
-            throw new IncidentError(
-              "El pedido seleccionado ya no existe.",
-              "ORDER_NOT_FOUND",
-            );
-          }
-          order = o;
+        if (input.variantId && !variant) {
+          throw new IncidentError(
+            "La variante seleccionada ya no existe.",
+            "VARIANT_NOT_FOUND",
+          );
         }
-
-        if (input.orderItemId) {
-          const item = await tx.orderItem.findUnique({
-            where: { id: input.orderItemId },
-            select: { id: true, orderId: true, quantity: true },
-          });
-          if (!item) {
-            throw new IncidentError(
-              "La linea de pedido seleccionada ya no existe.",
-              "ITEM_NOT_FOUND",
-            );
-          }
-          if (order && item.orderId !== order.id) {
-            throw new IncidentError(
-              "La linea de pedido no pertenece al pedido seleccionado.",
-              "ITEM_NOT_FOUND",
-            );
-          }
+        if (input.orderId && !order) {
+          throw new IncidentError(
+            "El pedido seleccionado ya no existe.",
+            "ORDER_NOT_FOUND",
+          );
         }
-
-        if (input.customerId) {
-          const customer = await tx.customer.findUnique({
-            where: { id: input.customerId },
-            select: { id: true },
-          });
-          if (!customer) {
-            throw new IncidentError(
-              "La clienta seleccionada ya no existe.",
-              "CUSTOMER_NOT_FOUND",
-            );
-          }
+        if (input.orderItemId && !item) {
+          throw new IncidentError(
+            "La linea de pedido seleccionada ya no existe.",
+            "ITEM_NOT_FOUND",
+          );
+        }
+        if (order && item && item.orderId !== order.id) {
+          throw new IncidentError(
+            "La linea de pedido no pertenece al pedido seleccionado.",
+            "ITEM_NOT_FOUND",
+          );
+        }
+        if (input.customerId && !customer) {
+          throw new IncidentError(
+            "La clienta seleccionada ya no existe.",
+            "CUSTOMER_NOT_FOUND",
+          );
         }
 
         const recoveredCents = input.recoveredAmount
@@ -583,7 +582,7 @@ export async function resolveIncident(input: {
               id: true,
               amount: true,
               availableAmount: true,
-              applications: { select: { id: true } },
+              _count: { select: { applications: true } },
             },
           },
         },
@@ -657,7 +656,7 @@ export async function cancelIncident(input: {
               id: true,
               amount: true,
               availableAmount: true,
-              applications: { select: { id: true } },
+              _count: { select: { applications: true } },
             },
           },
         },
@@ -734,7 +733,7 @@ export async function cancelIncident(input: {
       if (existing.creditId && existing.credit) {
         const amountCents = toCents(existing.credit.amount.toString());
         const availableCents = toCents(existing.credit.availableAmount.toString());
-        if (existing.credit.applications.length > 0 || availableCents !== amountCents) {
+        if (existing.credit._count.applications > 0 || availableCents !== amountCents) {
           throw new IncidentError(
             "No puedes cancelar una incidencia con credito ya aplicado.",
             "CREDIT_ALREADY_USED",

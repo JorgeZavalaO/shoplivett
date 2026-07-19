@@ -14,7 +14,10 @@ export default async function EditarProductoPage({ params }: { params: Params })
   await requireRole(["ADMIN", "SELLER"]);
   const { id } = await params;
   const prisma = getPrisma();
-  const product = await prisma.product.findUnique({ where: { id } });
+  const product = await prisma.product.findUnique({
+    where: { id },
+    select: { id: true, name: true, description: true, categoryId: true, isActive: true },
+  });
   if (!product) notFound();
   const categories = await prisma.category.findMany({
     orderBy: { name: "asc" },

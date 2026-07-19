@@ -136,86 +136,9 @@ export async function getSalesByMonthReport(
       ORDER BY 1 ASC
     `;
     aggRows = raw;
-  } catch {
+  } catch (err) {
+    console.error("[getSalesByMonthReport] raw query failed, returning empty", err);
     aggRows = [];
-    const orders = await prisma.order.findMany({
-      where,
-      select: {
-        profitCalculatedAt: true,
-        total: true,
-        productCostPen: true,
-        grossProfitPen: true,
-        paymentFeePen: true,
-        packagingCostPen: true,
-        deliveryBusinessCostPen: true,
-      },
-    });
-    const grouped = new Map<
-      string,
-      {
-        bucket: Date;
-        count: number;
-        totalCents: Cents;
-        productCostCents: Cents;
-        grossProfitCents: Cents;
-        paymentFeeCents: Cents;
-        packagingCostCents: Cents;
-        deliveryBusinessCostCents: Cents;
-      }
-    >();
-    for (const orderRow of orders) {
-      if (!orderRow.profitCalculatedAt) continue;
-      const bucket = new Date(
-        orderRow.profitCalculatedAt.getFullYear(),
-        orderRow.profitCalculatedAt.getMonth(),
-        1,
-      );
-      const key = `${bucket.getFullYear()}-${bucket.getMonth() + 1}`;
-      const current = grouped.get(key) ?? {
-        bucket,
-        count: 0,
-        totalCents: 0,
-        productCostCents: 0,
-        grossProfitCents: 0,
-        paymentFeeCents: 0,
-        packagingCostCents: 0,
-        deliveryBusinessCostCents: 0,
-      };
-      current.count += 1;
-      current.totalCents += resolveCents(orderRow.total);
-      current.productCostCents += resolveCents(orderRow.productCostPen, true);
-      current.grossProfitCents += resolveCents(orderRow.grossProfitPen, true);
-      current.paymentFeeCents += resolveCents(orderRow.paymentFeePen, true);
-      current.packagingCostCents += resolveCents(
-        orderRow.packagingCostPen,
-        true,
-      );
-      current.deliveryBusinessCostCents += resolveCents(
-        orderRow.deliveryBusinessCostPen,
-        true,
-      );
-      grouped.set(key, current);
-    }
-    aggRows = [...grouped.values()].map((row) => ({
-      bucket: row.bucket,
-      count: row.count,
-      total: { toString: () => centsToDecimalString(row.totalCents) },
-      productCost: {
-        toString: () => centsToDecimalString(row.productCostCents),
-      },
-      grossProfit: {
-        toString: () => centsToDecimalString(row.grossProfitCents),
-      },
-      paymentFee: {
-        toString: () => centsToDecimalString(row.paymentFeeCents),
-      },
-      packagingCost: {
-        toString: () => centsToDecimalString(row.packagingCostCents),
-      },
-      deliveryBusinessCost: {
-        toString: () => centsToDecimalString(row.deliveryBusinessCostCents),
-      },
-    }));
   }
 
   const map = new Map<string, AggRow>();

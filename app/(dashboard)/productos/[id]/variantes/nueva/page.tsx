@@ -14,7 +14,7 @@ export default async function NuevaVariantePage({ params }: { params: Params }) 
   const { id } = await params;
   const product = await getPrisma().product.findUnique({
     where: { id },
-    include: { category: true },
+    select: { id: true, name: true, category: { select: { id: true, name: true } } },
   });
   if (!product) notFound();
 

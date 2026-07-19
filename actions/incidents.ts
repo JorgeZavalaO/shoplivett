@@ -108,6 +108,14 @@ export async function createIncidentAction(
     void result;
 
     revalidatePath("/incidencias");
+    revalidatePath("/dashboard");
+    revalidatePath("/reportes");
+    if (normalizeOptional(raw.customerId)) {
+      revalidatePath(`/clientes/${normalizeOptional(raw.customerId)}`);
+    }
+    if (normalizeOptional(raw.orderId)) {
+      revalidatePath(`/pedidos/${normalizeOptional(raw.orderId)}`);
+    }
     redirect(`/incidencias/${result.incidentId}`);
   } catch (err) {
     if (err instanceof IncidentError) {
@@ -152,6 +160,8 @@ export async function resolveIncidentAction(
 
   revalidatePath("/incidencias");
   revalidatePath(`/incidencias/${incidentId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/reportes");
   return { ok: true, message: "Incidencia resuelta." };
 }
 
@@ -190,6 +200,8 @@ export async function cancelIncidentAction(
 
   revalidatePath("/incidencias");
   revalidatePath(`/incidencias/${incidentId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/reportes");
   return { ok: true, message: "Incidencia cancelada." };
 }
 

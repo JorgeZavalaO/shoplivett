@@ -56,7 +56,23 @@ export async function getCustomerSummary(
   customerId: string,
 ): Promise<CustomerSummary | null> {
   const prisma = getPrisma();
-  const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId },
+    select: {
+      id: true,
+      name: true,
+      whatsapp: true,
+      status: true,
+      isActive: true,
+      createdAt: true,
+      document: true,
+      address: true,
+      district: true,
+      reference: true,
+      channel: true,
+      notes: true,
+    },
+  });
   if (!customer) return null;
 
   const [debt, credit] = await Promise.all([
@@ -65,18 +81,7 @@ export async function getCustomerSummary(
   ]);
 
   return {
-    id: customer.id,
-    name: customer.name,
-    whatsapp: customer.whatsapp,
-    status: customer.status,
-    isActive: customer.isActive,
-    createdAt: customer.createdAt,
-    document: customer.document,
-    address: customer.address,
-    district: customer.district,
-    reference: customer.reference,
-    channel: customer.channel,
-    notes: customer.notes,
+    ...customer,
     debt,
     credit,
   };

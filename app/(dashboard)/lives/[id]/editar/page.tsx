@@ -12,7 +12,10 @@ export default async function EditLivePage({ params }: { params: Params }) {
   await requireRole(["ADMIN", "SELLER"]);
   const { id } = await params;
   const prisma = getPrisma();
-  const live = await prisma.liveSession.findUnique({ where: { id } });
+  const live = await prisma.liveSession.findUnique({
+    where: { id },
+    select: { id: true, status: true, name: true, channel: true, responsibleId: true, notes: true },
+  });
   if (!live) notFound();
   if (live.status !== "OPEN") redirect(`/lives/${id}`);
 

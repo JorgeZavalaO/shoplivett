@@ -112,19 +112,21 @@ export async function createQuickSale(
   // Verificación temprana de stock por lote (FIFO). Si la variante opera
   // con lotes, no basta con `ProductVariant.stock`; el origen de verdad
   // para la venta es `ImportBatchItem.quantityAvailable` (Sprint 21).
-  for (const item of input.items) {
-    try {
-      await checkBatchStock(prisma, item.variantId, item.quantity);
-    } catch (error) {
-      if (error instanceof BatchAllocationError) {
-        if (error.code === "INSUFFICIENT_BATCH_STOCK") {
-          throw new OrderError(error.message, "INSUFFICIENT_BATCH_STOCK");
+  await Promise.all(
+    input.items.map(async (item) => {
+      try {
+        await checkBatchStock(prisma, item.variantId, item.quantity);
+      } catch (error) {
+        if (error instanceof BatchAllocationError) {
+          if (error.code === "INSUFFICIENT_BATCH_STOCK") {
+            throw new OrderError(error.message, "INSUFFICIENT_BATCH_STOCK");
+          }
+          throw new OrderError(error.message, "INSUFFICIENT_STOCK");
         }
-        throw new OrderError(error.message, "INSUFFICIENT_STOCK");
+        throw error;
       }
-      throw error;
-    }
-  }
+    }),
+  );
 
   const lineItems = input.items.map((item) => ({
     variantId: item.variantId,
@@ -176,22 +178,26 @@ export async function createQuickSale(
 
   const uploadedReceipts: { url: string; pathname: string }[] = [];
   if (input.receiptFiles && input.receiptFiles.length > 0) {
-    for (const file of input.receiptFiles) {
-      if (file.size === 0) continue;
-      try {
-        const uploaded = await uploadImage(
+    const validFiles = input.receiptFiles.filter((f) => f.size > 0);
+    const uploadResults = await Promise.allSettled(
+      validFiles.map((file) =>
+        uploadImage(
           file,
           `payments/receipts`,
           `quick-sale-${Date.now()}`,
           { access: "private" },
-        );
-        uploadedReceipts.push({ url: uploaded.url, pathname: uploaded.pathname });
-      } catch (error) {
-        if (error instanceof ImageUploadError) {
-          throw new OrderError(error.message, "BLOB_ERROR");
+        ),
+      ),
+    );
+    for (const r of uploadResults) {
+      if (r.status === "rejected") {
+        const reason = r.reason;
+        if (reason instanceof ImageUploadError) {
+          throw new OrderError(reason.message, "BLOB_ERROR");
         }
-        throw error;
+        throw reason;
       }
+      uploadedReceipts.push({ url: r.value.url, pathname: r.value.pathname });
     }
   }
 
@@ -251,40 +257,43 @@ export async function createQuickSale(
             },
           });
 
-          for (const li of lineItems) {
-            const variant = variantMap.get(li.variantId)!;
-            const persist = await persistQuickSaleLine({
-              tx,
-              orderId: order.id,
-              item: {
-                variantId: li.variantId,
-                quantity: li.quantity,
-                unitPrice: li.unitPrice,
-                variant: { cost: variant.cost },
-              },
-              lineDiscountCents: discountByVariant.get(li.variantId) ?? 0,
-              shippingAllocationCents: shippingByVariant.get(li.variantId) ?? 0,
-            });
-            await auditInTx(tx, input.actorId ?? null, {
-              action: "ORDER_BATCH_ALLOCATED",
-              entity: "OrderItem",
-              entityId: persist.orderItemId,
-              metadata: {
+          await Promise.all(
+            lineItems.map(async (li) => {
+              const variant = variantMap.get(li.variantId)!;
+              const persist = await persistQuickSaleLine({
+                tx,
                 orderId: order.id,
-                variantId: li.variantId,
-                quantity: li.quantity,
-                costSource: persist.costSource,
-                unitCostPen: persist.unitCostPen,
-                allocations: persist.allocations.map((a) => ({
-                  batchId: a.batchId,
-                  batchItemId: a.batchItemId,
-                  quantity: a.quantity,
-                  unitCostPen: a.unitCostPen,
-                  subtotalCostPen: a.subtotalCostPen,
-                })),
-              },
-            });
-          }
+                item: {
+                  variantId: li.variantId,
+                  quantity: li.quantity,
+                  unitPrice: li.unitPrice,
+                  variant: { cost: variant.cost },
+                },
+                lineDiscountCents: discountByVariant.get(li.variantId) ?? 0,
+                shippingAllocationCents:
+                  shippingByVariant.get(li.variantId) ?? 0,
+              });
+              await auditInTx(tx, input.actorId ?? null, {
+                action: "ORDER_BATCH_ALLOCATED",
+                entity: "OrderItem",
+                entityId: persist.orderItemId,
+                metadata: {
+                  orderId: order.id,
+                  variantId: li.variantId,
+                  quantity: li.quantity,
+                  costSource: persist.costSource,
+                  unitCostPen: persist.unitCostPen,
+                  allocations: persist.allocations.map((a) => ({
+                    batchId: a.batchId,
+                    batchItemId: a.batchItemId,
+                    quantity: a.quantity,
+                    unitCostPen: a.unitCostPen,
+                    subtotalCostPen: a.subtotalCostPen,
+                  })),
+                },
+              });
+            }),
+          );
 
           const created = await createPayment(
             {
@@ -299,22 +308,24 @@ export async function createQuickSale(
             { tx },
           );
 
-          for (const r of uploadedReceipts) {
-            await tx.paymentReceipt.create({
-              data: {
+          if (uploadedReceipts.length > 0) {
+            await tx.paymentReceipt.createMany({
+              data: uploadedReceipts.map((r) => ({
                 paymentId: created.paymentId,
                 url: r.url,
                 pathname: r.pathname,
-              },
+              })),
             });
           }
 
-          for (const item of input.items) {
-            await reserveStock(item.variantId, item.quantity, {
-              reason: `Orden ${orderNumber}`,
-              tx,
-            });
-          }
+          await Promise.all(
+            input.items.map((item) =>
+              reserveStock(item.variantId, item.quantity, {
+                reason: `Orden ${orderNumber}`,
+                tx,
+              }),
+            ),
+          );
 
           await auditInTx(tx, input.actorId ?? null, {
             action: "ORDER_CREATED",

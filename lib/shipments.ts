@@ -109,33 +109,38 @@ async function recognizeShipmentOrderProfit(
   source: "SHIPMENT_CREATED" | "SHIPMENT_UPDATED" | "SHIPMENT_CANCELLED",
 ) {
   if (orderIds.length === 0) return;
-  const settings = await tx.businessSettings.findUnique({ where: { id: "default" } });
+  const settings = await tx.businessSettings.findUnique({
+    where: { id: "default" },
+    select: { paymentMethodFees: true, standardPackagingCostPen: true },
+  });
   const fees: PaymentMethodFees = settings
     ? coercePaymentMethodFees(settings.paymentMethodFees)
     : { YAPE: 0, PLIN: 0, CASH: 0, OTHER: 0 };
   const packaging = settings ? settings.standardPackagingCostPen.toString() : "0.00";
 
-  for (const orderId of orderIds) {
-    const profit = await recognizeOrderProfit(tx, orderId, {
-      paymentMethodFees: fees,
-      packagingCostPen: packaging,
-      recalculate: true,
-    });
-    await auditInTx(tx, actorId, {
-      action: "ORDER_PROFIT_RECOGNIZED",
-      entity: "Order",
-      entityId: orderId,
-      metadata: {
-        source,
-        productCostPen: centsToDecimalString(profit.productCostCents),
-        grossProfitPen: centsToDecimalString(profit.grossProfitCents),
-        paymentFeePen: centsToDecimalString(profit.paymentFeeCents),
-        packagingCostPen: centsToDecimalString(profit.packagingCostCents),
-        deliveryBusinessCostPen: centsToDecimalString(profit.deliveryBusinessCostCents),
-        netProfitPen: centsToDecimalString(profit.netProfitCents),
-      },
-    });
-  }
+  await Promise.all(
+    orderIds.map(async (orderId) => {
+      const profit = await recognizeOrderProfit(tx, orderId, {
+        paymentMethodFees: fees,
+        packagingCostPen: packaging,
+        recalculate: true,
+      });
+      await auditInTx(tx, actorId, {
+        action: "ORDER_PROFIT_RECOGNIZED",
+        entity: "Order",
+        entityId: orderId,
+        metadata: {
+          source,
+          productCostPen: centsToDecimalString(profit.productCostCents),
+          grossProfitPen: centsToDecimalString(profit.grossProfitCents),
+          paymentFeePen: centsToDecimalString(profit.paymentFeeCents),
+          packagingCostPen: centsToDecimalString(profit.packagingCostCents),
+          deliveryBusinessCostPen: centsToDecimalString(profit.deliveryBusinessCostCents),
+          netProfitPen: centsToDecimalString(profit.netProfitCents),
+        },
+      });
+    }),
+  );
 }
 
 export async function createShipment(
@@ -151,7 +156,10 @@ export async function createShipment(
   try {
     return await prisma.$transaction(
       async (tx) => {
-        const customer = await tx.customer.findUnique({ where: { id: input.customerId } });
+        const customer = await tx.customer.findUnique({
+          where: { id: input.customerId },
+          select: { id: true, address: true, district: true, reference: true },
+        });
         if (!customer) {
           throw new ShipmentError("La clienta ya no existe.", "CUSTOMER_NOT_FOUND");
         }
@@ -199,7 +207,10 @@ export async function createShipment(
           }
         }
 
-        const settings = await tx.businessSettings.findUnique({ where: { id: "default" } });
+        const settings = await tx.businessSettings.findUnique({
+          where: { id: "default" },
+          select: { freeShippingEnabled: true, freeShippingThreshold: true },
+        });
         const freeShippingEnabled = settings?.freeShippingEnabled ?? false;
         const freeShippingThreshold = settings
           ? shipmentToCents(settings.freeShippingThreshold.toString())
@@ -254,17 +265,15 @@ export async function createShipment(
           },
         });
 
-        for (const o of orders) {
-          await tx.shipmentOrder.create({
-            data: {
-              shipmentId: shipment.id,
-              orderId: o.id,
-              allocatedShippingCostPen: centsToDecimalString(
-                realCostByOrder.get(o.id) ?? 0,
-              ),
-            },
-          });
-        }
+        await tx.shipmentOrder.createMany({
+          data: orders.map((o) => ({
+            shipmentId: shipment.id,
+            orderId: o.id,
+            allocatedShippingCostPen: centsToDecimalString(
+              realCostByOrder.get(o.id) ?? 0,
+            ),
+          })),
+        });
 
         await recognizeShipmentOrderProfit(
           tx,
@@ -314,7 +323,24 @@ export async function updateShipment(
   try {
     return await prisma.$transaction(
       async (tx) => {
-        const shipment = await tx.shipment.findUnique({ where: { id: input.shipmentId } });
+        const shipment = await tx.shipment.findUnique({
+          where: { id: input.shipmentId },
+          select: {
+            id: true,
+            status: true,
+            shippingMethod: true,
+            realCostPen: true,
+            shippingCost: true,
+            isFreeShipping: true,
+            freeShippingRule: true,
+            addressSnapshot: true,
+            districtSnapshot: true,
+            referenceSnapshot: true,
+            agencyName: true,
+            trackingCode: true,
+            notes: true,
+          },
+        });
         if (!shipment) {
           throw new ShipmentError("El envío ya no existe.", "SHIPMENT_NOT_FOUND");
         }
@@ -377,16 +403,18 @@ export async function updateShipment(
             shipmentOrders.map((link) => link.order),
             nextRealCostCents,
           );
-          for (const link of shipmentOrders) {
-            await tx.shipmentOrder.updateMany({
-              where: { shipmentId: input.shipmentId, orderId: link.orderId },
-              data: {
-                allocatedShippingCostPen: centsToDecimalString(
-                  realCostByOrder.get(link.orderId) ?? 0,
-                ),
-              },
-            });
-          }
+          await Promise.all(
+            shipmentOrders.map((link) =>
+              tx.shipmentOrder.updateMany({
+                where: { shipmentId: input.shipmentId, orderId: link.orderId },
+                data: {
+                  allocatedShippingCostPen: centsToDecimalString(
+                    realCostByOrder.get(link.orderId) ?? 0,
+                  ),
+                },
+              }),
+            ),
+          );
         }
 
         await tx.shipment.update({ where: { id: input.shipmentId }, data });
@@ -432,7 +460,10 @@ export async function changeShipmentStatus(
   try {
     return await prisma.$transaction(
       async (tx) => {
-        const shipment = await tx.shipment.findUnique({ where: { id: input.shipmentId } });
+        const shipment = await tx.shipment.findUnique({
+          where: { id: input.shipmentId },
+          select: { id: true, status: true, realCostPen: true, shippingCost: true, isFreeShipping: true },
+        });
         if (!shipment) {
           throw new ShipmentError("El envío ya no existe.", "SHIPMENT_NOT_FOUND");
         }
@@ -584,7 +615,16 @@ export async function getShipmentDetail(shipmentId: string) {
   return prisma.shipment.findUnique({
     where: { id: shipmentId },
     include: {
-      customer: true,
+      customer: {
+        select: {
+          id: true,
+          name: true,
+          whatsapp: true,
+          address: true,
+          district: true,
+          reference: true,
+        },
+      },
       createdBy: { select: { id: true, name: true, email: true } },
       updatedBy: { select: { id: true, name: true, email: true } },
       orders: {
@@ -617,6 +657,7 @@ export async function getEligibleOrdersForShipment(
     where: {
       customerId,
       status: "PAID",
+      shipmentOrders: { none: { shipment: { status: { not: "CANCELLED" } } } },
       ...(trimmed
         ? { orderNumber: { contains: trimmed, mode: "insensitive" } }
         : {}),
@@ -630,18 +671,9 @@ export async function getEligibleOrdersForShipment(
       balance: true,
       status: true,
       createdAt: true,
-      shipmentOrders: {
-        where: { shipment: { status: { not: "CANCELLED" } } },
-        select: {
-          id: true,
-          shipment: { select: { id: true, status: true } },
-        },
-        take: 1,
-      },
     },
   });
   return rows
-    .filter((o) => o.shipmentOrders.length === 0)
     .map((o) => ({
       id: o.id,
       orderNumber: o.orderNumber,
@@ -668,8 +700,12 @@ export async function listCustomerShipments(customerId: string) {
   const rows = await prisma.shipment.findMany({
     where: { customerId },
     orderBy: { createdAt: "desc" },
+    take: 20,
     include: {
+      _count: { select: { orders: true } },
       orders: {
+        take: 20,
+        orderBy: { createdAt: "desc" },
         include: {
           order: { select: { id: true, orderNumber: true, total: true } },
         },
@@ -679,17 +715,17 @@ export async function listCustomerShipments(customerId: string) {
   return rows.map((s) => ({
     id: s.id,
     status: s.status,
-      shippingMethod: s.shippingMethod,
-      shippingCost: s.shippingCost.toString(),
-      realCostPen: s.realCostPen.toString(),
-      isFreeShipping: s.isFreeShipping,
+    shippingMethod: s.shippingMethod,
+    shippingCost: s.shippingCost.toString(),
+    realCostPen: s.realCostPen.toString(),
+    isFreeShipping: s.isFreeShipping,
     agencyName: s.agencyName,
     trackingCode: s.trackingCode,
     createdAt: s.createdAt,
     shippedAt: s.shippedAt,
     deliveredAt: s.deliveredAt,
     cancelledAt: s.cancelledAt,
-    orderCount: s.orders.length,
+    orderCount: s._count.orders,
     orders: s.orders.map((o) => ({
       id: o.order.id,
       orderNumber: o.order.orderNumber,

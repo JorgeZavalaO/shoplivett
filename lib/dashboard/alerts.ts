@@ -67,6 +67,8 @@ export async function getFinancialAlerts(
     },
     costSource: { in: ["BATCH", "LEGACY"] },
   };
+  // Acotado por el rango del mes, y además está limitado por el número
+  // de variantes vendidas en ese periodo.
   const lowMarginCandidates = await prisma.orderItem.groupBy({
     by: ["variantId"],
     where: lowMarginWhere,

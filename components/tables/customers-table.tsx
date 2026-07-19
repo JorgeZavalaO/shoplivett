@@ -13,6 +13,8 @@ import { formatWhatsAppDisplay } from "@/lib/phone";
 import { WhatsAppQuickButton } from "@/components/whatsapp/whatsapp-actions";
 import { PaginatedDataTable } from "./paginated-data-table";
 
+const DATE_FORMAT = new Intl.DateTimeFormat("es-PE", { dateStyle: "medium" });
+
 export type CustomerRow = {
   id: string;
   name: string;
@@ -60,10 +62,7 @@ const columns: ColumnDef<CustomerRow>[] = [
   {
     accessorKey: "createdAt",
     header: "Registrada",
-    cell: ({ row }) =>
-      new Intl.DateTimeFormat("es-PE", { dateStyle: "medium" }).format(
-        new Date(row.original.createdAt),
-      ),
+    cell: ({ row }) => DATE_FORMAT.format(new Date(row.original.createdAt)),
   },
   {
     id: "actions",

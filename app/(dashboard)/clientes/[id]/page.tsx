@@ -37,15 +37,14 @@ type Params = Promise<{ id: string }>;
 export default async function ClienteDetallePage({ params }: { params: Params }) {
   await requireRole(["ADMIN", "SELLER"]);
   const { id } = await params;
-  const summary = await getCustomerSummary(id);
-  if (!summary) notFound();
-
-  const [credits, shipments, ordersData, paymentsData] = await Promise.all([
+  const [summary, credits, shipments, ordersData, paymentsData] = await Promise.all([
+    getCustomerSummary(id),
     getCustomerCreditsAction(id),
     listCustomerShipmentsAction(id),
     listCustomerOrdersAction(id, { page: 1, perPage: 10 }),
     listCustomerPaymentsAction(id, { page: 1, perPage: 10 }),
   ]);
+  if (!summary) notFound();
 
   const whatsappLink = `https://wa.me/${summary.whatsapp.replace(/[^\d]/g, "")}`;
   const totalAvailableCents = sumCents(

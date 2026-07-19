@@ -5,6 +5,7 @@
 // `unstable_cache` y se invalida explícitamente con `revalidateTag` desde
 // `actions/settings.ts` cuando el admin guarda cambios.
 
+import { Prisma } from "@prisma/client";
 import { unstable_cache, revalidateTag, updateTag } from "next/cache";
 import type {
   BusinessSettings as PrismaBusinessSettings,
@@ -27,38 +28,50 @@ const SETTINGS_ID = "default";
 
 async function loadSettings(): Promise<PrismaBusinessSettings> {
   const prisma = getPrisma();
-  // `upsert` evita la carrera que existía entre `findUnique` + `create` cuando
-  // dos requests concurrentes veían el singleton ausente y trataban de crearlo.
-  return prisma.businessSettings.upsert({
+  const existing = await prisma.businessSettings.findUnique({
     where: { id: SETTINGS_ID },
-    create: {
-      id: SETTINGS_ID,
-      reservationDays: DEFAULT_BUSINESS_SETTINGS.reservationDays,
-      minimumAdvance: DEFAULT_BUSINESS_SETTINGS.minimumAdvance,
-      currency: DEFAULT_BUSINESS_SETTINGS.currency,
-      freeShippingEnabled: DEFAULT_BUSINESS_SETTINGS.freeShippingEnabled,
-      freeShippingThreshold: DEFAULT_BUSINESS_SETTINGS.freeShippingThreshold,
-      productCodePrefix: DEFAULT_BUSINESS_SETTINGS.productCodePrefix,
-      allowOverpaymentCredit: DEFAULT_BUSINESS_SETTINGS.allowOverpaymentCredit,
-      allowRefund: DEFAULT_BUSINESS_SETTINGS.allowRefund,
-      enabledPaymentMethods: DEFAULT_BUSINESS_SETTINGS.enabledPaymentMethods,
-      enabledShippingMethods: DEFAULT_BUSINESS_SETTINGS.enabledShippingMethods,
-      paymentValidatorRoles: DEFAULT_BUSINESS_SETTINGS.paymentValidatorRoles,
-      defaultExchangeRate: DEFAULT_BUSINESS_SETTINGS.defaultExchangeRate,
-      minimumTargetMarginBps: DEFAULT_BUSINESS_SETTINGS.minimumTargetMarginBps,
-      objectiveTargetMarginBps: DEFAULT_BUSINESS_SETTINGS.objectiveTargetMarginBps,
-      defaultCostAllocationMethod:
-        DEFAULT_BUSINESS_SETTINGS.defaultCostAllocationMethod,
-      mixedValueAllocationPercent:
-        DEFAULT_BUSINESS_SETTINGS.mixedValueAllocationPercent,
-      mixedWeightAllocationPercent:
-        DEFAULT_BUSINESS_SETTINGS.mixedWeightAllocationPercent,
-      standardPackagingCostPen: DEFAULT_BUSINESS_SETTINGS.standardPackagingCostPen,
-      paymentMethodFees: DEFAULT_BUSINESS_SETTINGS.paymentMethodFees,
-      enabledSalesChannels: DEFAULT_BUSINESS_SETTINGS.enabledSalesChannels,
-    },
-    update: {},
   });
+  if (existing) return existing;
+  try {
+    return await prisma.businessSettings.create({
+      data: {
+        id: SETTINGS_ID,
+        reservationDays: DEFAULT_BUSINESS_SETTINGS.reservationDays,
+        minimumAdvance: DEFAULT_BUSINESS_SETTINGS.minimumAdvance,
+        currency: DEFAULT_BUSINESS_SETTINGS.currency,
+        freeShippingEnabled: DEFAULT_BUSINESS_SETTINGS.freeShippingEnabled,
+        freeShippingThreshold: DEFAULT_BUSINESS_SETTINGS.freeShippingThreshold,
+        productCodePrefix: DEFAULT_BUSINESS_SETTINGS.productCodePrefix,
+        allowOverpaymentCredit: DEFAULT_BUSINESS_SETTINGS.allowOverpaymentCredit,
+        allowRefund: DEFAULT_BUSINESS_SETTINGS.allowRefund,
+        enabledPaymentMethods: DEFAULT_BUSINESS_SETTINGS.enabledPaymentMethods,
+        enabledShippingMethods: DEFAULT_BUSINESS_SETTINGS.enabledShippingMethods,
+        paymentValidatorRoles: DEFAULT_BUSINESS_SETTINGS.paymentValidatorRoles,
+        defaultExchangeRate: DEFAULT_BUSINESS_SETTINGS.defaultExchangeRate,
+        minimumTargetMarginBps: DEFAULT_BUSINESS_SETTINGS.minimumTargetMarginBps,
+        objectiveTargetMarginBps: DEFAULT_BUSINESS_SETTINGS.objectiveTargetMarginBps,
+        defaultCostAllocationMethod:
+          DEFAULT_BUSINESS_SETTINGS.defaultCostAllocationMethod,
+        mixedValueAllocationPercent:
+          DEFAULT_BUSINESS_SETTINGS.mixedValueAllocationPercent,
+        mixedWeightAllocationPercent:
+          DEFAULT_BUSINESS_SETTINGS.mixedWeightAllocationPercent,
+        standardPackagingCostPen: DEFAULT_BUSINESS_SETTINGS.standardPackagingCostPen,
+        paymentMethodFees: DEFAULT_BUSINESS_SETTINGS.paymentMethodFees,
+        enabledSalesChannels: DEFAULT_BUSINESS_SETTINGS.enabledSalesChannels,
+      },
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return (await prisma.businessSettings.findUnique({
+        where: { id: SETTINGS_ID },
+      }))!;
+    }
+    throw error;
+  }
 }
 
 /**

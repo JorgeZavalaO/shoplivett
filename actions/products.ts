@@ -86,6 +86,7 @@ export async function createProductAction(
   const prisma = getPrisma();
   const category = await prisma.category.findUnique({
     where: { id: parsed.data.categoryId },
+    select: { id: true, isActive: true, slug: true },
   });
   if (!category || !category.isActive) {
     return {
@@ -138,6 +139,7 @@ export async function createProductWithVariantsAction(
   const prisma = getPrisma();
   const category = await prisma.category.findUnique({
     where: { id: parsed.data.categoryId },
+    select: { id: true, isActive: true, slug: true },
   });
   if (!category || !category.isActive) {
     return {
@@ -344,7 +346,10 @@ export async function updateProductAction(
   }
 
   const prisma = getPrisma();
-  const existing = await prisma.product.findUnique({ where: { id: productId } });
+  const existing = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { id: true },
+  });
   if (!existing) return { ok: false, message: "El producto ya no existe." };
 
   await prisma.product.update({
@@ -473,7 +478,11 @@ export async function createVariantAction(
   const prisma = getPrisma();
   const product = await prisma.product.findUnique({
     where: { id: productId },
-    include: { category: true },
+    select: {
+      id: true,
+      categoryId: true,
+      category: { select: { id: true, slug: true } },
+    },
   });
   if (!product) {
     return { ok: false, message: "El producto ya no existe." };
@@ -587,6 +596,12 @@ export async function updateVariantAction(
   const prisma = getPrisma();
   const existing = await prisma.productVariant.findUnique({
     where: { id: variantId },
+    select: {
+      id: true,
+      productId: true,
+      price: true,
+      cost: true,
+    },
   });
   if (!existing) return { ok: false, message: "La variante ya no existe." };
 
@@ -632,11 +647,14 @@ export async function setVariantStatusAction(
   await requireRole(["ADMIN", "SELLER"]);
   if (!variantId) return;
   const prisma = getPrisma();
-  await prisma.productVariant.update({
+  const updated = await prisma.productVariant.update({
     where: { id: variantId },
     data: { status },
+    select: { productId: true },
   });
   revalidatePath("/productos");
+  revalidatePath(`/productos/${updated.productId}`);
+  revalidatePath(`/inventario/${variantId}`);
 }
 
 // =====================================================================
@@ -657,7 +675,10 @@ export async function uploadProductImageAction(
   }
 
   const prisma = getPrisma();
-  const product = await prisma.product.findUnique({ where: { id: productId } });
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { id: true },
+  });
   if (!product) return { ok: false, message: "El producto ya no existe." };
 
   const folder = variantId
@@ -693,7 +714,10 @@ export async function setPrimaryImageAction(imageId: string): Promise<void> {
   await requireRole(["ADMIN", "SELLER"]);
   if (!imageId) return;
   const prisma = getPrisma();
-  const image = await prisma.productImage.findUnique({ where: { id: imageId } });
+  const image = await prisma.productImage.findUnique({
+    where: { id: imageId },
+    select: { productId: true },
+  });
   if (!image || !image.productId) return;
   await prisma.$transaction([
     prisma.productImage.updateMany({

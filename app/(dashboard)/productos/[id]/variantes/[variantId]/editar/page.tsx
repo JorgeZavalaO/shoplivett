@@ -14,6 +14,18 @@ export default async function EditarVariantePage({ params }: { params: Params })
   const { id, variantId } = await params;
   const variant = await getPrisma().productVariant.findUnique({
     where: { id: variantId },
+    select: {
+      id: true,
+      productId: true,
+      code: true,
+      color: true,
+      material: true,
+      size: true,
+      price: true,
+      cost: true,
+      barcode: true,
+      status: true,
+    },
   });
   if (!variant || variant.productId !== id) notFound();
 

@@ -46,7 +46,7 @@ export default async function ProductoDetallePage({
       description: true,
       isActive: true,
       createdAt: true,
-      category: true,
+      category: { select: { id: true, name: true, slug: true } },
       _count: { select: { variants: true, images: true } },
     },
   });

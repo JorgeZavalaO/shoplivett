@@ -7,7 +7,76 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-## [0.41.0] - Manejo de errores en venta rápida, creación de producto en una sola pantalla y auditoría PRODUCT_CREATED
+## [0.50.0] — Performance Sprint: N+1, top-K SQL, cache, índices, streaming y debounce
+
+### Rendimiento — Queries (Bloques 4, 5, 7)
+- `lib/inventory.ts`: nuevo `confirmSaleStockForOrder(tx, orderId)` que reemplaza N+1 `confirmSaleStock` con 1 findMany + 1 updateMany batch + 1 createMany de movimientos. Aplica en `validatePayment` y `applyCreditToOrder`.
+- `lib/payments.ts:validatePayment`: eliminado `summarizeOrder` re-fetch por `Map<orderId, summary>` desde orders ya cargadas; `businessSettings.findUnique` con `select` específico y cargado 1 vez al inicio de la txn. ~10-20 queries menos por validación.
+- `lib/shipments.ts:recognizeShipmentOrderProfit`: bucle secuencial → `Promise.all` por orderId.
+- `lib/shipments.ts:createShipment`: `createMany` en `shipmentOrder` en lugar de bucle `create`.
+- `lib/sales.ts:createQuickSale`: 4 bucles N+1 paralelizados (`checkBatchStock`, `persistQuickSaleLine`, `reserveStock`, uploads). `createMany` en `paymentReceipt`.
+- `lib/dashboard/low-rotation.ts`: `orderItems: { none }` en SQL + `take: limit*2` — carga solo candidatos sin ventas recientes (antes cargaba TODAS las variantes con stock).
+- `lib/dashboard/batch-profitability.ts`: `groupBy` con `take: limit*2` en vez de `findMany` de todas las allocations.
+- `lib/dashboard/product-profitability.ts`: `orderBy: { _sum: { grossProfitPen } }` + `take: limit*3` en el `groupBy`.
+- `lib/dashboard/stock-valuation.ts`: `where: { stock: { gt: 0 } }` + `take: 10000`.
+- `lib/dashboard/open-batch-capital.ts`: `where: { status: { not: "CLOSED" } }` + `take: 500`.
+- `lib/reports/batches.ts`: `groupBy` top-N por inversión antes de `findMany` de allocations.
+- `lib/reports/products.ts`: `take` aumentado a `(MAX_REPORT_ROWS+1)*3`.
+- `lib/reports/sales.ts`: fallback catch ahora loggea error y devuelve `[]` en vez de cargar miles de órdenes.
+- `lib/incidents.ts:createIncident`: 4 `findUnique` secuenciales → `Promise.all` con condicionales.
+- `lib/expenses.ts:getMonthlyExpenseSummary`: 2 aggregates movidos al `Promise.all` inicial.
+- `lib/reports.ts:getLivesReport`: 3 `groupBy` separados → 1 con `by: ["liveSessionId", "status"]`.
+
+### Cache y settings (Bloques 3, 6)
+- `lib/settings.ts:loadSettings`: `upsert` → `findUnique` + `create` con manejo P2002 (1 query en HIT).
+- `actions/settings.ts`: revalida `/dashboard`, `/reportes`, `/pagos`, `/pedidos` además de `/configuracion`.
+- `lib/cache-tags.ts` (nuevo): tags centralizados `DASHBOARD_METRICS_TAG`, `REPORT_SUMMARY_TAG`, etc.
+- `app/(dashboard)/reportes/page.tsx`: `getReportSummaryAction` movido a rama `summary` (lazy fetch).
+
+### Selects y wire format (Bloques 1, 11)
+- `select` específico añadido en 25+ `findUnique`/`findMany` (payload PII reducido 60-80%).
+- `Prisma.Decimal` convertido a `string` en el dominio — elimina `{ toString: () => ... }` wrappers.
+- `Number().toFixed(2)` reemplazado por `centsToDecimalString`/`sumCents`/`toCents` en 5 sitios — cumple regla de dinero.
+- `customer-credits-history.tsx`: `Number(c.availableAmount)` → `sumCents()` + `centsToDecimalString()`.
+- `customer-orders-history.tsx` y `customer-payments-history.tsx`: `useState` manual → `useTransition` + `useMemo`.
+- Código muerto eliminado: `getCustomerAction`, `ExpenseFinancialPeriodView`, `void Prisma`, `void empty`, `centsToCsv`.
+
+### API Routes (Bloques 1, 9)
+- `lib/permissions.ts`: nuevo `requireApiRole(roles)` que retorna 401/403 JSON en vez de redirect HTML.
+- `/api/reportes/[section]` y `/api/payment-receipts/[id]`: `dynamic = "force-dynamic"`, `runtime = "nodejs"`, `try/catch`, `requireApiRole`.
+- `lib/rate-limit.ts`: nuevo `assertApiRateLimit(scope, key, opts)` y `apiRateKeyFromRequest` con tabla `ApiRateLimit`. Aplicado a ambos endpoints.
+- `lib/csv-export.ts`: nuevo `buildCsvStream(rows, columns)` y `csvStreamResponse(stream)` para streaming de CSV.
+- `prisma/schema.prisma`: nuevo modelo `ApiRateLimit`.
+
+### Índices (Bloque 8)
+- 13 nuevos índices compuestos añadidos a `prisma/schema.prisma`:
+  - `Order`: `@@index([createdAt])`, `@@index([status, profitCalculatedAt])`
+  - `Payment`: `@@index([status, validatedAt])`, `@@index([customerId, createdAt])`
+  - `PaymentApplication`: `@@index([paymentId, createdAt])`, `@@index([orderId, createdAt])`
+  - `Shipment`: `@@index([status, createdAt])`
+  - `CustomerCreditApplication`: `@@index([creditId, createdAt])`, `@@index([orderId, createdAt])`
+  - `ImportBatchItem`: `@@index([variantId, calculatedAt])`
+  - `InventoryMovement`: `@@index([variantId, createdAt(sort: Desc)])`
+  - `ImportBatch`: `@@index([shopper])`, `@@index([agency])`
+- Aplicados via `prisma db push` a BD Neon (dev).
+- Script `scripts/measure-index-impact.ts` para medir con `EXPLAIN ANALYZE`.
+- Migración pg_trgm: `prisma/migrations/20260719020000_add_trigram_indexes/migration.sql` con 10 índices GIN.
+
+### UX (Bloque 10)
+- `lib/use-debounced-value.ts` (nuevo): hook `useDebouncedValue<T>`.
+- `quick-sale-form.tsx`: búsqueda debounced a 300ms con `useDebouncedValue`.
+- `incident-form.tsx`: búsquedas debounced con `useRef`+`setTimeout`.
+- `batch-form.tsx`: búsqueda debounced a 300ms.
+- `DISPATCH` añadido a `ALLOWED_ROLES` del endpoint de recibos.
+- `Intl.DateTimeFormat` hoisted a nivel de módulo en 9 tablas + 3 componentes.
+
+### Verificación
+- `pnpm typecheck` → 0 errores.
+- `pnpm lint` → 0 errores (warnings preexistentes no relacionados).
+- `pnpm build` → 32 rutas, build exitoso.
+- 52 archivos modificados, +1.144 líneas / -875 líneas.
+
+## [0.41.0] — Manejo de errores en venta rápida, creación de producto en una sola pantalla y auditoría PRODUCT_CREATED
 
 ### UX
 - `components/forms/quick-sale-form.tsx`: errores de venta rápida (stock insuficiente, reserva, conflicto, cliente bloqueada) ahora muestran toast via Sonner en lugar de solo un mensaje estático en el formulario; se usa `describeQuickSaleError(code, message)` con 11 códigos específicos y mensajes friendly en español. Se agrega `router.refresh()` después de un error para refrescar badges de stock obsoletos del servidor. Guard con `useRef` para prevenir toasts duplicados. Reset de formulario al enviar.

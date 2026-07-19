@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, useTransition } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -130,20 +130,27 @@ export function IncidentForm({ cancelHref, prefill }: Props) {
     }
   }, [prefill]);
 
+  const orderDebounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const variantDebounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const customerDebounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+
   function onOrderSearch(value: string) {
     setOrderQuery(value);
+    if (orderDebounceRef.current) clearTimeout(orderDebounceRef.current);
     if (value.trim().length < 2) {
       setOrderResults([]);
       return;
     }
-    startOrderSearch(async () => {
-      try {
-        const results = await searchOrdersForIncidentAction(value);
-        setOrderResults(results);
-      } catch {
-        setOrderResults([]);
-      }
-    });
+    orderDebounceRef.current = setTimeout(() => {
+      startOrderSearch(async () => {
+        try {
+          const results = await searchOrdersForIncidentAction(value);
+          setOrderResults(results);
+        } catch {
+          setOrderResults([]);
+        }
+      });
+    }, 300);
   }
 
   function onPickOrder(order: OrderHit) {
@@ -206,34 +213,40 @@ export function IncidentForm({ cancelHref, prefill }: Props) {
 
   function onVariantSearch(value: string) {
     setVariantQuery(value);
+    if (variantDebounceRef.current) clearTimeout(variantDebounceRef.current);
     if (value.trim().length < 2) {
       setVariantResults([]);
       return;
     }
-    startVariantSearch(async () => {
-      try {
-        const results = await searchVariantsForIncidentAction(value);
-        setVariantResults(results);
-      } catch {
-        setVariantResults([]);
-      }
-    });
+    variantDebounceRef.current = setTimeout(() => {
+      startVariantSearch(async () => {
+        try {
+          const results = await searchVariantsForIncidentAction(value);
+          setVariantResults(results);
+        } catch {
+          setVariantResults([]);
+        }
+      });
+    }, 300);
   }
 
   function onCustomerSearch(value: string) {
     setCustomerQuery(value);
+    if (customerDebounceRef.current) clearTimeout(customerDebounceRef.current);
     if (value.trim().length < 2) {
       setCustomerResults([]);
       return;
     }
-    startCustomerSearch(async () => {
-      try {
-        const results = await searchCustomersForIncidentAction(value);
-        setCustomerResults(results);
-      } catch {
-        setCustomerResults([]);
-      }
-    });
+    customerDebounceRef.current = setTimeout(() => {
+      startCustomerSearch(async () => {
+        try {
+          const results = await searchCustomersForIncidentAction(value);
+          setCustomerResults(results);
+        } catch {
+          setCustomerResults([]);
+        }
+      });
+    }, 300);
   }
 
   function onPickCustomer(c: CustomerHit) {

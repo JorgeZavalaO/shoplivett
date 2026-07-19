@@ -55,7 +55,7 @@ export type ExpenseListItem = {
   expenseType: ExpenseType;
   status: ExpenseStatus;
   description: string;
-  amount: { toString(): string };
+  amount: string;
   paymentMethod: string | null;
   notes: string | null;
   voidedAt: Date | null;
@@ -149,7 +149,10 @@ export async function listExpenses(
   const totalAmountCents = toCents(totalAmountAgg._sum.amount);
 
   return {
-    items: items as unknown as ExpenseListItem[],
+    items: items.map((it) => ({
+      ...it,
+      amount: it.amount.toString(),
+    })),
     total,
     page: safePage,
     perPage: safePerPage,
@@ -205,7 +208,7 @@ export async function getMonthlyExpenseSummary(
     expenseDate: { gte, lte },
   };
 
-  const [agg, byCategoryRows] = await Promise.all([
+  const [agg, byCategoryRows, fixedAgg, variableAgg] = await Promise.all([
     prisma.expense.aggregate({
       where,
       _sum: { amount: true },
@@ -216,18 +219,17 @@ export async function getMonthlyExpenseSummary(
       _sum: { amount: true },
       _count: { _all: true },
     }),
+    prisma.expense.aggregate({
+      where: { ...where, expenseType: "FIXED" },
+      _sum: { amount: true },
+    }),
+    prisma.expense.aggregate({
+      where: { ...where, expenseType: "VARIABLE" },
+      _sum: { amount: true },
+    }),
   ]);
 
   const totalCents = toCents(agg._sum.amount);
-
-  const fixedAgg = await prisma.expense.aggregate({
-    where: { ...where, expenseType: "FIXED" },
-    _sum: { amount: true },
-  });
-  const variableAgg = await prisma.expense.aggregate({
-    where: { ...where, expenseType: "VARIABLE" },
-    _sum: { amount: true },
-  });
   const fixedCents = toCents(fixedAgg._sum.amount);
   const variableCents = toCents(variableAgg._sum.amount);
 

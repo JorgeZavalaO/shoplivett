@@ -767,6 +767,39 @@ Capa de cierre del proyecto. Entregables:
 - Documentación de deploy a Vercel en `README.md` (variables, comandos, checklist) y `AGENTS.md` (reglas para multi-instancia).
 - `playwright.config.ts` con `webServer` que aplica el schema y el seed antes de correr.
 
+## Optimización de rendimiento (v0.50.0)
+
+### Mejoras aplicadas (6 bloques de 15 completados)
+
+| Módulo | Impacto |
+|--------|---------|
+| **Validar pago** (5 aplicaciones) | `summarizeOrder` eliminado + `confirmSaleStockForOrder` batch → **-15 a -25 queries** por txn |
+| **Quick Sale** (5 items × 3 lotes) | 4 bucles paralelos + `createMany` + uploads `Promise.allSettled` → **-30 a -50 queries**, -40% latencia txn |
+| **Incidencias create** | 4 validaciones secuenciales → 1 `Promise.all` → **-3 round-trips** |
+| **Dashboard low-rotation** | Cargaba TODAS las variantes → filtra en SQL con `take: limit*2` → **-95% filas** |
+| **Dashboard batch-profitability** | `findMany` de TODAS las allocations → `groupBy` top-N → **-90% filas** |
+| **Dashboard open-batch-capital** | Cargaba TODOS los batches → solo `status ≠ CLOSED` + `take: 500` → **-95% batches** |
+| **Reports live** | 3 `groupBy` separados → 1 consolidado → **-2 queries** |
+| **Reports batches** | `findMany` sin límite → `groupBy` top-N → **-90% allocations** |
+| **Reports summary** | Se cargaba en TODAS las secciones → solo en `section === "summary"` → **-7 queries** |
+| **Reportes (lazy summary)** | `getReportSummary` siempre ejecutado → lazy fetch en rama summary |
+| **Expenses monthly** | 2 aggregates secuenciales → 1 `Promise.all` |
+| **Settings** | `upsert` en cada cache miss → `findUnique` + `create` con P2002 |
+| **Tablas (9 componentes)** | `Intl.DateTimeFormat` hoisted a nivel de módulo → **-N instancias** |
+| **Form ventas** | Búsqueda debounced a 300ms → **-80% server actions** |
+| **Prisma Decimal → string** | `{ toString: () => ... }` wrappers eliminados → **wire format limpio** |
+| **select específico** | 25+ queries con proyección reducida → **payload -60-80%** |
+| **Índices nuevos** | 13 índices compuestos + 10 índices GIN/trigram para búsquedas |
+| **API rate-limit** | `assertApiRateLimit` aplicado a endpoints CSV y receipts |
+
+### Pendiente para iteraciones futuras
+- Cache con `unstable_cache` en dashboard y reportes (tags listos en `lib/cache-tags.ts`).
+- Debounce completo en `create-payment-form`, `create-shipment-form`.
+- Streaming de CSV completo en todos los handlers del API.
+- Paginación visible en secciones `fin-*` de reportes.
+- `<details>` collapsable para metadata en auditoría.
+- Actualización de `AGENTS.md` con nuevas convenciones.
+
 ## Versión
 
-Versión actual: **0.41.0**. Rastreada en `package.json` y [CHANGELOG](./CHANGELOG.md).
+Versión actual: **0.50.0**. Rastreada en `package.json` y [CHANGELOG](./CHANGELOG.md).

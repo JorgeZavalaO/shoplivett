@@ -20,6 +20,8 @@ export type OpenBatchCapital = {
 export async function getOpenBatchCapital(): Promise<OpenBatchCapital> {
   const prisma = getPrisma();
   const rows = await prisma.importBatch.findMany({
+    where: { status: { not: "CLOSED" } },
+    take: 500,
     select: {
       id: true,
       status: true,

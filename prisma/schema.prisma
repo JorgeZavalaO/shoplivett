@@ -395,6 +395,7 @@ model InventoryMovement {
 
   @@index([variantId])
   @@index([type])
+  @@index([variantId, createdAt(sort: Desc)])
 }
 
 model LiveSession {
@@ -459,11 +460,13 @@ model Order {
   @@index([liveSessionId])
   @@index([status])
   @@index([expiresAt])
+  @@index([createdAt])
   @@index([status, createdAt])
   @@index([status, expiresAt])
   @@index([customerId, status, createdAt])
   @@index([status, expiresAt, customerId])
   @@index([salesChannel])
+  @@index([status, profitCalculatedAt])
 }
 
 model OrderItem {
@@ -540,7 +543,9 @@ model Payment {
   @@index([validatedById])
   @@index([rejectedById])
   @@index([status, createdAt])
+  @@index([status, validatedAt])
   @@index([customerId, status, createdAt])
+  @@index([customerId, createdAt])
 }
 
 model PaymentReceipt {
@@ -566,6 +571,8 @@ model PaymentApplication {
   @@unique([paymentId, orderId])
   @@index([paymentId])
   @@index([orderId])
+  @@index([paymentId, createdAt])
+  @@index([orderId, createdAt])
 }
 
 model CustomerCredit {
@@ -611,6 +618,8 @@ model CustomerCreditApplication {
 
   @@index([creditId])
   @@index([orderId])
+  @@index([creditId, createdAt])
+  @@index([orderId, createdAt])
 }
 
 model Shipment {
@@ -647,6 +656,7 @@ model Shipment {
   @@index([shippingMethod])
   @@index([createdAt])
   @@index([status, updatedAt])
+  @@index([status, createdAt])
   @@index([customerId, status, createdAt])
 }
 
@@ -689,6 +699,8 @@ model ImportBatch {
   @@index([status])
   @@index([createdAt])
   @@index([status, createdAt])
+  @@index([shopper])
+  @@index([agency])
 }
 
 model ImportBatchItem {
@@ -719,6 +731,7 @@ model ImportBatchItem {
   @@index([batchId])
   @@index([variantId])
   @@index([variantId, quantityAvailable])
+  @@index([variantId, calculatedAt])
   @@index([batchId, calculatedAt])
 }
 
@@ -805,6 +818,21 @@ model LoginRateLimit {
 
   @@index([blockedUntil])
   @@index([updatedAt])
+}
+
+model ApiRateLimit {
+  id         String   @id @default(cuid())
+  scope      String
+  key        String
+  hits       Int      @default(1)
+  windowStart DateTime
+  blockedUntil DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([scope, key])
+  @@index([scope, key, windowStart])
+  @@index([blockedUntil])
 }
 
 model AuditLog {

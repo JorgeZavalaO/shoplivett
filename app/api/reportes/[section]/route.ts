@@ -15,7 +15,8 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 
-import { requireRole } from "@/lib/permissions";
+import { requireApiRole } from "@/lib/permissions";
+import { assertApiRateLimit, apiRateKeyFromRequest } from "@/lib/rate-limit";
 import { buildCsv, csvFilename, type CsvColumn } from "@/lib/csv-export";
 import {
   getBatchProfitabilityReport,
@@ -28,7 +29,9 @@ import {
   getStockValuationReport,
   type ReportDateRange,
 } from "@/lib/financial-reports";
-import { toCents } from "@/lib/money";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 const SECTIONS = [
   "sales",
@@ -83,233 +86,245 @@ function notFound() {
   return new NextResponse("Not found", { status: 404 });
 }
 
+function serverError(section: string, err: unknown) {
+  console.error("[api/reportes]", { section, err });
+  return new NextResponse("Error generando el reporte.", { status: 500 });
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ section: string }> },
 ) {
   const { section } = await params;
   if (!SECTIONS.includes(section as Section)) return notFound();
-  await requireRole("ADMIN");
+  const denied = await requireApiRole("ADMIN");
+  if (denied) return denied;
+  const rateKey = apiRateKeyFromRequest(req);
+  const rateLimited = await assertApiRateLimit({
+    scope: "csv-export",
+    key: rateKey,
+    opts: { windowMs: 60_000, maxHits: 10, blockMs: 120_000 },
+  });
+  if (rateLimited) return rateLimited;
   const url = new URL(req.url);
 
-  switch (section as Section) {
-    case "sales":
-      return runSalesReport(req);
-    case "products":
-      return runProductsReport(req);
-    case "batches":
-      return runBatchesReport(req);
-    case "stock":
-      return runStockReport(req);
-    case "rotation":
-      return runRotationReport(req);
-    case "expenses":
-      return runExpensesReport(req);
-    case "customers":
-      return runCustomersReport(req);
-    case "returns":
-      return runReturnsReport(req);
-    default:
-      return notFound();
+  try {
+    switch (section as Section) {
+      case "sales":
+        return await runSalesReport(req);
+      case "products":
+        return await runProductsReport(req);
+      case "batches":
+        return await runBatchesReport(req);
+      case "stock":
+        return await runStockReport(req);
+      case "rotation":
+        return await runRotationReport(req);
+      case "expenses":
+        return await runExpensesReport(req);
+      case "customers":
+        return await runCustomersReport(req);
+      case "returns":
+        return await runReturnsReport(req);
+      default:
+        return notFound();
+    }
+  } catch (err) {
+    return serverError(section, err);
   }
 
-  function runSalesReport(reqArg: NextRequest) {
+  async function runSalesReport(reqArg: NextRequest) {
     const range = readRange(reqArg);
-    return getSalesByMonthReport(range).then((report) => {
-      type SalesCsvRow = {
-        year: string;
-        month: string;
-        monthLabel: string;
-        ordersCount: number;
-        revenue: string;
-        productCost: string;
-        grossProfit: string;
-        paymentFee: string;
-        packagingCost: string;
-        deliveryBusinessCost: string;
-        netProfit: string;
-        marginBps: number;
-      };
-      const cols: Array<CsvColumn<SalesCsvRow>> = [
-        { header: "Año", value: (r) => r.year },
-        { header: "Mes", value: (r) => r.month },
-        { header: "Periodo", value: (r) => r.monthLabel },
-        { header: "Pedidos PAID", value: (r) => r.ordersCount },
-        { header: "Ventas (PEN)", value: (r) => r.revenue },
-        { header: "Costo (PEN)", value: (r) => r.productCost },
-        { header: "Utilidad bruta (PEN)", value: (r) => r.grossProfit },
-        { header: "Fee medio pago (PEN)", value: (r) => r.paymentFee },
-        { header: "Costo empaque (PEN)", value: (r) => r.packagingCost },
-        { header: "Costo real envio (PEN)", value: (r) => r.deliveryBusinessCost },
-        { header: "Utilidad neta (PEN)", value: (r) => r.netProfit },
-        { header: "Margen (%)", value: (r) => (r.marginBps / 100).toFixed(2) },
-      ];
-      const totalPaymentFeeCents = report.rows.reduce(
-        (acc, r) => acc + r.paymentFeeCents,
-        0,
-      );
-      const totalPackagingCents = report.rows.reduce(
-        (acc, r) => acc + r.packagingCostCents,
-        0,
-      );
-      const totalDeliveryBusinessCostCents = report.rows.reduce(
-        (acc, r) => acc + r.deliveryBusinessCostCents,
-        0,
-      );
-      const data: SalesCsvRow[] = [
-        ...report.rows.map((r) => ({
-          year: String(r.year),
-          month: String(r.month),
-          monthLabel: r.monthLabel,
-          ordersCount: r.ordersCount,
-          revenue: r.revenue,
-          productCost: r.productCost,
-          grossProfit: r.grossProfit,
-          paymentFee: r.paymentFee,
-          packagingCost: r.packagingCost,
-          deliveryBusinessCost: r.deliveryBusinessCost,
-          netProfit: r.netProfit,
-          marginBps: r.marginBps,
-        })),
-        {
-          year: "",
-          month: "",
-          monthLabel: "TOTAL",
-          ordersCount: report.totals.ordersCount,
-          revenue: report.totals.revenue,
-          productCost: report.totals.productCost,
-          grossProfit: report.totals.grossProfit,
-          paymentFee: (totalPaymentFeeCents / 100).toFixed(2),
-          packagingCost: (totalPackagingCents / 100).toFixed(2),
-          deliveryBusinessCost: (totalDeliveryBusinessCostCents / 100).toFixed(2),
-          netProfit: report.totals.netProfit,
-          marginBps:
-            report.totals.revenueCents > 0
-              ? Math.round((report.totals.netProfitCents * 10000) / report.totals.revenueCents)
-              : 0,
-        },
-      ];
-      const csv = buildCsv(data, cols);
-      return csvResponse("sales", csv);
-    });
+    const report = await getSalesByMonthReport(range);
+    type SalesCsvRow = {
+      year: string;
+      month: string;
+      monthLabel: string;
+      ordersCount: number;
+      revenue: string;
+      productCost: string;
+      grossProfit: string;
+      paymentFee: string;
+      packagingCost: string;
+      deliveryBusinessCost: string;
+      netProfit: string;
+      marginBps: number;
+    };
+    const cols: Array<CsvColumn<SalesCsvRow>> = [
+      { header: "Año", value: (r) => r.year },
+      { header: "Mes", value: (r) => r.month },
+      { header: "Periodo", value: (r) => r.monthLabel },
+      { header: "Pedidos PAID", value: (r) => r.ordersCount },
+      { header: "Ventas (PEN)", value: (r) => r.revenue },
+      { header: "Costo (PEN)", value: (r) => r.productCost },
+      { header: "Utilidad bruta (PEN)", value: (r) => r.grossProfit },
+      { header: "Fee medio pago (PEN)", value: (r) => r.paymentFee },
+      { header: "Costo empaque (PEN)", value: (r) => r.packagingCost },
+      { header: "Costo real envio (PEN)", value: (r) => r.deliveryBusinessCost },
+      { header: "Utilidad neta (PEN)", value: (r) => r.netProfit },
+      { header: "Margen (%)", value: (r) => (r.marginBps / 100).toFixed(2) },
+    ];
+    const totalPaymentFeeCents = report.rows.reduce(
+      (acc, r) => acc + r.paymentFeeCents,
+      0,
+    );
+    const totalPackagingCents = report.rows.reduce(
+      (acc, r) => acc + r.packagingCostCents,
+      0,
+    );
+    const totalDeliveryBusinessCostCents = report.rows.reduce(
+      (acc, r) => acc + r.deliveryBusinessCostCents,
+      0,
+    );
+    const data: SalesCsvRow[] = [
+      ...report.rows.map((r) => ({
+        year: String(r.year),
+        month: String(r.month),
+        monthLabel: r.monthLabel,
+        ordersCount: r.ordersCount,
+        revenue: r.revenue,
+        productCost: r.productCost,
+        grossProfit: r.grossProfit,
+        paymentFee: r.paymentFee,
+        packagingCost: r.packagingCost,
+        deliveryBusinessCost: r.deliveryBusinessCost,
+        netProfit: r.netProfit,
+        marginBps: r.marginBps,
+      })),
+      {
+        year: "",
+        month: "",
+        monthLabel: "TOTAL",
+        ordersCount: report.totals.ordersCount,
+        revenue: report.totals.revenue,
+        productCost: report.totals.productCost,
+        grossProfit: report.totals.grossProfit,
+        paymentFee: (totalPaymentFeeCents / 100).toFixed(2),
+        packagingCost: (totalPackagingCents / 100).toFixed(2),
+        deliveryBusinessCost: (totalDeliveryBusinessCostCents / 100).toFixed(2),
+        netProfit: report.totals.netProfit,
+        marginBps:
+          report.totals.revenueCents > 0
+            ? Math.round((report.totals.netProfitCents * 10000) / report.totals.revenueCents)
+            : 0,
+      },
+    ];
+    const csv = buildCsv(data, cols);
+    return csvResponse("sales", csv);
   }
 
-  function runProductsReport(reqArg: NextRequest) {
+  async function runProductsReport(reqArg: NextRequest) {
     const range = readRange(reqArg);
     const categoryId = url.searchParams.get("categoryId") || null;
     const minUnitsRaw = Number(url.searchParams.get("minUnits") ?? "1");
     const minUnits = Number.isFinite(minUnitsRaw) ? Math.max(0, Math.floor(minUnitsRaw)) : 1;
-    return getProductProfitabilityReport(range, { categoryId, minUnits }).then((report) => {
-      const cols: Array<CsvColumn<(typeof report.rows)[number]>> = [
-        { header: "Variante ID", value: (r) => r.variantId },
-        { header: "Codigo", value: (r) => r.variantCode },
-        { header: "Producto", value: (r) => r.productName },
-        { header: "Categoria", value: (r) => r.categoryName },
-        { header: "Color", value: (r) => r.color ?? "" },
-        { header: "Unidades vendidas", value: (r) => r.unitsSold },
-        { header: "Ingreso (PEN)", value: (r) => r.revenue },
-        { header: "Costo (PEN)", value: (r) => r.cost },
-        { header: "Utilidad bruta (PEN)", value: (r) => r.grossProfit },
-        { header: "Margen (%)", value: (r) => (r.marginBps / 100).toFixed(2) },
-        { header: "Stock", value: (r) => r.stock },
-      ];
-      const csv = withCsvNotice(
-        buildCsv(report.rows, cols),
-        report.meta.truncated
-          ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
-          : undefined,
-      );
-      return csvResponse("products", csv);
-    });
+    const report = await getProductProfitabilityReport(range, { categoryId, minUnits });
+    const cols: Array<CsvColumn<(typeof report.rows)[number]>> = [
+      { header: "Variante ID", value: (r) => r.variantId },
+      { header: "Codigo", value: (r) => r.variantCode },
+      { header: "Producto", value: (r) => r.productName },
+      { header: "Categoria", value: (r) => r.categoryName },
+      { header: "Color", value: (r) => r.color ?? "" },
+      { header: "Unidades vendidas", value: (r) => r.unitsSold },
+      { header: "Ingreso (PEN)", value: (r) => r.revenue },
+      { header: "Costo (PEN)", value: (r) => r.cost },
+      { header: "Utilidad bruta (PEN)", value: (r) => r.grossProfit },
+      { header: "Margen (%)", value: (r) => (r.marginBps / 100).toFixed(2) },
+      { header: "Stock", value: (r) => r.stock },
+    ];
+    const csv = withCsvNotice(
+      buildCsv(report.rows, cols),
+      report.meta.truncated
+        ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
+        : undefined,
+    );
+    return csvResponse("products", csv);
   }
 
-  function runBatchesReport(reqArg: NextRequest) {
+  async function runBatchesReport(reqArg: NextRequest) {
     const range = readRange(reqArg);
-    return getBatchProfitabilityReport(range).then((report) => {
-      const cols: Array<CsvColumn<(typeof report.rows)[number]>> = [
-        { header: "Lote", value: (r) => r.batchCode },
-        { header: "Estado", value: (r) => r.status },
-        { header: "Fecha compra", value: (r) => r.purchaseDate.toISOString().slice(0, 10) },
-        { header: "Shopper", value: (r) => r.shopper ?? "" },
-        { header: "Agencia", value: (r) => r.agency ?? "" },
-        { header: "Inversion (PEN)", value: (r) => r.investment },
-        { header: "Uds vendidas", value: (r) => r.soldUnits },
-        { header: "Ingreso asignado (PEN)", value: (r) => r.allocatedRevenue },
-        { header: "Costo asignado (PEN)", value: (r) => r.allocatedCost },
-        { header: "Utilidad (PEN)", value: (r) => r.grossProfit },
-        { header: "Margen (%)", value: (r) => (r.marginBps / 100).toFixed(2) },
-        { header: "ROI (%)", value: (r) => (r.roiBps / 100).toFixed(2) },
-        { header: "Uds disponibles", value: (r) => r.availableUnits },
-      ];
-      const csv = withCsvNotice(
-        buildCsv(report.rows, cols),
-        report.meta.truncated
-          ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
-          : undefined,
-      );
-      return csvResponse("batches", csv);
-    });
+    const report = await getBatchProfitabilityReport(range);
+    const cols: Array<CsvColumn<(typeof report.rows)[number]>> = [
+      { header: "Lote", value: (r) => r.batchCode },
+      { header: "Estado", value: (r) => r.status },
+      { header: "Fecha compra", value: (r) => r.purchaseDate.toISOString().slice(0, 10) },
+      { header: "Shopper", value: (r) => r.shopper ?? "" },
+      { header: "Agencia", value: (r) => r.agency ?? "" },
+      { header: "Inversion (PEN)", value: (r) => r.investment },
+      { header: "Uds vendidas", value: (r) => r.soldUnits },
+      { header: "Ingreso asignado (PEN)", value: (r) => r.allocatedRevenue },
+      { header: "Costo asignado (PEN)", value: (r) => r.allocatedCost },
+      { header: "Utilidad (PEN)", value: (r) => r.grossProfit },
+      { header: "Margen (%)", value: (r) => (r.marginBps / 100).toFixed(2) },
+      { header: "ROI (%)", value: (r) => (r.roiBps / 100).toFixed(2) },
+      { header: "Uds disponibles", value: (r) => r.availableUnits },
+    ];
+    const csv = withCsvNotice(
+      buildCsv(report.rows, cols),
+      report.meta.truncated
+        ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
+        : undefined,
+    );
+    return csvResponse("batches", csv);
   }
 
-  function runStockReport(reqArg: NextRequest) {
+  async function runStockReport(reqArg: NextRequest) {
     void reqArg;
     const categoryId = url.searchParams.get("categoryId") || null;
     const query = url.searchParams.get("q") || undefined;
-    return getStockValuationReport({ categoryId, query }).then((report) => {
-      const cols: Array<CsvColumn<(typeof report.rows)[number]>> = [
-        { header: "Variante ID", value: (r) => r.variantId },
-        { header: "Codigo", value: (r) => r.variantCode },
-        { header: "Producto", value: (r) => r.productName },
-        { header: "Categoria", value: (r) => r.categoryName },
-        { header: "Color", value: (r) => r.color ?? "" },
-        { header: "Talla", value: (r) => r.size ?? "" },
-        { header: "Stock", value: (r) => r.stock },
-        { header: "Reservado", value: (r) => r.reservedStock },
-        { header: "Disponible", value: (r) => r.available },
-        { header: "Origen costo", value: (r) => (r.hasBatches ? "Lote" : "Legado") },
-        { header: "Costo unitario (PEN)", value: (r) => r.unitCost },
-        { header: "Costo total (PEN)", value: (r) => r.totalCost },
-      ];
-      const csv = withCsvNotice(
-        buildCsv(report.rows, cols),
-        report.meta.truncated
-          ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
-          : undefined,
-      );
-      return csvResponse("stock", csv);
-    });
+    const report = await getStockValuationReport({ categoryId, query });
+    const cols: Array<CsvColumn<(typeof report.rows)[number]>> = [
+      { header: "Variante ID", value: (r) => r.variantId },
+      { header: "Codigo", value: (r) => r.variantCode },
+      { header: "Producto", value: (r) => r.productName },
+      { header: "Categoria", value: (r) => r.categoryName },
+      { header: "Color", value: (r) => r.color ?? "" },
+      { header: "Talla", value: (r) => r.size ?? "" },
+      { header: "Stock", value: (r) => r.stock },
+      { header: "Reservado", value: (r) => r.reservedStock },
+      { header: "Disponible", value: (r) => r.available },
+      { header: "Origen costo", value: (r) => (r.hasBatches ? "Lote" : "Legado") },
+      { header: "Costo unitario (PEN)", value: (r) => r.unitCost },
+      { header: "Costo total (PEN)", value: (r) => r.totalCost },
+    ];
+    const csv = withCsvNotice(
+      buildCsv(report.rows, cols),
+      report.meta.truncated
+        ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
+        : undefined,
+    );
+    return csvResponse("stock", csv);
   }
 
-  function runRotationReport(reqArg: NextRequest) {
+  async function runRotationReport(reqArg: NextRequest) {
     void reqArg;
     const daysRaw = Number(url.searchParams.get("days") ?? "60");
     const days = Number.isFinite(daysRaw) ? Math.max(1, Math.min(365, Math.floor(daysRaw))) : 60;
     const categoryId = url.searchParams.get("categoryId") || null;
-    return getLowRotationReport({ days, categoryId }).then((report) => {
-      const cols: Array<CsvColumn<(typeof report.rows)[number]>> = [
-        { header: "Variante ID", value: (r) => r.variantId },
-        { header: "Codigo", value: (r) => r.variantCode },
-        { header: "Producto", value: (r) => r.productName },
-        { header: "Categoria", value: (r) => r.categoryName },
-        { header: "Color", value: (r) => r.color ?? "" },
-        { header: "Stock", value: (r) => r.stock },
-        { header: "Reservado", value: (r) => r.reservedStock },
-        { header: "Vendido", value: (r) => r.soldStock },
-        { header: "Valor stock (PEN)", value: (r) => r.stockValue },
-        { header: "Ultima venta", value: (r) => r.lastSoldAt?.toISOString().slice(0, 10) ?? "Nunca" },
-        { header: "Dias sin venta", value: (r) => r.daysSinceLastSale ?? "Nunca" },
-      ];
-      const csv = withCsvNotice(
-        buildCsv(report.rows, cols),
-        report.meta.truncated
-          ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
-          : undefined,
-      );
-      return csvResponse("rotation", csv);
-    });
+    const report = await getLowRotationReport({ days, categoryId });
+    const cols: Array<CsvColumn<(typeof report.rows)[number]>> = [
+      { header: "Variante ID", value: (r) => r.variantId },
+      { header: "Codigo", value: (r) => r.variantCode },
+      { header: "Producto", value: (r) => r.productName },
+      { header: "Categoria", value: (r) => r.categoryName },
+      { header: "Color", value: (r) => r.color ?? "" },
+      { header: "Stock", value: (r) => r.stock },
+      { header: "Reservado", value: (r) => r.reservedStock },
+      { header: "Vendido", value: (r) => r.soldStock },
+      { header: "Valor stock (PEN)", value: (r) => r.stockValue },
+      { header: "Ultima venta", value: (r) => r.lastSoldAt?.toISOString().slice(0, 10) ?? "Nunca" },
+      { header: "Dias sin venta", value: (r) => r.daysSinceLastSale ?? "Nunca" },
+    ];
+    const csv = withCsvNotice(
+      buildCsv(report.rows, cols),
+      report.meta.truncated
+        ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
+        : undefined,
+    );
+    return csvResponse("rotation", csv);
   }
 
-  function runExpensesReport(reqArg: NextRequest) {
+  async function runExpensesReport(reqArg: NextRequest) {
     void reqArg;
     const year = Number(url.searchParams.get("year") ?? "");
     const month = Number(url.searchParams.get("month") ?? "");
@@ -319,7 +334,7 @@ export async function GET(
     const query = url.searchParams.get("q") || undefined;
     const safeYear = Number.isInteger(year) && year >= 2000 && year <= 2100 ? year : undefined;
     const safeMonth = Number.isInteger(month) && month >= 1 && month <= 12 ? month : undefined;
-    return getExpensesReport({
+    const report = await getExpensesReport({
       year: safeYear,
       month: safeMonth,
       category: category as never,
@@ -328,87 +343,79 @@ export async function GET(
       query,
       page: 1,
       perPage: 5000,
-    }).then((report) => {
-      const cols: Array<CsvColumn<(typeof report.rows)[number]>> = [
-        { header: "Fecha", value: (r) => r.expenseDate.toISOString().slice(0, 10) },
-        { header: "Categoria", value: (r) => r.categoryLabel },
-        { header: "Tipo", value: (r) => r.expenseTypeLabel },
-        { header: "Detalle", value: (r) => r.description },
-        { header: "Monto (PEN)", value: (r) => r.amount },
-        { header: "Medio de pago", value: (r) => r.paymentMethod ?? "" },
-        { header: "Estado", value: (r) => r.status },
-        { header: "Notas", value: (r) => r.notes ?? "" },
-      ];
-      const csv = withCsvNotice(
-        buildCsv(report.rows, cols),
-        report.meta.truncated
-          ? `Mostrando ${report.meta.returnedRows} de ${report.meta.totalRows ?? report.meta.returnedRows} gastos.`
-          : undefined,
-      );
-      return csvResponse("expenses", csv);
     });
+    const cols: Array<CsvColumn<(typeof report.rows)[number]>> = [
+      { header: "Fecha", value: (r) => r.expenseDate.toISOString().slice(0, 10) },
+      { header: "Categoria", value: (r) => r.categoryLabel },
+      { header: "Tipo", value: (r) => r.expenseTypeLabel },
+      { header: "Detalle", value: (r) => r.description },
+      { header: "Monto (PEN)", value: (r) => r.amount },
+      { header: "Medio de pago", value: (r) => r.paymentMethod ?? "" },
+      { header: "Estado", value: (r) => r.status },
+      { header: "Notas", value: (r) => r.notes ?? "" },
+    ];
+    const csv = withCsvNotice(
+      buildCsv(report.rows, cols),
+      report.meta.truncated
+        ? `Mostrando ${report.meta.returnedRows} de ${report.meta.totalRows ?? report.meta.returnedRows} gastos.`
+        : undefined,
+    );
+    return csvResponse("expenses", csv);
   }
 
-  function runCustomersReport(reqArg: NextRequest) {
+  async function runCustomersReport(reqArg: NextRequest) {
     const range = readRange(reqArg);
     const query = url.searchParams.get("q") || undefined;
-    return getCustomersFinancialReport(range, { query }).then((report) => {
-      const cols: Array<CsvColumn<(typeof report.rows)[number]>> = [
-        { header: "Cliente ID", value: (r) => r.customerId },
-        { header: "Nombre", value: (r) => r.customerName },
-        { header: "WhatsApp", value: (r) => r.whatsapp },
-        { header: "Estado", value: (r) => r.status },
-        { header: "Pedidos", value: (r) => r.ordersCount },
-        { header: "Pedidos PAID", value: (r) => r.paidOrdersCount },
-        { header: "Total facturado (PEN)", value: (r) => r.totalBilled },
-        { header: "Cobrado (PEN)", value: (r) => r.totalPaid },
-        { header: "Saldo pendiente (PEN)", value: (r) => r.totalPending },
-        { header: "Credito disponible (PEN)", value: (r) => r.creditAvailable },
-      ];
-      const csv = withCsvNotice(
-        buildCsv(report.rows, cols),
-        report.meta.truncated
-          ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
-          : undefined,
-      );
-      return csvResponse("customers", csv);
-    });
+    const report = await getCustomersFinancialReport(range, { query });
+    const cols: Array<CsvColumn<(typeof report.rows)[number]>> = [
+      { header: "Cliente ID", value: (r) => r.customerId },
+      { header: "Nombre", value: (r) => r.customerName },
+      { header: "WhatsApp", value: (r) => r.whatsapp },
+      { header: "Estado", value: (r) => r.status },
+      { header: "Pedidos", value: (r) => r.ordersCount },
+      { header: "Pedidos PAID", value: (r) => r.paidOrdersCount },
+      { header: "Total facturado (PEN)", value: (r) => r.totalBilled },
+      { header: "Cobrado (PEN)", value: (r) => r.totalPaid },
+      { header: "Saldo pendiente (PEN)", value: (r) => r.totalPending },
+      { header: "Credito disponible (PEN)", value: (r) => r.creditAvailable },
+    ];
+    const csv = withCsvNotice(
+      buildCsv(report.rows, cols),
+      report.meta.truncated
+        ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
+        : undefined,
+    );
+    return csvResponse("customers", csv);
   }
 
-  function runReturnsReport(reqArg: NextRequest) {
+  async function runReturnsReport(reqArg: NextRequest) {
     const range = readRange(reqArg);
     const type = url.searchParams.get("type") || undefined;
     const status = url.searchParams.get("status") || undefined;
     const decision = url.searchParams.get("decision") || undefined;
-    return getReturnsLossesReport(range, { type, status, decision }).then((report) => {
-      const cols: Array<CsvColumn<(typeof report.rows)[number]>> = [
-        { header: "Incidencia ID", value: (r) => r.incidentId },
-        { header: "Fecha", value: (r) => r.incidentDate.toISOString().slice(0, 10) },
-        { header: "Tipo", value: (r) => r.typeLabel },
-        { header: "Estado", value: (r) => r.status },
-        { header: "Decision", value: (r) => r.decisionLabel },
-        { header: "Pedido", value: (r) => r.orderNumber ?? "" },
-        { header: "Variante", value: (r) => r.variantCode ?? "" },
-        { header: "Producto", value: (r) => r.productName ?? "" },
-        { header: "Cliente", value: (r) => r.customerName ?? "" },
-        { header: "Cantidad", value: (r) => r.quantity },
-        { header: "Restock", value: (r) => r.restockQuantity },
-        { header: "Recuperado (PEN)", value: (r) => r.recovered },
-        { header: "Perdido (PEN)", value: (r) => r.lost },
-        { header: "Descripcion", value: (r) => r.description },
-      ];
-      const csv = withCsvNotice(
-        buildCsv(report.rows, cols),
-        report.meta.truncated
-          ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
-          : undefined,
-      );
-      return csvResponse("returns", csv);
-    });
+    const report = await getReturnsLossesReport(range, { type, status, decision });
+    const cols: Array<CsvColumn<(typeof report.rows)[number]>> = [
+      { header: "Incidencia ID", value: (r) => r.incidentId },
+      { header: "Fecha", value: (r) => r.incidentDate.toISOString().slice(0, 10) },
+      { header: "Tipo", value: (r) => r.typeLabel },
+      { header: "Estado", value: (r) => r.status },
+      { header: "Decision", value: (r) => r.decisionLabel },
+      { header: "Pedido", value: (r) => r.orderNumber ?? "" },
+      { header: "Variante", value: (r) => r.variantCode ?? "" },
+      { header: "Producto", value: (r) => r.productName ?? "" },
+      { header: "Cliente", value: (r) => r.customerName ?? "" },
+      { header: "Cantidad", value: (r) => r.quantity },
+      { header: "Restock", value: (r) => r.restockQuantity },
+      { header: "Recuperado (PEN)", value: (r) => r.recovered },
+      { header: "Perdido (PEN)", value: (r) => r.lost },
+      { header: "Descripcion", value: (r) => r.description },
+    ];
+    const csv = withCsvNotice(
+      buildCsv(report.rows, cols),
+      report.meta.truncated
+        ? `Mostrando los primeros ${report.meta.returnedRows}${typeof report.meta.totalRows === "number" ? ` de ${report.meta.totalRows}` : ""} registros.`
+        : undefined,
+    );
+    return csvResponse("returns", csv);
   }
 }
-
-// Solo lectura. La conversion `toCents` no se usa directamente aqui pero
-// se importa para tipar el helper y dejar el modulo preparado para
-// futuras secciones que agreguen montos derivados en el CSV.
-void toCents;

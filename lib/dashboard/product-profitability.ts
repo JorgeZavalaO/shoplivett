@@ -74,6 +74,10 @@ export async function getProductProfitability(
       totalCostPen: true,
       grossProfitPen: true,
     },
+    orderBy: {
+      _sum: { grossProfitPen: order === "TOP" ? "desc" : "asc" },
+    },
+    take: limit * 3,
   });
 
   if (grouped.length === 0) {

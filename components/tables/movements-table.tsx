@@ -8,6 +8,11 @@ import {
 } from "@/components/ui/table";
 import { MovementTypeBadge } from "@/components/dashboard/movement-type-badge";
 
+const DATETIME_FORMAT = new Intl.DateTimeFormat("es-PE", {
+  dateStyle: "short",
+  timeStyle: "short",
+});
+
 export type MovementRow = {
   id: string;
   type: "IN" | "RESERVE" | "RELEASE" | "SALE" | "CANCEL" | "ADJUSTMENT" | "EXPIRE";
@@ -39,10 +44,7 @@ export function MovementsTable({ items }: { items: MovementRow[] }) {
           {items.map((m) => (
             <TableRow key={m.id}>
               <TableCell className="text-sm">
-                {new Intl.DateTimeFormat("es-PE", {
-                  dateStyle: "short",
-                  timeStyle: "short",
-                }).format(new Date(m.createdAt))}
+                {DATETIME_FORMAT.format(new Date(m.createdAt))}
               </TableCell>
               <TableCell>
                 <MovementTypeBadge type={m.type} quantity={m.quantity} />

@@ -156,14 +156,15 @@ export async function refundCreditAction(
   }
   const user = await getCurrentUser();
   try {
-    await refundCredit({
+    const refunded = await refundCredit({
       creditId: parsed.data.creditId,
       reason: parsed.data.reason,
       refundedById: user?.id ?? null,
     });
     revalidatePath("/pagos");
     revalidatePath("/clientes");
-    return { ok: true, message: "Devolución registrada." };
+    revalidatePath(`/clientes/${refunded.customerId}`);
+    return { ok: true, message: "Devolución registrada.", creditId: refunded.creditId };
   } catch (error) {
     if (error instanceof CreditError) {
       return { ok: false, message: error.message };

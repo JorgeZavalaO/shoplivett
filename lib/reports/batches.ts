@@ -1,6 +1,7 @@
 import { centsToDecimalString, type Cents } from "@/lib/money";
 import { getPrisma } from "@/lib/prisma";
 import {
+  MAX_REPORT_ROWS,
   buildReportLimitMeta,
   resolveCents,
   safeRange,
@@ -51,7 +52,9 @@ export async function getBatchProfitabilityReport(
   const prisma = getPrisma();
   const whereRange = safeRange(range);
 
-  const allocationRows = await prisma.orderItemBatchAllocation.findMany({
+  // Paso 1: groupBy para obtener solo los top N batches por inversión
+  const topBatches = await prisma.orderItemBatchAllocation.groupBy({
+    by: ["batchId"],
     where: {
       orderItem: {
         order: {
@@ -62,6 +65,34 @@ export async function getBatchProfitabilityReport(
         },
       },
     },
+    _sum: { quantity: true, subtotalCostPen: true },
+    orderBy: { _sum: { subtotalCostPen: "desc" } },
+    take: MAX_REPORT_ROWS + 1,
+  });
+
+  if (topBatches.length === 0) {
+    return {
+      rows: [],
+      totals: {
+        investmentCents: 0,
+        investment: "0.00",
+        soldUnits: 0,
+        allocatedRevenueCents: 0,
+        allocatedRevenue: "0.00",
+        grossProfitCents: 0,
+        grossProfit: "0.00",
+      },
+      range,
+      meta: buildReportLimitMeta(0, false),
+    };
+  }
+
+  const batchIds = topBatches.map((r) => r.batchId);
+  const batchIdSet = new Set(batchIds);
+
+  // Paso 2: obtener allocations completas con lineTotal para esos batches
+  const allocationRows = await prisma.orderItemBatchAllocation.findMany({
+    where: { batchId: { in: batchIds } },
     select: {
       batchId: true,
       quantity: true,
@@ -70,6 +101,7 @@ export async function getBatchProfitabilityReport(
     },
   });
 
+  // Agregar en memoria (dataset acotado a MAX_REPORT_ROWS batches × N items)
   const batchTotals = new Map<
     string,
     { soldUnits: number; allocatedCost: number; allocatedRevenue: number }
@@ -86,73 +118,70 @@ export async function getBatchProfitabilityReport(
     batchTotals.set(a.batchId, acc);
   }
 
+  const batches = await prisma.importBatch.findMany({
+    where: { id: { in: batchIds } },
+    select: {
+      id: true,
+      code: true,
+      status: true,
+      purchaseDate: true,
+      shopper: true,
+      agency: true,
+      totalInvestmentPen: true,
+      items: { select: { quantityAvailable: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
   const rows: BatchProfitabilityRow[] = [];
   let totalInvestment = 0;
   let totalSoldUnits = 0;
   let totalAllocatedRevenue = 0;
   let totalGrossProfit = 0;
 
-  if (batchTotals.size > 0) {
-    const batchIds = [...batchTotals.keys()];
-    const batches = await prisma.importBatch.findMany({
-      where: { id: { in: batchIds } },
-      select: {
-        id: true,
-        code: true,
-        status: true,
-        purchaseDate: true,
-        shopper: true,
-        agency: true,
-        totalInvestmentPen: true,
-        items: { select: { quantityAvailable: true } },
-      },
-      orderBy: { createdAt: "desc" },
+  for (const b of batches) {
+    const totals = batchTotals.get(b.id);
+    if (!totals) continue;
+    const { soldUnits, allocatedCost, allocatedRevenue } = totals;
+    const investment = resolveCents(b.totalInvestmentPen);
+    const grossProfit = allocatedRevenue - allocatedCost;
+    const marginBps =
+      allocatedRevenue > 0
+        ? Math.round((grossProfit * 10000) / allocatedRevenue)
+        : 0;
+    const roiBps =
+      investment > 0 ? Math.round((grossProfit * 10000) / investment) : 0;
+    const availableUnits = b.items.reduce(
+      (acc, it) => acc + (it.quantityAvailable ?? 0),
+      0,
+    );
+
+    if (soldUnits === 0 && allocatedRevenue === 0) continue;
+
+    rows.push({
+      batchId: b.id,
+      batchCode: b.code,
+      status: b.status,
+      purchaseDate: b.purchaseDate,
+      shopper: b.shopper,
+      agency: b.agency,
+      investmentCents: investment,
+      investment: centsToDecimalString(investment),
+      soldUnits,
+      allocatedRevenueCents: allocatedRevenue,
+      allocatedRevenue: centsToDecimalString(allocatedRevenue),
+      allocatedCostCents: allocatedCost,
+      allocatedCost: centsToDecimalString(allocatedCost),
+      grossProfitCents: grossProfit,
+      grossProfit: centsToDecimalString(grossProfit),
+      marginBps,
+      roiBps,
+      availableUnits,
     });
-
-    for (const b of batches) {
-      const totals = batchTotals.get(b.id);
-      if (!totals) continue;
-      const { soldUnits, allocatedCost, allocatedRevenue } = totals;
-      const investment = resolveCents(b.totalInvestmentPen);
-      const grossProfit = allocatedRevenue - allocatedCost;
-      const marginBps =
-        allocatedRevenue > 0
-          ? Math.round((grossProfit * 10000) / allocatedRevenue)
-          : 0;
-      const roiBps =
-        investment > 0 ? Math.round((grossProfit * 10000) / investment) : 0;
-      const availableUnits = b.items.reduce(
-        (acc, it) => acc + (it.quantityAvailable ?? 0),
-        0,
-      );
-
-      if (soldUnits === 0 && allocatedRevenue === 0) continue;
-
-      rows.push({
-        batchId: b.id,
-        batchCode: b.code,
-        status: b.status,
-        purchaseDate: b.purchaseDate,
-        shopper: b.shopper,
-        agency: b.agency,
-        investmentCents: investment,
-        investment: centsToDecimalString(investment),
-        soldUnits,
-        allocatedRevenueCents: allocatedRevenue,
-        allocatedRevenue: centsToDecimalString(allocatedRevenue),
-        allocatedCostCents: allocatedCost,
-        allocatedCost: centsToDecimalString(allocatedCost),
-        grossProfitCents: grossProfit,
-        grossProfit: centsToDecimalString(grossProfit),
-        marginBps,
-        roiBps,
-        availableUnits,
-      });
-      totalInvestment += investment;
-      totalSoldUnits += soldUnits;
-      totalAllocatedRevenue += allocatedRevenue;
-      totalGrossProfit += grossProfit;
-    }
+    totalInvestment += investment;
+    totalSoldUnits += soldUnits;
+    totalAllocatedRevenue += allocatedRevenue;
+    totalGrossProfit += grossProfit;
   }
 
   rows.sort((a, b) => b.grossProfitCents - a.grossProfitCents);

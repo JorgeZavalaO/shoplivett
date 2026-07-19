@@ -11,6 +11,11 @@ import { SHIPPING_METHOD_LABELS } from "@/lib/settings-defaults";
 import { WhatsAppQuickButton } from "@/components/whatsapp/whatsapp-actions";
 import { PaginatedDataTable } from "./paginated-data-table";
 
+const DATETIME_FORMAT = new Intl.DateTimeFormat("es-PE", {
+  dateStyle: "short",
+  timeStyle: "short",
+});
+
 export type ShipmentRow = {
   id: string;
   status: "PENDING" | "PREPARING" | "READY" | "SHIPPED" | "DELIVERED" | "CANCELLED";
@@ -48,11 +53,7 @@ const STATUS_OPTIONS = [
 const columns: ColumnDef<ShipmentRow>[] = [
   {
     header: "Creado",
-    cell: ({ row }) =>
-      new Intl.DateTimeFormat("es-PE", {
-        dateStyle: "short",
-        timeStyle: "short",
-      }).format(new Date(row.original.createdAt)),
+    cell: ({ row }) => DATETIME_FORMAT.format(new Date(row.original.createdAt)),
   },
   {
     header: "Clienta",

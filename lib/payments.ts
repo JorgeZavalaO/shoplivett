@@ -6,7 +6,7 @@
 import { Prisma, PaymentStatus, type PaymentMethod } from "@prisma/client";
 
 import { getPrisma } from "@/lib/prisma";
-import { confirmSaleStock } from "@/lib/inventory";
+import { confirmSaleStock, confirmSaleStockForOrder } from "@/lib/inventory";
 import { closeUnpaidReservation, OrderExpiryError } from "@/lib/order-expiry";
 import { PAYMENT_METHOD_LABELS } from "@/lib/settings-defaults";
 import { CreditError } from "@/lib/credits";
@@ -133,7 +133,10 @@ export async function createPayment(
 
   const externalTx = options.tx;
   const execute = async (tx: Prisma.TransactionClient) => {
-    const customer = await tx.customer.findUnique({ where: { id: input.customerId } });
+    const customer = await tx.customer.findUnique({
+      where: { id: input.customerId },
+      select: { id: true },
+    });
     if (!customer) {
       throw new PaymentError("La clienta ya no existe.", "CUSTOMER_NOT_FOUND");
     }
@@ -220,22 +223,12 @@ type OrderPaymentSummary = {
   balance: Cents;
 };
 
-async function summarizeOrder(
-  tx: Prisma.TransactionClient,
-  orderId: string,
-): Promise<OrderPaymentSummary> {
-  const order = await tx.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      total: true,
-      validatedPaid: true,
-      balance: true,
-    },
-  });
-  if (!order) {
-    throw new PaymentError("El pedido ya no existe.", "ORDER_NOT_FOUND");
-  }
+function buildOrderSummaryFromRow(order: {
+  id: string;
+  total: { toString(): string };
+  validatedPaid: { toString(): string };
+  balance: { toString(): string };
+}): OrderPaymentSummary {
   return {
     orderId: order.id,
     total: paymentToCents(order.total.toString()),
@@ -269,6 +262,7 @@ async function recognizePaidOrderProfit(
 ): Promise<void> {
   const settings = await tx.businessSettings.findUnique({
     where: { id: "default" },
+    select: { paymentMethodFees: true, standardPackagingCostPen: true },
   });
   const fees: PaymentMethodFees = settings
     ? coercePaymentMethodFees(settings.paymentMethodFees)
@@ -303,7 +297,13 @@ export async function validatePayment(
       async (tx) => {
         const payment = await tx.payment.findUnique({
           where: { id: input.paymentId },
-          include: { applications: true },
+          select: {
+            id: true,
+            customerId: true,
+            amount: true,
+            status: true,
+            applications: { select: { id: true, orderId: true, amount: true } },
+          },
         });
         if (!payment) {
           throw new PaymentError("El pago ya no existe.", "PAYMENT_NOT_FOUND");
@@ -389,7 +389,10 @@ export async function validatePayment(
             );
           }
           if (treatment === "CREDIT") {
-            const settings = await tx.businessSettings.findUnique({ where: { id: "default" } });
+            const settings = await tx.businessSettings.findUnique({
+              where: { id: "default" },
+              select: { allowOverpaymentCredit: true },
+            });
             if (!settings || !settings.allowOverpaymentCredit) {
               throw new PaymentError(
                 "La configuración no permite generar crédito por sobrepago.",
@@ -398,7 +401,10 @@ export async function validatePayment(
             }
           }
           if (treatment === "REFUND") {
-            const settings = await tx.businessSettings.findUnique({ where: { id: "default" } });
+            const settings = await tx.businessSettings.findUnique({
+              where: { id: "default" },
+              select: { allowRefund: true },
+            });
             if (!settings || !settings.allowRefund) {
               throw new PaymentError(
                 "La configuración no permite registrar devoluciones.",
@@ -423,8 +429,16 @@ export async function validatePayment(
         });
 
         // Aplicar montos a pedidos respetando el balance real.
+        const orderSummaryById = new Map(
+          orders.map((o) => [o.id, {
+            orderId: o.id,
+            total: paymentToCents(o.total.toString()),
+            validatedPaid: paymentToCents(o.validatedPaid.toString()),
+            balance: paymentToCents(o.balance.toString()),
+          }]),
+        );
         for (const app of payment.applications) {
-          const summary = await summarizeOrder(tx, app.orderId);
+          const summary = orderSummaryById.get(app.orderId)!;
           const appCents = paymentToCents(app.amount.toString());
           const effective = Math.min(appCents, summary.balance);
           const newValidated = summary.validatedPaid + effective;
@@ -439,16 +453,11 @@ export async function validatePayment(
           });
 
           if (next.status === "PAID") {
-            const items = await tx.orderItem.findMany({
-              where: { orderId: app.orderId },
-              select: { variantId: true, quantity: true },
-            });
-            for (const item of items) {
-              await confirmSaleStock(item.variantId, item.quantity, {
-                reason: `Pago ${payment.id} validado`,
-                tx,
-              });
-            }
+            await confirmSaleStockForOrder(
+              tx,
+              app.orderId,
+              `Pago ${payment.id} validado`,
+            );
             await recognizePaidOrderProfit(tx, app.orderId);
           }
         }
@@ -557,7 +566,13 @@ export async function rejectPayment(
       async (tx) => {
         const payment = await tx.payment.findUnique({
           where: { id: input.paymentId },
-          include: { applications: true },
+          select: {
+            id: true,
+            customerId: true,
+            amount: true,
+            status: true,
+            applications: { select: { id: true, orderId: true, amount: true } },
+          },
         });
         if (!payment) {
           throw new PaymentError("El pago ya no existe.", "PAYMENT_NOT_FOUND");
@@ -692,7 +707,14 @@ export async function setPaymentApplications(
       async (tx) => {
         const payment = await tx.payment.findUnique({
           where: { id: paymentId },
-          include: { applications: true, customer: { select: { id: true } } },
+          select: {
+            id: true,
+            customerId: true,
+            amount: true,
+            status: true,
+            applications: { select: { id: true, orderId: true, amount: true } },
+            customer: { select: { id: true } },
+          },
         });
         if (!payment) {
           throw new PaymentError("El pago ya no existe.", "PAYMENT_NOT_FOUND");

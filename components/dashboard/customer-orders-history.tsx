@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useTransition } from "react";
 import Link from "next/link";
 import { ShoppingBag, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -14,6 +14,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { listCustomerOrdersAction, type CustomerOrderItem } from "@/actions/orders";
 import { OrderStatusBadge, type OrderStatus } from "@/components/dashboard/order-status-badge";
+import { toCents } from "@/lib/money";
+
+const DATETIME_FORMAT = new Intl.DateTimeFormat("es-PE", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
 type Props = {
   customerId: string;
@@ -28,15 +34,18 @@ type Props = {
 export function CustomerOrdersHistory({ customerId, initialData }: Props) {
   const [page, setPage] = useState(initialData.page);
   const [data, setData] = useState(initialData);
-  const [loading, setLoading] = useState(false);
-  const totalPages = Math.ceil(data.total / data.perPage);
+  const [isPending, startTransition] = useTransition();
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(data.total / data.perPage)),
+    [data.total, data.perPage],
+  );
 
-  async function loadPage(newPage: number) {
-    setLoading(true);
-    const result = await listCustomerOrdersAction(customerId, { page: newPage, perPage: data.perPage });
-    setData(result);
-    setPage(newPage);
-    setLoading(false);
+  function loadPage(newPage: number) {
+    startTransition(async () => {
+      const result = await listCustomerOrdersAction(customerId, { page: newPage, perPage: data.perPage });
+      setData(result);
+      setPage(newPage);
+    });
   }
 
   return (
@@ -68,16 +77,13 @@ export function CustomerOrdersHistory({ customerId, initialData }: Props) {
                 <div>
                   <p className="text-sm font-medium font-mono">{o.orderNumber}</p>
                   <p className="text-xs text-muted-foreground">
-                    {new Intl.DateTimeFormat("es-PE", {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    }).format(new Date(o.createdAt))}
+                    {DATETIME_FORMAT.format(new Date(o.createdAt))}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 text-right">
                   <div>
                     <p className="text-sm">S/ {o.total}</p>
-                    {Number(o.balance) > 0 && (
+                    {toCents(o.balance) > 0 && (
                       <p className="text-xs text-muted-foreground">
                         saldo S/ {o.balance}
                       </p>
@@ -96,7 +102,7 @@ export function CustomerOrdersHistory({ customerId, initialData }: Props) {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={page <= 1 || loading}
+                    disabled={page <= 1 || isPending}
                     onClick={() => loadPage(page - 1)}
                   >
                     <ChevronLeft className="size-4" />
@@ -104,7 +110,7 @@ export function CustomerOrdersHistory({ customerId, initialData }: Props) {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={page >= totalPages || loading}
+                    disabled={page >= totalPages || isPending}
                     onClick={() => loadPage(page + 1)}
                   >
                     <ChevronRight className="size-4" />

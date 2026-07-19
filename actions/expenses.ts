@@ -127,6 +127,8 @@ export async function createExpenseAction(
   }
 
   revalidatePath("/gastos");
+  revalidatePath("/dashboard");
+  revalidatePath("/reportes");
   redirect(`/gastos/${expenseId}`);
 }
 
@@ -264,6 +266,8 @@ export async function updateExpenseAction(
 
   revalidatePath("/gastos");
   revalidatePath(`/gastos/${expenseId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/reportes");
   redirect(`/gastos/${expenseId}`);
 }
 
@@ -342,6 +346,8 @@ export async function voidExpenseAction(
 
   revalidatePath("/gastos");
   revalidatePath(`/gastos/${expenseId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/reportes");
   return { ok: true, message: "Gasto anulado." };
 }
 
@@ -355,7 +361,7 @@ export async function listExpensesAction(
 export async function getExpenseDetailAction(expenseId: string) {
   await requireRole(["ADMIN"]);
   const prisma = getPrisma();
-  return prisma.expense.findUnique({
+  const expense = await prisma.expense.findUnique({
     where: { id: expenseId },
     select: {
       id: true,
@@ -375,18 +381,8 @@ export async function getExpenseDetailAction(expenseId: string) {
       voidedBy: { select: { id: true, name: true, email: true } },
     },
   });
+  if (!expense) return null;
+  return { ...expense, amount: expense.amount.toString() };
 }
 
-export type ExpenseFinancialPeriodView = {
-  year: number;
-  month: number;
-  revenue: string;
-  productCost: string;
-  grossProfit: string;
-  paymentFee: string;
-  packagingCost: string;
-  netProfit: string;
-  expenses: string;
-  realNetProfit: string;
-  marginPercent: number;
-};
+

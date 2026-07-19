@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useCallback } from "react";
+import { useActionState, useState, useCallback, useRef } from "react";
 import { Search, X } from "lucide-react";
 
 import type { BatchActionResult } from "@/actions/import-batches";
@@ -54,6 +54,7 @@ export function BatchForm({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<VariantOption[]>([]);
   const [searching, setSearching] = useState(false);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   const doSearch = useCallback(async (q: string) => {
     if (q.trim().length < 2) {
@@ -246,7 +247,10 @@ export function BatchForm({
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
-                  doSearch(e.target.value);
+                  if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+                  searchDebounceRef.current = setTimeout(() => {
+                    doSearch(e.target.value);
+                  }, 300);
                 }}
                 placeholder="Buscar producto por código o nombre…"
                 className="pl-9"

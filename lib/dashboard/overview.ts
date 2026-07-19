@@ -11,12 +11,6 @@ export type FinancialDashboardFilter = {
   categoryId?: string | "ALL";
 };
 
-function empty<T>(v: T | null | undefined, fallback: T): T {
-  return v === null || v === undefined ? fallback : v;
-}
-
-void empty;
-
 export function monthRange(
   year: number,
   month: number,
@@ -45,20 +39,19 @@ function buildOrderWhere(
   if (filter.salesChannel && filter.salesChannel !== "ALL") {
     where.salesChannel = filter.salesChannel;
   }
+  const itemConditions: Prisma.OrderItemWhereInput[] = [];
   if (filter.batchId && filter.batchId !== "ALL") {
-    where.items = {
-      some: { allocations: { some: { batchId: filter.batchId } } },
-    };
+    itemConditions.push({
+      allocations: { some: { batchId: filter.batchId } },
+    });
   }
   if (filter.categoryId && filter.categoryId !== "ALL") {
-    where.items = {
-      ...(where.items as Prisma.OrderItemListRelationFilter | undefined),
-      some: {
-        ...((where.items as { some?: Record<string, unknown> } | undefined)
-          ?.some ?? {}),
-        variant: { product: { categoryId: filter.categoryId } },
-      },
-    };
+    itemConditions.push({
+      variant: { product: { categoryId: filter.categoryId } },
+    });
+  }
+  if (itemConditions.length > 0) {
+    where.items = { some: { AND: itemConditions } };
   }
   return where;
 }

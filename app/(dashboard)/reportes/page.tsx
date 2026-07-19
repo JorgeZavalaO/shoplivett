@@ -266,9 +266,8 @@ export default async function ReportesPage({
   const toDate = parseDate(toInput);
   const range = { from: fromDate, to: toDate };
 
-  const summary = await getReportSummaryAction(range);
-
   if (section === "summary") {
+    const summary = await getReportSummaryAction(range);
     return (
       <ReportesShell section={section} sp={sp}>
         <SummarySection

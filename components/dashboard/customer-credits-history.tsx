@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { MessageCircle, Plus } from "lucide-react";
@@ -20,9 +20,15 @@ import {
   buildWhatsappLink,
   buildWhatsappMessage,
 } from "@/lib/whatsapp";
+import { centsToDecimalString, sumCents } from "@/lib/money";
 import { CreateManualCreditForm } from "@/components/forms/create-manual-credit-form";
 import { ApplyCreditToOrderForm } from "@/components/forms/apply-credit-to-order-form";
 import { RefundCreditForm } from "@/components/forms/refund-credit-form";
+
+const DATE_FORMAT = new Intl.DateTimeFormat("es-PE", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
 type CreditApplication = {
   id: string;
@@ -84,20 +90,29 @@ export function CustomerCreditsHistory({ credits, customer }: Props) {
   const [applyTarget, setApplyTarget] = useState<CreditItem | null>(null);
   const [refundTarget, setRefundTarget] = useState<CreditItem | null>(null);
 
-  const totalAvailable = credits
-    .filter((c) => c.status === "AVAILABLE" || c.status === "PARTIALLY_USED")
-    .reduce((acc, c) => acc + Number(c.availableAmount), 0);
+  const totalAvailable = useMemo(() => {
+    const cents = sumCents(
+      credits
+        .filter((c) => c.status === "AVAILABLE" || c.status === "PARTIALLY_USED")
+        .map((c) => c.availableAmount),
+    );
+    return centsToDecimalString(cents);
+  }, [credits]);
 
-  const creditMessageLink = buildWhatsappLink(
-    customer.whatsapp,
-    buildWhatsappMessage({
-      key: "CREDIT_AVAILABLE",
-      customer: { name: customer.name, whatsapp: customer.whatsapp },
-      credit: {
-        totalAmount: totalAvailable.toFixed(2),
-        availableAmount: totalAvailable.toFixed(2),
-      },
-    }),
+  const creditMessageLink = useMemo(
+    () =>
+      buildWhatsappLink(
+        customer.whatsapp,
+        buildWhatsappMessage({
+          key: "CREDIT_AVAILABLE",
+          customer: { name: customer.name, whatsapp: customer.whatsapp },
+          credit: {
+            totalAmount: totalAvailable,
+            availableAmount: totalAvailable,
+          },
+        }),
+      ),
+    [customer.whatsapp, customer.name, totalAvailable],
   );
 
   const handleSuccess = useCallback(() => {
@@ -115,7 +130,7 @@ export function CustomerCreditsHistory({ credits, customer }: Props) {
           <CardDescription>
             {credits.length === 0
               ? `${customer.name} aún no tiene créditos.`
-              : `${credits.length} crédito(s). Disponible: S/ ${totalAvailable.toFixed(2)}`}
+              : `${credits.length} crédito(s). Disponible: S/ ${totalAvailable}`}
           </CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -208,10 +223,7 @@ export function CustomerCreditsHistory({ credits, customer }: Props) {
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {ORIGIN_LABELS[c.origin]} · creado el{" "}
-                      {new Intl.DateTimeFormat("es-PE", {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      }).format(new Date(c.createdAt))}
+                      {DATE_FORMAT.format(new Date(c.createdAt))}
                       {c.payment
                         ? ` · pago S/ ${c.payment.amount}`
                         : null}

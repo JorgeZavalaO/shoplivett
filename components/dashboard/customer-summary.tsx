@@ -9,6 +9,8 @@ import { CircleDollarSign, Landmark, MapPin, ReceiptText } from "lucide-react";
 import { CustomerStatusBadge } from "@/components/dashboard/customer-status-badge";
 import { formatWhatsAppDisplay } from "@/lib/phone";
 
+const DATE_FORMAT = new Intl.DateTimeFormat("es-PE", { dateStyle: "medium" });
+
 type SummaryProps = {
   customer: {
     name: string;
@@ -29,9 +31,7 @@ type SummaryProps = {
 
 export function CustomerSummary({ customer, debt, credit }: SummaryProps) {
   const whatsappDisplay = formatWhatsAppDisplay(customer.whatsapp);
-  const registered = new Intl.DateTimeFormat("es-PE", {
-    dateStyle: "medium",
-  }).format(customer.createdAt);
+  const registered = DATE_FORMAT.format(customer.createdAt);
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">

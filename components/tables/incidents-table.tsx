@@ -17,6 +17,8 @@ import type {
   IncidentType,
 } from "@prisma/client";
 
+const DATE_FORMAT = new Intl.DateTimeFormat("es-PE", { dateStyle: "short" });
+
 export type IncidentRow = {
   id: string;
   incidentDate: Date;
@@ -25,8 +27,8 @@ export type IncidentRow = {
   decision: IncidentReturnDecision;
   quantity: number;
   description: string;
-  lostAmount: { toString(): string };
-  recoveredAmount: { toString(): string };
+  lostAmount: string;
+  recoveredAmount: string;
   order: { id: string; orderNumber: string } | null;
   variant: {
     id: string;
@@ -53,10 +55,7 @@ type Props = {
 const columns: ColumnDef<IncidentRow>[] = [
   {
     header: "Fecha",
-    cell: ({ row }) =>
-      new Intl.DateTimeFormat("es-PE", { dateStyle: "short" }).format(
-        new Date(row.original.incidentDate),
-      ),
+    cell: ({ row }) => DATE_FORMAT.format(new Date(row.original.incidentDate)),
   },
   {
     accessorKey: "type",
@@ -120,13 +119,12 @@ const columns: ColumnDef<IncidentRow>[] = [
   {
     header: "Perdido",
     cell: ({ row }) => {
-      const cents = Number(row.original.lostAmount.toString());
-      if (cents === 0) {
+      if (row.original.lostAmount === "0.00") {
         return <span className="text-xs text-muted-foreground">-</span>;
       }
       return (
         <span className="font-mono text-xs text-destructive">
-          S/ {cents.toFixed(2)}
+          S/ {row.original.lostAmount}
         </span>
       );
     },
@@ -134,13 +132,12 @@ const columns: ColumnDef<IncidentRow>[] = [
   {
     header: "Recuperado",
     cell: ({ row }) => {
-      const cents = Number(row.original.recoveredAmount.toString());
-      if (cents === 0) {
+      if (row.original.recoveredAmount === "0.00") {
         return <span className="text-xs text-muted-foreground">-</span>;
       }
       return (
         <span className="font-mono text-xs text-emerald-600">
-          S/ {cents.toFixed(2)}
+          S/ {row.original.recoveredAmount}
         </span>
       );
     },

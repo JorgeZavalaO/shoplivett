@@ -9,15 +9,6 @@ import { requireRole, getCurrentUser } from "@/lib/permissions";
 import { auditAfter, auditInTx } from "@/lib/audit";
 import { getPrisma } from "@/lib/prisma";
 import { normalizeForSearch, normalizeWhatsApp } from "@/lib/phone";
-
-export async function getCustomerAction(customerId: string) {
-  await requireRole(["ADMIN", "SELLER"]);
-  if (!customerId) return null;
-  return getPrisma().customer.findUnique({
-    where: { id: customerId },
-    select: { id: true, name: true, whatsapp: true },
-  });
-}
 import {
   CustomerCreateSchema,
   CustomerUpdateSchema,
@@ -26,7 +17,6 @@ import {
 import {
   type CustomerActionResult,
   type CustomerListResult,
-  initialCustomerState,
 } from "@/lib/customers-types";
 
 const PERU_DIAL_REGEX = /^\+51\d{9}$/;
@@ -81,7 +71,10 @@ export async function createCustomerAction(
   }
 
   const prisma = getPrisma();
-  const existing = await prisma.customer.findUnique({ where: { whatsapp } });
+  const existing = await prisma.customer.findUnique({
+    where: { whatsapp },
+    select: { id: true },
+  });
   if (existing) {
     return {
       ok: false,
@@ -154,21 +147,27 @@ export async function updateCustomerAction(
   }
 
   const prisma = getPrisma();
-  const existing = await prisma.customer.findUnique({ where: { id: customerId } });
+  const [existing, conflict] = await Promise.all([
+    prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { id: true, whatsapp: true, status: true },
+    }),
+    prisma.customer.findUnique({
+      where: { whatsapp },
+      select: { id: true },
+    }),
+  ]);
   if (!existing) {
     return { ok: false, message: "La clienta ya no existe." };
   }
 
-  if (existing.whatsapp !== whatsapp) {
-    const conflict = await prisma.customer.findUnique({ where: { whatsapp } });
-    if (conflict && conflict.id !== customerId) {
-      return {
-        ok: false,
-        message: "Ya existe otra clienta con ese WhatsApp.",
-        fieldErrors: { whatsapp: "Este WhatsApp ya está registrado." },
-        whatsappNormalized: whatsapp,
-      };
-    }
+  if (existing.whatsapp !== whatsapp && conflict && conflict.id !== customerId) {
+    return {
+      ok: false,
+      message: "Ya existe otra clienta con ese WhatsApp.",
+      fieldErrors: { whatsapp: "Este WhatsApp ya está registrado." },
+      whatsappNormalized: whatsapp,
+    };
   }
 
   try {
@@ -313,5 +312,3 @@ export async function searchCustomersAction(
     query: trimmed,
   };
 }
-
-void initialCustomerState;

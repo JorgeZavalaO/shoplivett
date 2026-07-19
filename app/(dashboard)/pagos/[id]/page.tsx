@@ -22,6 +22,7 @@ import { formatWhatsAppDisplay } from "@/lib/phone";
 import { WhatsAppActions } from "@/components/whatsapp/whatsapp-actions";
 import { buildWhatsappLink, buildWhatsappMessage } from "@/lib/whatsapp";
 import { MessageCircle } from "lucide-react";
+import { centsToDecimalString, sumCents, toCents } from "@/lib/money";
 
 
 type Params = Promise<{ id: string }>;
@@ -40,16 +41,17 @@ export default async function PagoDetallePage({ params }: { params: Params }) {
   const user = await requireUser();
   const payment = await getPaymentDetailAction(id);
   if (!payment) notFound();
-  const settings = await getSettings();
+  const [settings, canValidate] = await Promise.all([
+    getSettings(),
+    canValidatePayments(user.role),
+  ]);
 
-  const canValidate = await canValidatePayments(user.role);
   const isPending = payment.status === "PENDING";
-  const appliedSum = payment.applications.reduce(
-    (acc, a) => acc + Number(a.amount.toString()),
-    0,
-  );
-  const amountNum = Number(payment.amount.toString());
-  const remaining = amountNum - appliedSum;
+  const appliedCents = sumCents(payment.applications.map((a) => a.amount));
+  const amountCents = toCents(payment.amount);
+  const remainingCents = amountCents - appliedCents;
+  const appliedSum = centsToDecimalString(appliedCents);
+  const remaining = centsToDecimalString(remainingCents);
 
   const firstApp = payment.applications[0]?.order ?? null;
   const whatsappLink = buildWhatsappLink(
@@ -145,7 +147,7 @@ export default async function PagoDetallePage({ params }: { params: Params }) {
           <CardHeader>
             <CardDescription>Aplicado a pedidos</CardDescription>
             <CardTitle className="text-2xl text-emerald-600">
-              S/ {appliedSum.toFixed(2)}
+              S/ {appliedSum}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-muted-foreground">
@@ -155,19 +157,19 @@ export default async function PagoDetallePage({ params }: { params: Params }) {
         <Card>
           <CardHeader>
             <CardDescription>
-              {remaining > 0 ? "Restante por aplicar" : remaining < 0 ? "Excedente" : "Cuadra exacto"}
+              {remainingCents > 0 ? "Restante por aplicar" : remainingCents < 0 ? "Excedente" : "Cuadra exacto"}
             </CardDescription>
             <CardTitle
               className={
                 "text-2xl " +
-                (remaining > 0
+                (remainingCents > 0
                   ? "text-amber-600"
-                  : remaining < 0
+                  : remainingCents < 0
                     ? "text-destructive"
                     : "text-emerald-600")
               }
             >
-              S/ {remaining.toFixed(2)}
+              S/ {remaining}
             </CardTitle>
           </CardHeader>
         </Card>

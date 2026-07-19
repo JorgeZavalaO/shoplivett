@@ -30,7 +30,7 @@ type ExpenseDetail = {
   expenseType: ExpenseType;
   status: ExpenseStatus;
   description: string;
-  amount: { toString(): string };
+  amount: string;
   paymentMethod: string | null;
   notes: string | null;
   voidedAt: Date | null;
@@ -61,8 +61,8 @@ const DATETIME_FORMATTER = new Intl.DateTimeFormat("es-PE", {
   timeStyle: "short",
 });
 
-function formatPen(value: { toString(): string }): string {
-  return `S/ ${Number(value.toString()).toFixed(2)}`;
+function formatPen(value: string | { toString(): string }): string {
+  return `S/ ${typeof value === "string" ? value : value.toString()}`;
 }
 
 function toDateInput(d: Date): string {

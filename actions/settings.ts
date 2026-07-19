@@ -208,6 +208,10 @@ export async function updateSettingsAction(
 
   invalidateSettingsCache();
   revalidatePath("/configuracion");
+  revalidatePath("/dashboard");
+  revalidatePath("/reportes");
+  revalidatePath("/pagos");
+  revalidatePath("/pedidos");
   auditAfter(user?.id ?? null, {
     action: "SETTINGS_UPDATED",
     entity: "BusinessSettings",
