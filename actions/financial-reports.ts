@@ -10,59 +10,31 @@ import {
   getReturnsLossesReport,
   getSalesByMonthReport,
   getStockValuationReport,
-  type ReportDateRange,
 } from "@/lib/financial-reports";
-import type { ExpenseListFilter } from "@/lib/expenses";
 
-export async function getSalesByMonthReportAction(range: ReportDateRange) {
-  await requireRole("ADMIN");
-  return getSalesByMonthReport(range);
+function withAdminGuard<TArgs extends unknown[], TRet>(
+  fn: (...args: TArgs) => TRet,
+): (...args: TArgs) => Promise<TRet> {
+  return async (...args: TArgs) => {
+    await requireRole("ADMIN");
+    return fn(...args);
+  };
 }
 
-export async function getProductProfitabilityReportAction(
-  range: ReportDateRange,
-  options: { categoryId?: string | null; minUnits?: number } = {},
-) {
-  await requireRole("ADMIN");
-  return getProductProfitabilityReport(range, options);
-}
+export const getSalesByMonthReportAction = withAdminGuard(getSalesByMonthReport);
 
-export async function getBatchProfitabilityReportAction(range: ReportDateRange) {
-  await requireRole("ADMIN");
-  return getBatchProfitabilityReport(range);
-}
+export const getProductProfitabilityReportAction = withAdminGuard(
+  getProductProfitabilityReport,
+);
 
-export async function getStockValuationReportAction(
-  options: { categoryId?: string | null; query?: string } = {},
-) {
-  await requireRole("ADMIN");
-  return getStockValuationReport(options);
-}
+export const getBatchProfitabilityReportAction = withAdminGuard(getBatchProfitabilityReport);
 
-export async function getLowRotationReportAction(
-  options: { days?: number; categoryId?: string | null } = {},
-) {
-  await requireRole("ADMIN");
-  return getLowRotationReport(options);
-}
+export const getStockValuationReportAction = withAdminGuard(getStockValuationReport);
 
-export async function getExpensesReportAction(filter: ExpenseListFilter) {
-  await requireRole("ADMIN");
-  return getExpensesReport(filter);
-}
+export const getLowRotationReportAction = withAdminGuard(getLowRotationReport);
 
-export async function getCustomersFinancialReportAction(
-  range: ReportDateRange,
-  options: { query?: string } = {},
-) {
-  await requireRole("ADMIN");
-  return getCustomersFinancialReport(range, options);
-}
+export const getExpensesReportAction = withAdminGuard(getExpensesReport);
 
-export async function getReturnsLossesReportAction(
-  range: ReportDateRange,
-  options: { type?: string; status?: string; decision?: string } = {},
-) {
-  await requireRole("ADMIN");
-  return getReturnsLossesReport(range, options);
-}
+export const getCustomersFinancialReportAction = withAdminGuard(getCustomersFinancialReport);
+
+export const getReturnsLossesReportAction = withAdminGuard(getReturnsLossesReport);

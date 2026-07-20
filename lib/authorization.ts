@@ -19,16 +19,9 @@ export async function hasPermission(
   role: Role,
   permission: Permission,
 ): Promise<boolean> {
-  if (hasPermissionSync(role, permission)) {
-    if (permission === "payments.validate") {
-      return isPaymentValidator(role);
-    }
-    return true;
-  }
-  if (permission === "payments.validate") {
-    return isPaymentValidator(role);
-  }
-  return false;
+  if (!hasPermissionSync(role, permission)) return false;
+  if (permission === "payments.validate") return isPaymentValidator(role);
+  return true;
 }
 
 export async function assertPermission(

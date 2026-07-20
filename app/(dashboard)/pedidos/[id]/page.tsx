@@ -490,6 +490,7 @@ export default async function PedidoDetallePage({ params }: { params: Params }) 
                   : undefined
               }
               defaultTemplate={defaultTemplateKey}
+              precomputedLink={whatsappLink}
             />
           </CardContent>
         </Card>

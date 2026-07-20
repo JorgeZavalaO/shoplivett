@@ -309,7 +309,7 @@ export default async function LoteDetailPage({
               Productos sin precio de venta
             </p>
             <p className="text-xs text-sky-800 dark:text-sky-300">
-              {items.filter((i) => Number(i.variant.price.toString()) === 0).length} producto(s) del lote no tienen precio asignado. Usa el botón <strong>Aplicar</strong> en la columna "Precio sug." para asignar el precio sugerido automáticamente.
+              {items.filter((i) => Number(i.variant.price.toString()) === 0).length} producto(s) del lote no tienen precio asignado. Usa el bot&oacute;n <strong>Aplicar</strong> en la columna &ldquo;Precio sug.&rdquo; para asignar el precio sugerido autom&aacute;ticamente.
             </p>
           </div>
         </div>

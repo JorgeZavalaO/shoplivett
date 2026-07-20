@@ -379,9 +379,18 @@ export default async function AuditoriaPage({
                         {it.actorName ?? it.actorEmail ?? "—"}
                       </TableCell>
                       <TableCell className="max-w-md text-xs">
-                        <pre className="whitespace-pre-wrap break-words text-muted-foreground">
-                          {it.metadata ? JSON.stringify(it.metadata, null, 0) : "—"}
-                        </pre>
+                        {it.metadata ? (
+                          <details className="group cursor-pointer">
+                            <summary className="text-xs text-muted-foreground hover:text-foreground">
+                              Ver metadata
+                            </summary>
+                            <pre className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-muted p-2 text-xs text-muted-foreground">
+                              {JSON.stringify(it.metadata, null, 2)}
+                            </pre>
+                          </details>
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

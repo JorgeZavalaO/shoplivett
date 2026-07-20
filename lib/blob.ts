@@ -205,7 +205,7 @@ export async function deleteImage(pathname: string): Promise<void> {
   if (!process.env.BLOB_READ_WRITE_TOKEN) return;
   try {
     await del(pathname, { token: process.env.BLOB_READ_WRITE_TOKEN });
-  } catch {
-    // Silenciar: un delete fallido no debe romper el flujo principal.
+  } catch (err) {
+    console.warn("[blob/deleteImage] fallo al eliminar", { pathname, err });
   }
 }

@@ -91,12 +91,9 @@ const DATETIME_FORMATTER = new Intl.DateTimeFormat("es-PE", {
   timeStyle: "short",
 });
 
-function formatPen(value: string | { toString(): string } | number): string {
-  const raw =
-    typeof value === "object" && value !== null
-      ? value.toString()
-      : String(value);
-  return `S/ ${Number(raw).toFixed(2)}`;
+function formatPen(value: string | { toString(): string }): string {
+  const raw = typeof value === "object" ? value.toString() : value;
+  return `S/ ${raw}`;
 }
 
 export async function generateMetadata({

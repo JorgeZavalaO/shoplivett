@@ -808,9 +808,8 @@ Capa de cierre del proyecto. Entregables:
 - Debounce completo en `create-payment-form`, `create-shipment-form`.
 - Streaming de CSV completo en todos los handlers del API.
 - Paginación visible en secciones `fin-*` de reportes.
-- `<details>` collapsable para metadata en auditoría.
 - Actualización de `AGENTS.md` con nuevas convenciones.
 
 ## Versión
 
-Versión actual: **0.50.0**. Rastreada en `package.json` y [CHANGELOG](./CHANGELOG.md).
+Versión actual: **0.55.0**. Rastreada en `package.json` y [CHANGELOG](./CHANGELOG.md).

@@ -1047,16 +1047,16 @@ export default async function ReportesPage({
     const type = parseExpenseType(first(sp, "type"));
     const status = parseExpenseStatus(first(sp, "status"));
     const query = first(sp, "q") ?? "";
-      const data = await getExpensesReportAction({
-        year: safeYear,
-        month: safeMonth,
-        category,
-        type,
-        status,
-        query: query || undefined,
-        page: 1,
-        perPage: 5000,
-      });
+    const data = await getExpensesReportAction({
+      year: safeYear,
+      month: safeMonth,
+      category,
+      type,
+      status,
+      query: query || undefined,
+      page: 1,
+      perPage: 5000,
+    });
     const extra = (
       <div className="flex flex-wrap items-end gap-2">
         <input type="hidden" name="section" value="fin-expenses" />

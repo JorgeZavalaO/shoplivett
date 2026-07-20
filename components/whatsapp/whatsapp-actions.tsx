@@ -53,6 +53,8 @@ type Props = {
   variant?: Variant;
   label?: string;
   trigger?: React.ReactElement;
+  /** Enlace precalculado en el servidor para evitar doble cómputo. */
+  precomputedLink?: string | null;
 };
 
 function findDefault(
@@ -75,6 +77,7 @@ export function WhatsAppActions({
   variant = "inline",
   label,
   trigger,
+  precomputedLink,
 }: Props) {
   const available = useMemo(() => getAvailableTemplates(context), [context]);
   const [selected, setSelected] = useState<OrderTemplateKey>(() =>
@@ -109,10 +112,10 @@ export function WhatsAppActions({
     return buildWhatsappMessage(base);
   }, [available, selected, customer, order, payment, shipment, credit]);
 
-  const link = useMemo(
-    () => (message ? buildWhatsappLink(customer.whatsapp, message) : null),
-    [customer.whatsapp, message],
-  );
+  const link = useMemo(() => {
+    if (precomputedLink !== undefined) return precomputedLink;
+    return message ? buildWhatsappLink(customer.whatsapp, message) : null;
+  }, [customer.whatsapp, message, precomputedLink]);
 
   const isValid = Boolean(link && message);
 

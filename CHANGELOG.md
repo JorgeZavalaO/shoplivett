@@ -7,6 +7,27 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.55.0] — Bloques 11-13: precomputedLink, collapsable metadata, withAdminGuard, logging, limpieza
+
+### WhatsApp (Bloque 11)
+- `WhatsAppActions`: nuevo prop opcional `precomputedLink` que evita recalcular el enlace en el cliente si el servidor ya lo calculó. Aplicado en `pedidos/[id]/page.tsx`.
+- `formatPen` simplificado en `incidencias/[id]` y `gastos/[id]` (acepta `string` directamente, sin `Number().toFixed(2)`).
+
+### Auditoría y UI (Bloque 12)
+- `auditoria/page.tsx`: metadata envuelto en `<details>` collapsable con `JSON.stringify(it.metadata, null, 2)` — reduce drásticamente el HTML emitido.
+- `lib/blob.ts:deleteImage`: ahora loggea errores con `console.warn` en lugar de silenciarlos.
+- `lib/authorization.ts:hasPermission`: simplificada la lógica redundante para `payments.validate`.
+
+### Robustez (Bloque 13)
+- `actions/financial-reports.ts`: nuevo wrapper `withAdminGuard(fn)` que aplica `requireRole("ADMIN")` a cada acción — elimina 8 repeticiones del mismo guard.
+- `app/(dashboard)/lotes/[id]/page.tsx`: escapados caracteres especiales HTML.
+
+### Verificación
+- `pnpm typecheck` + `pnpm lint` → 0 errores.
+- `pnpm build` → exitoso (32 rutas).
+- Tests de dominio: `test-perf-fixes` 5/5, `test-financial-reports` 12/12, `test-order-batch-fifo` 14/14.
+- E2E Playwright no ejecutado (falta `.env.e2e` con BD aislada).
+
 ## [0.52.0] — Precio opcional en productos, UI mejorada en lotes y auto-recálculo
 
 ### Mejoras
