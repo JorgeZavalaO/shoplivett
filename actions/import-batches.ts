@@ -12,6 +12,7 @@ import {
   ImportBatchUpdateSchema,
   ImportBatchItemSchema,
   ImportBatchItemsSchema,
+  ImportBatchItemUpdateSchema,
   type ImportBatchCreateInput,
 } from "@/lib/validations";
 import {
@@ -60,6 +61,7 @@ function fieldErrorsFromZod(
 function readForm(formData: FormData) {
   return {
     purchaseDate: String(formData.get("purchaseDate") ?? "").trim(),
+    estimatedArrivalDate: String(formData.get("estimatedArrivalDate") ?? "").trim(),
     shopper: String(formData.get("shopper") ?? "").trim(),
     agency: String(formData.get("agency") ?? "").trim(),
     totalCostUsd: String(formData.get("totalCostUsd") ?? "").trim(),
@@ -301,6 +303,7 @@ export async function createBatchAction(
           data: {
             code,
             purchaseDate: new Date(parsed.data.purchaseDate),
+            estimatedArrivalDate: parsed.data.estimatedArrivalDate ? new Date(parsed.data.estimatedArrivalDate) : null,
             shopper: parsed.data.shopper,
             agency: parsed.data.agency,
             totalCostUsd: centsToDecimalString(draft.totalCostUsdCents),
@@ -420,6 +423,7 @@ export async function updateBatchAction(
       id: true,
       code: true,
       purchaseDate: true,
+      estimatedArrivalDate: true,
       shopper: true,
       agency: true,
       totalCostUsd: true,
@@ -465,6 +469,14 @@ export async function updateBatchAction(
   if (parsed.data.purchaseDate && new Date(parsed.data.purchaseDate).getTime() !== existing.purchaseDate.getTime()) {
     changedFields.purchaseDate = { from: existing.purchaseDate.toISOString(), to: parsed.data.purchaseDate };
     updateData.purchaseDate = new Date(parsed.data.purchaseDate);
+  }
+  if (parsed.data.estimatedArrivalDate !== undefined) {
+    const current = existing.estimatedArrivalDate ? existing.estimatedArrivalDate.toISOString().split("T")[0] : "";
+    const incoming = parsed.data.estimatedArrivalDate ?? "";
+    if (incoming !== current) {
+      changedFields.estimatedArrivalDate = { from: current || null, to: incoming || null };
+      updateData.estimatedArrivalDate = incoming ? new Date(incoming) : null;
+    }
   }
   if (parsed.data.shopper && parsed.data.shopper !== existing.shopper) {
     changedFields.shopper = { from: existing.shopper, to: parsed.data.shopper };
@@ -586,6 +598,14 @@ export async function updateBatchAction(
   revalidatePath("/inventario");
   revalidatePath("/dashboard");
   revalidatePath(`/lotes/${batchId}`);
+
+  if (invalidatesCosting) {
+    const recalcResult = await recalculateBatchAction(batchId);
+    if (!recalcResult.ok) {
+      return { ok: true, message: `Lote actualizado, pero el recálculo automático falló: ${recalcResult.message}` };
+    }
+  }
+
   redirect(`/lotes/${batchId}`);
 }
 
@@ -1036,4 +1056,153 @@ export async function recalculateBatchAction(
     itemCount: result.items.length,
     method,
   };
+}
+
+export async function updateBatchItemAction(
+  batchId: string,
+  itemId: string,
+  _prev: BatchActionResult | undefined,
+  formData: FormData,
+): Promise<BatchActionResult> {
+  await requireRole(["ADMIN", "SELLER"]);
+  if (!batchId || !itemId) return { ok: false, message: "Faltan datos." };
+
+  const raw = {
+    itemId,
+    quantityReceived: formData.get("quantityReceived"),
+    unitCostUsd: String(formData.get("unitCostUsd") ?? "").trim(),
+    weight: String(formData.get("weight") ?? "0").trim(),
+  };
+  const parsed = ImportBatchItemUpdateSchema.safeParse(raw);
+  if (!parsed.success) {
+    const firstIssue = parsed.error.issues[0];
+    return {
+      ok: false,
+      message: firstIssue?.message ?? "Revisa los datos del item.",
+    };
+  }
+
+  const user = await getCurrentUser();
+  const prisma = getPrisma();
+
+  const item = await prisma.importBatchItem.findUnique({
+    where: { id: itemId },
+    select: {
+      id: true,
+      quantityPurchased: true,
+      quantityReceived: true,
+      quantityAvailable: true,
+      batchId: true,
+      batch: { select: { id: true, code: true, exchangeRate: true, status: true } },
+    },
+  });
+  if (!item) return { ok: false, message: "El item ya no existe." };
+  if (item.batch.status === "CLOSED") {
+    return { ok: false, message: "No puedes modificar un lote cerrado." };
+  }
+  if (item.batchId !== batchId) {
+    return { ok: false, message: "El item no pertenece a este lote." };
+  }
+
+  const newReceived = parsed.data.quantityReceived;
+  if (newReceived > item.quantityPurchased) {
+    return {
+      ok: false,
+      message: "La cantidad recibida no puede superar la comprada.",
+      fieldErrors: { items: "La cantidad recibida no puede superar la comprada." },
+    };
+  }
+  if (newReceived < item.quantityAvailable) {
+    return {
+      ok: false,
+      message: `No puedes reducir a ${newReceived} porque ya hay ${item.quantityAvailable} unidades vendidas o reservadas de este lote.`,
+      fieldErrors: { items: `Ya hay ${item.quantityAvailable} unidades comprometidas.` },
+    };
+  }
+
+  const delta = newReceived - item.quantityReceived;
+  const newAvailable = item.quantityAvailable + delta;
+
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        await assertBatchNotClosed(tx, batchId, "No puedes modificar un lote cerrado.");
+
+        const unitCostUsd = parsed.data.unitCostUsd;
+        const unitCostUsdCents = toCents(unitCostUsd);
+        const subtotalUsdCents = unitCostUsdCents * newReceived;
+        const rate = Number(item.batch.exchangeRate.toString());
+        const subtotalPenCents = toCents((subtotalUsdCents / 100) * rate);
+        const unitCostPen =
+          newReceived > 0
+            ? ((subtotalPenCents / newReceived) / 100).toFixed(4)
+            : "0.0000";
+
+        const variantId = (await tx.importBatchItem.findUnique({
+          where: { id: itemId },
+          select: { variantId: true },
+        }))!.variantId;
+
+        await tx.importBatchItem.update({
+          where: { id: itemId },
+          data: {
+            quantityReceived: newReceived,
+            quantityAvailable: newAvailable,
+            unitCostUsd,
+            unitCostPen,
+            weight: parsed.data.weight || "0",
+            subtotalUsd: centsToDecimalString(subtotalUsdCents),
+            subtotalPen: centsToDecimalString(subtotalPenCents),
+          },
+        });
+
+        if (delta !== 0) {
+          await tx.inventoryMovement.create({
+            data: {
+              variantId,
+              type: "ADJUSTMENT",
+              quantity: delta,
+              reason: `Lote ${item.batch.code} - Ajuste de recibidos`,
+            },
+          });
+          await applyBatchStockDelta(tx, {
+            variantId,
+            delta,
+            label: `updateBatchItemAction ${item.batch.code}`,
+          });
+        }
+
+        await resetBatchCostingState(tx, batchId);
+        await syncBatchHeaderFromItems(tx, batchId, {
+          exchangeRate: item.batch.exchangeRate.toString(),
+        });
+
+        await auditInTx(tx, user?.id ?? null, {
+          action: "IMPORT_BATCH_ITEM_UPDATED",
+          entity: "ImportBatch",
+          entityId: batchId,
+          metadata: {
+            code: item.batch.code,
+            itemId,
+            previousReceived: item.quantityReceived,
+            newReceived,
+            delta,
+          },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 15000 },
+    );
+  } catch (error) {
+    if (error instanceof BatchClosedError || error instanceof BatchNotFoundError) {
+      return { ok: false, message: error.message };
+    }
+    if (isSerializationConflict(error)) {
+      return { ok: false, message: "Conflicto al actualizar el item. Intenta nuevamente." };
+    }
+    throw error;
+  }
+
+  revalidatePath(`/lotes/${batchId}`);
+  revalidatePath("/inventario");
+  return { ok: true, message: "Item actualizado." };
 }

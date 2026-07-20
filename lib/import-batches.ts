@@ -95,6 +95,7 @@ export const BATCH_LIST_SELECT = {
   id: true,
   code: true,
   purchaseDate: true,
+  estimatedArrivalDate: true,
   shopper: true,
   agency: true,
   totalCostUsd: true,
@@ -112,6 +113,7 @@ export const BATCH_DETAIL_SELECT = {
   id: true,
   code: true,
   purchaseDate: true,
+  estimatedArrivalDate: true,
   shopper: true,
   agency: true,
   totalCostUsd: true,
@@ -193,8 +195,17 @@ export async function listBatches(
     }),
   ]);
 
+  const serializedItems = items.map((item) => ({
+    ...item,
+    totalCostUsd: item.totalCostUsd.toString(),
+    totalAdditionalCostsUsd: item.totalAdditionalCostsUsd.toString(),
+    totalAdditionalCostsPen: item.totalAdditionalCostsPen.toString(),
+    exchangeRate: item.exchangeRate.toString(),
+    totalInvestmentPen: item.totalInvestmentPen.toString(),
+  }));
+
   return {
-    items,
+    items: serializedItems,
     total,
     page: safePage,
     perPage: safePerPage,
@@ -205,10 +216,36 @@ export async function listBatches(
 
 export async function getBatchDetail(id: string) {
   const prisma = getPrisma();
-  return prisma.importBatch.findUnique({
+  const batch = await prisma.importBatch.findUnique({
     where: { id },
     select: BATCH_DETAIL_SELECT,
   });
+  if (!batch) return null;
+
+  return {
+    ...batch,
+    totalCostUsd: batch.totalCostUsd.toString(),
+    totalAdditionalCostsUsd: batch.totalAdditionalCostsUsd.toString(),
+    totalAdditionalCostsPen: batch.totalAdditionalCostsPen.toString(),
+    exchangeRate: batch.exchangeRate.toString(),
+    totalInvestmentPen: batch.totalInvestmentPen.toString(),
+    items: batch.items.map((item) => ({
+      ...item,
+      unitCostUsd: item.unitCostUsd.toString(),
+      unitCostPen: item.unitCostPen.toString(),
+      weight: item.weight.toString(),
+      subtotalUsd: item.subtotalUsd.toString(),
+      subtotalPen: item.subtotalPen.toString(),
+      additionalSubtotalPen: item.additionalSubtotalPen.toString(),
+      additionalCostPen: item.additionalCostPen.toString(),
+      landedUnitCostPen: item.landedUnitCostPen.toString(),
+      landedSubtotalPen: item.landedSubtotalPen.toString(),
+      variant: {
+        ...item.variant,
+        price: item.variant.price.toString(),
+      },
+    })),
+  };
 }
 
 export function batchToCents(value: string | number | { toString(): string } | null | undefined) {

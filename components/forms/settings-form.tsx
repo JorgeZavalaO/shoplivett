@@ -9,11 +9,11 @@ import { Separator } from "@/components/ui/separator";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { FieldError } from "@/components/ui/field-error";
 import { FormMessage } from "@/components/ui/form-message";
+import { updateSettingsAction } from "@/actions/settings";
 import {
   initialSettingsState,
-  updateSettingsAction,
   type SettingsActionState,
-} from "@/actions/settings";
+} from "@/actions/settings-state";
 import {
   COST_ALLOCATION_METHOD_LABELS,
   PAYMENT_METHOD_LABELS,

@@ -399,7 +399,7 @@ Nivel de riesgo actual: **Alto** — la mayoría de hallazgos P0/P1 están corre
 La suite oficial es Playwright y vive en `e2e/`. Hay seis specs:
 
 - `e2e/smoke.spec.ts`: smoke E2E (login + alta de cliente) con cleanup de clientas `E2E-SMOKE`.
-- `e2e/flows.spec.ts`: los 8 flujos obligatorios de Sprint 15 (venta con adelanto, venta pagada, pago a varios pedidos, sobrepago, reserva vencida, envío agrupado, rechazo de pago, ajuste de stock) ejecutados contra el motor de dominio y la base de datos real.
+- `e2e/flows.spec.ts`: flujos obligatorios de Sprint 15 (venta con adelanto, venta pagada, pago a varios pedidos, sobrepago, reserva vencida, envío agrupado, rechazo de pago, ajuste de stock) más flujo de precio sugerido desde lote (producto sin precio → recalcular → aplicar precio sugerido), ejecutados contra el motor de dominio y la base de datos real.
 - `e2e/batch-fifo.spec.ts`: flujos E2E de lotes y asignacion FIFO sobre inventario por batch.
 - `e2e/concurrency.spec.ts`: escenarios de concurrencia obligatoria de la Fase 3A (doble validación, edición+rechazo paralelo, cancelación atómica de envío, transición de estado única).
 - `e2e/ui-flows.spec.ts`: flujos de UI real de Fase 4 (validación de pago y cancelación de envío con motivo desde la página).
@@ -505,6 +505,17 @@ Páginas:
 - `/categorias`, `/categorias/nueva`, `/categorias/[id]/editar`
 - `/productos`, `/productos/nuevo`, `/productos/[id]`, `/productos/[id]/editar`
 - `/productos/[id]/variantes/nueva`, `/productos/[id]/variantes/[variantId]/editar`
+
+### Lotes de importación (Sprint 20+)
+
+- **Creación de lote**: formulario con fecha de compra, fecha estimada de llegada, shopper, agencia, costos en USD/PEN, tipo de cambio y notas. Todos los campos preservan su valor al mostrar errores de validación.
+- **Productos del lote**: buscador asíncrono de productos + modal de creación rápida (`QuickProductDialog`). Cada producto registra cantidad comprada, recibida, disponible, costo unit. USD y peso.
+- **Edición de lote**: modal Dialog con todos los campos editables. Si se modifican costos adicionales o tipo de cambio, los costos aterrizados se recalculan automáticamente.
+- **Detalle del lote**: cards con total invertido, productos, distribución de costos y peso total. Columna de cantidad con tooltip explicativo (`p` comprados, `r` recibidos, `d` disponibles). Badge de stock que diferencia "Sin recibir" vs "Agotado".
+- **Precio opcional en productos**: se puede crear un producto sin precio de venta. Desde el detalle del lote, después del recálculo de costos, el sistema muestra precios mínimo y sugerido. Botón "Aplicar" para asignar el precio sugerido a la variante (`applyVariantPriceAction`).
+- **Edición de ítems**: modal `EditBatchItemButton` para modificar cantidad recibida, costo unitario USD y peso de un producto existente en el lote.
+- **Recálculo de costos**: distribución de costos adicionales por método configurable (valor, peso o mixto).
+- Estados: `PURCHASED` → `IN_TRANSIT` → `COMPLETE` → `CLOSED`.
 
 ### Inventario (Sprint 5)
 

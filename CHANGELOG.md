@@ -7,6 +7,43 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.52.0] — Precio opcional en productos, UI mejorada en lotes y auto-recálculo
+
+### Mejoras
+- **Precio opcional** al crear producto: se permite dejar precio en 0 (sin precio de venta). El sistema recomienda precios automáticamente desde el lote (`lib/validations.ts`, `product-create-form.tsx`, `quick-product-form.tsx`).
+- **Aplicar precio sugerido** desde detalle del lote: botón "Aplicar S/ {monto}" en la columna "Precio sug." que ejecuta `applyVariantPriceAction` y actualiza el precio de la variante (`apply-price-button.tsx`, `actions/products.ts`).
+- **Nueva columna "Precio actual"** en tabla de productos del lote. Si no hay precio, muestra badge "Sin precio". Si hay, muestra el monto actual (`app/(dashboard)/lotes/[id]/page.tsx`).
+- **Banner informativo**: alerta visible cuando hay productos sin precio de venta en el lote.
+- **Tooltip CSS** en columna de cantidad (`p · r · d`) del detalle del lote, explicando cada letra (`page.tsx`).
+- **Fecha estimada de llegada** en lotes: nuevo campo `estimatedArrivalDate` en schema, formularios de crear/editar lote y detalle.
+- **StockHealthBadge mejorado**: cuando `quantityReceived = 0` muestra "Sin recibir" en lugar de "Agotado".
+- **Editar producto del lote**: nuevo modal `EditBatchItemButton` para modificar `quantityReceived`, costo unit. USD y peso de un ítem existente (`edit-batch-item-button.tsx`, `updateBatchItemAction`).
+- **Recálculo automático** al editar lote: `updateBatchAction` ejecuta `recalculateBatchAction` cuando cambian costos adicionales o tipo de cambio.
+- **Vista de edición de lote mejorada**: inputs controlados, textos de ayuda, y modal Dialog en lugar de formulario inline.
+- **Preservación de datos en formularios**: tanto crear como editar lote ahora usan inputs controlados (`value` + `onChange`) para no perder datos al mostrar errores de validación.
+- **Tooltip component** (`@base-ui/react/tooltip`) creado en `components/ui/tooltip.tsx`.
+
+### Correcciones
+- **Decimal serialization**: `listBatches` y `getBatchDetail` convierten campos `Decimal` a string para evitar error "Only plain objects can be passed to Client Components" en RSC.
+- **Audit enum**: agregado `IMPORT_BATCH_ITEM_UPDATED` al schema Prisma y etiquetas en vista de auditoría.
+
+### Pruebas
+- Nuevo test E2E: "Crear producto sin precio, crear lote, recalcular vía BD y aplicar precio sugerido desde UI" en `e2e/flows.spec.ts`.
+
+## [0.51.0] — Fix: export inválido en "use server" file de configuraciones
+
+### Correcciones
+- `actions/settings.ts`: movido `initialSettingsState` y `SettingsActionState` a
+  `actions/settings-state.ts` para cumplir la regla de Next.js que exige que
+  archivos `"use server"` solo exporten funciones asíncronas. El error aparecía
+  al guardar configuración: "A 'use server' file can only export async
+  functions, found object".
+
+### Rendimiento (dev)
+- `package.json`: habilitado `--turbo` en script `dev` (Turbopack).
+- `package.json`: agregado script `clean` para limpiar `.next`.
+- `package.json`: eliminada dependencia no usada `@electric-sql/pglite` (~46 MB).
+
 ## [0.50.0] — Performance Sprint: N+1, top-K SQL, cache, índices, streaming y debounce
 
 ### Rendimiento — Queries (Bloques 4, 5, 7)

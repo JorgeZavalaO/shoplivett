@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "AuditAction" ADD VALUE 'IMPORT_BATCH_ITEM_UPDATED';

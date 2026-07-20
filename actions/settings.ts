@@ -14,16 +14,7 @@ import {
   type PaymentMethodFees,
 } from "@/lib/settings-defaults";
 import { auditAfter } from "@/lib/audit";
-
-export type SettingsActionState = {
-  ok: boolean;
-  message?: string;
-  fieldErrors?: Partial<
-    Record<keyof z.infer<typeof BusinessSettingsSchema>, string>
-  > & { paymentMethodFees?: string };
-};
-
-const initialState: SettingsActionState = { ok: false };
+import type { SettingsActionState } from "@/actions/settings-state";
 
 function readArray(formData: FormData, key: string): string[] {
   return formData.getAll(key).map((v) => String(v));
@@ -231,4 +222,4 @@ export async function getSettingsAction() {
   return settings;
 }
 
-export const initialSettingsState: SettingsActionState = initialState;
+

@@ -11,7 +11,21 @@ const CLASSNAME: Record<StockHealthLevel, string> = {
   healthy: "bg-emerald-100 text-emerald-900 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200",
 };
 
-export function StockHealthBadge({ availableUnits }: { availableUnits: number }) {
+export function StockHealthBadge({
+  availableUnits,
+  received = 0,
+}: {
+  availableUnits: number;
+  received?: number;
+}) {
+  if (received === 0) {
+    return (
+      <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-dashed">
+        Sin recibir · {availableUnits}
+      </Badge>
+    );
+  }
+
   const level = classifyStockHealth(availableUnits);
   return (
     <Badge variant="outline" className={CLASSNAME[level]}>

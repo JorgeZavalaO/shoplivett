@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
+import { z } from "zod";
 
 import { requireRole, getCurrentUser } from "@/lib/permissions";
 import { auditAfter } from "@/lib/audit";
@@ -326,6 +327,146 @@ export async function createProductWithVariantsAction(
   revalidatePath("/productos");
   revalidatePath(`/productos/${productId}`);
   redirect(`/productos/${productId}`);
+}
+
+export type QuickCreateProductResult = {
+  ok: boolean;
+  message?: string;
+  fieldErrors?: Partial<Record<string, string>>;
+  variantId?: string;
+  variantCode?: string;
+  productId?: string;
+  productName?: string;
+};
+
+const QuickCreateProductSchema = z.object({
+  name: z.string().trim().min(1, "El nombre del producto es obligatorio.").max(120),
+  categoryId: z.string().min(1, "Selecciona una categoría."),
+  color: z.string().trim().max(60).optional(),
+  size: z.string().trim().max(60).optional(),
+  price: z.string().trim()
+    .refine((s) => s === "" || /^\d+(\.\d{1,2})?$/.test(s), "Precio inválido (máx 2 decimales).")
+    .refine((s) => s === "" || Number(s) >= 0, "El precio no puede ser negativo.")
+    .default(""),
+  cost: z.string().trim().optional().default(""),
+  stock: z.coerce.number().int().min(0).max(100000).default(0),
+});
+
+export async function quickCreateProductAction(
+  _prev: QuickCreateProductResult | undefined,
+  formData: FormData,
+): Promise<QuickCreateProductResult> {
+  await requireRole(["ADMIN", "SELLER"]);
+
+  const parsed = QuickCreateProductSchema.safeParse({
+    name: String(formData.get("name") ?? "").trim(),
+    categoryId: String(formData.get("categoryId") ?? "").trim(),
+    color: String(formData.get("color") ?? "").trim() || undefined,
+    size: String(formData.get("size") ?? "").trim() || undefined,
+    price: String(formData.get("price") ?? "").trim(),
+    cost: String(formData.get("cost") ?? "").trim(),
+    stock: formData.get("stock") ?? "0",
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: parsed.error.issues[0]?.message ?? "Revisa los datos.",
+      fieldErrors: Object.fromEntries(
+        parsed.error.issues.map((i) => [i.path[0], i.message]),
+      ),
+    };
+  }
+
+  const prisma = getPrisma();
+  const category = await prisma.category.findUnique({
+    where: { id: parsed.data.categoryId },
+    select: { id: true, isActive: true, slug: true },
+  });
+  if (!category || !category.isActive) {
+    return { ok: false, message: "La categoría seleccionada no está disponible." };
+  }
+
+  const settings = await getSettings();
+  const prefix = settings.productCodePrefix;
+
+  const existingCodes = await prisma.productVariant.findMany({
+    where: { product: { categoryId: parsed.data.categoryId } },
+    select: { code: true },
+  });
+  const codeList = existingCodes.map((v) => v.code);
+
+  const suffix = nextAvailableSuffix(codeList, prefix, category.slug, parsed.data.color ?? null);
+  const code = buildVariantCode(prefix, category.slug, parsed.data.color ?? null, suffix);
+
+  try {
+    const created = await prisma.$transaction(async (tx) => {
+      const product = await tx.product.create({
+        data: {
+          name: parsed.data.name,
+          categoryId: parsed.data.categoryId,
+        },
+      });
+
+      const variant = await tx.productVariant.create({
+        data: {
+          productId: product.id,
+          code,
+          color: parsed.data.color ?? null,
+          size: parsed.data.size ?? null,
+          price: parsed.data.price as string,
+          cost: parsed.data.cost || null,
+          stock: parsed.data.stock,
+          reservedStock: 0,
+          soldStock: 0,
+        },
+        select: { id: true, code: true },
+      });
+
+      if (parsed.data.stock > 0) {
+        await tx.inventoryMovement.create({
+          data: {
+            variantId: variant.id,
+            type: "IN",
+            quantity: parsed.data.stock,
+            reason: "Stock inicial (creación rápida)",
+          },
+        });
+      }
+
+      return { product, variant };
+    });
+
+    const user = await getCurrentUser();
+    auditAfter(user?.id ?? null, {
+      action: "PRODUCT_CREATED",
+      entity: "Product",
+      entityId: created.product.id,
+      metadata: {
+        name: parsed.data.name,
+        categoryId: parsed.data.categoryId,
+        hasVariants: false,
+        variantCount: 1,
+        hasImage: false,
+        source: "quick-create",
+      },
+    });
+
+    revalidatePath("/productos");
+
+    return {
+      ok: true,
+      message: "Producto creado.",
+      variantId: created.variant.id,
+      variantCode: created.variant.code,
+      productId: created.product.id,
+      productName: parsed.data.name,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "No pudimos crear el producto.",
+    };
+  }
 }
 
 export async function updateProductAction(
@@ -741,4 +882,36 @@ export async function deleteImageAction(imageId: string): Promise<void> {
   await prisma.productImage.delete({ where: { id: imageId } });
   await deleteImage(image.pathname);
   if (image.productId) revalidatePath(`/productos/${image.productId}`);
+}
+
+export type ApplyPriceResult = {
+  ok: boolean;
+  message?: string;
+};
+
+export async function applyVariantPriceAction(
+  variantId: string,
+  price: string,
+): Promise<ApplyPriceResult> {
+  await requireRole(["ADMIN", "SELLER"]);
+  if (!variantId) return { ok: false, message: "Falta la variante." };
+
+  if (!/^\d+(\.\d{1,2})?$/.test(price) || Number(price) < 0) {
+    return { ok: false, message: "Precio inválido." };
+  }
+
+  const prisma = getPrisma();
+  const variant = await prisma.productVariant.findUnique({
+    where: { id: variantId },
+    select: { id: true, productId: true },
+  });
+  if (!variant) return { ok: false, message: "La variante ya no existe." };
+
+  await prisma.productVariant.update({
+    where: { id: variantId },
+    data: { price },
+  });
+
+  revalidatePath(`/productos/${variant.productId}`);
+  return { ok: true, message: "Precio actualizado." };
 }

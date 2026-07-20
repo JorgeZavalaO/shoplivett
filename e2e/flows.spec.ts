@@ -479,4 +479,103 @@ test.describe("Sprint 15 — Flujos obligatorios", () => {
     });
     expect(Number(after?.stock)).toBe(12);
   });
+
+  test("Crear producto sin precio, crear lote, recalcular vía BD y aplicar precio sugerido desde UI", async ({ adminPage }) => {
+    const stamp = Date.now();
+    const prefix = `PRICE-${stamp}`;
+
+    // Setup: categoría y producto sin precio
+    await prisma.category.upsert({
+      where: { slug: "e2e-precio" },
+      update: {},
+      create: { name: "E2E Precio", slug: "e2e-precio", isActive: true },
+    });
+
+    const product = await prisma.product.create({
+      data: { name: `${prefix} Producto`, isActive: true, categoryId: (await prisma.category.findUnique({ where: { slug: "e2e-precio" } }))!.id },
+    });
+
+    const variant = await prisma.productVariant.create({
+      data: {
+        productId: product.id,
+        code: `${prefix}-VAR`,
+        price: "0.00",
+        cost: "30.00",
+        stock: 10,
+        reservedStock: 0,
+        soldStock: 0,
+        status: "ACTIVE",
+      },
+    });
+
+    await prisma.inventoryMovement.create({
+      data: { variantId: variant.id, type: "IN", quantity: 10, reason: "E2E seed" },
+    });
+
+    // Setup: lote de importación con costos ya calculados
+    const batch = await prisma.importBatch.create({
+      data: {
+        code: `${prefix}-LOTE`,
+        purchaseDate: new Date(),
+        shopper: "E2E shopper",
+        agency: "E2E agency",
+        totalCostUsd: "400.00",
+        totalAdditionalCostsUsd: "10.00",
+        totalAdditionalCostsPen: "5.00",
+        exchangeRate: "3.7500",
+        totalInvestmentPen: "1542.50",
+        status: "COMPLETE",
+        distributionMethod: "MIXED",
+        lastRecalculatedAt: new Date(),
+      },
+    });
+
+    await prisma.importBatchItem.create({
+      data: {
+        batchId: batch.id,
+        variantId: variant.id,
+        quantityPurchased: 10,
+        quantityReceived: 10,
+        quantityAvailable: 10,
+        unitCostUsd: "40.0000",
+        unitCostPen: "150.0000",
+        weight: "0",
+        subtotalUsd: "400.00",
+        subtotalPen: "1500.00",
+        additionalCostPen: "4.2500",
+        additionalSubtotalPen: "42.50",
+        landedUnitCostPen: "154.2500",
+        landedSubtotalPen: "1542.50",
+        calculatedAt: new Date(),
+      },
+    });
+
+    // Navegar al detalle del lote
+    await adminPage.goto(`/lotes/${batch.id}`);
+    await expect(adminPage.getByText(prefix)).toBeVisible({ timeout: 15_000 });
+
+    // Verificar que aparece "Sin precio"
+    await expect(adminPage.getByText("Sin precio")).toBeVisible();
+
+    // Verificar que aparece el banner de productos sin precio
+    await expect(adminPage.getByText("Productos sin precio de venta")).toBeVisible();
+
+    // Verificar que hay un botón Aplicar con el precio sugerido
+    const applyButton = adminPage.locator("button").filter({ hasText: /S\/\s+\d+\.\d{2}/ }).first();
+    await expect(applyButton).toBeVisible();
+
+    // Click en Aplicar
+    await applyButton.click();
+
+    // Esperar el toast de éxito
+    await expect(adminPage.getByText("Precio aplicado")).toBeVisible({ timeout: 15_000 });
+
+    // Verificar que la variante ahora tiene precio
+    const updatedVariant = await prisma.productVariant.findUnique({ where: { id: variant.id } });
+    expect(Number(updatedVariant?.price)).toBeGreaterThan(0);
+
+    // Recargar la página y verificar que ya no dice "Sin precio"
+    await adminPage.reload();
+    await expect(adminPage.getByText("Sin precio")).not.toBeVisible();
+  });
 });

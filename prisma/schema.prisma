@@ -200,6 +200,7 @@ enum AuditAction {
   IMPORT_BATCH_STATUS_CHANGED
   IMPORT_BATCH_ITEM_ADDED
   IMPORT_BATCH_ITEM_REMOVED
+  IMPORT_BATCH_ITEM_UPDATED
   IMPORT_BATCH_RECALCULATED
   ORDER_BATCH_ALLOCATED
   ORDER_BATCH_ALLOCATION_RELEASED
@@ -677,6 +678,7 @@ model ImportBatch {
   id                    String             @id @default(cuid())
   code                  String             @unique
   purchaseDate          DateTime
+  estimatedArrivalDate  DateTime?
   shopper               String
   agency                String
   totalCostUsd          Decimal            @db.Decimal(12, 2)

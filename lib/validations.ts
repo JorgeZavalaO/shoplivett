@@ -327,7 +327,7 @@ export const ProductVariantCreateSchema = z.object({
   color: optionalShort,
   material: optionalShort,
   size: optionalShort,
-  price: decimalPrice({ label: "El precio de venta", required: true }),
+  price: decimalPrice({ label: "El precio de venta", required: false }),
   cost: decimalPrice({ label: "El costo", required: false }),
   stock: z.coerce
     .number({ message: "El stock inicial es obligatorio." })
@@ -341,7 +341,7 @@ export const ProductVariantUpdateSchema = z.object({
   color: optionalShort,
   material: optionalShort,
   size: optionalShort,
-  price: decimalPrice({ label: "El precio de venta", required: true }),
+  price: decimalPrice({ label: "El precio de venta", required: false }),
   cost: decimalPrice({ label: "El costo", required: false }),
   barcode: optionalBarcode,
   status: z.enum(["ACTIVE", "HIDDEN", "ARCHIVED"]).optional(),
@@ -357,7 +357,11 @@ const ProductCreateVariantSchema = z.object({
   color: optionalShort,
   material: optionalShort,
   size: optionalShort,
-  price: decimalString({ label: "El precio de venta", min: 0.01 }),
+  price: z
+    .string()
+    .trim()
+    .transform((s) => (s === "" ? "0" : s))
+    .pipe(decimalString({ label: "El precio de venta", allowZero: true })),
   cost: decimalString({ label: "El costo", allowZero: true }).optional(),
   stock: z.coerce
     .number({ message: "El stock inicial es obligatorio." })
@@ -604,10 +608,18 @@ const batchDecimal4 = (opts: { label: string; allowZero?: boolean }) =>
       { message: opts.allowZero ? `${opts.label} no puede ser negativo.` : `${opts.label} debe ser mayor a 0.` },
     );
 
+const optionalDateString = z
+  .string()
+  .trim()
+  .min(1, "Fecha inválida.")
+  .optional()
+  .or(z.literal("").transform(() => undefined));
+
 export const ImportBatchCreateSchema = z.object({
   purchaseDate: z
     .string({ message: "La fecha de compra es obligatoria." })
     .min(1, "La fecha de compra es obligatoria."),
+  estimatedArrivalDate: optionalDateString,
   shopper: z
     .string({ message: "El shopper es obligatorio." })
     .trim()
@@ -634,6 +646,7 @@ export type ImportBatchCreateInput = z.infer<typeof ImportBatchCreateSchema>;
 
 export const ImportBatchUpdateSchema = z.object({
   purchaseDate: z.string().min(1, "La fecha de compra es obligatoria.").optional(),
+  estimatedArrivalDate: optionalDateString,
   shopper: z.string().trim().min(2).max(100).optional(),
   agency: z.string().trim().min(2).max(100).optional(),
   totalCostUsd: batchDecimal({ label: "El costo total USD" }).optional(),
@@ -645,6 +658,19 @@ export const ImportBatchUpdateSchema = z.object({
 });
 
 export type ImportBatchUpdateInput = z.infer<typeof ImportBatchUpdateSchema>;
+
+export const ImportBatchItemUpdateSchema = z.object({
+  itemId: z.string().min(1, "Falta el identificador del item."),
+  quantityReceived: z.coerce
+    .number({ message: "La cantidad recibida es obligatoria." })
+    .int("Debe ser un número entero.")
+    .min(0, "No puede ser negativo.")
+    .max(100000, "Máximo 100000."),
+  unitCostUsd: batchDecimal4({ label: "El costo unitario USD" }),
+  weight: batchDecimal4({ label: "El peso", allowZero: true }),
+});
+
+export type ImportBatchItemUpdateInput = z.infer<typeof ImportBatchItemUpdateSchema>;
 
 export const ImportBatchItemSchema = z
   .object({

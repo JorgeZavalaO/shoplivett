@@ -341,26 +341,34 @@ export function ProductCreateForm({ categories, cancelHref }: Props) {
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-medium text-muted-foreground">
-                      Precio *
+                      Precio (S/)
                     </label>
-                    <Input
-                      value={variant.price}
-                      onChange={(e) => updateVariant(variant.id, { price: e.target.value })}
-                      inputMode="decimal"
-                      placeholder="0.00"
-                      required
-                    />
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">S/</span>
+                      <Input
+                        value={variant.price}
+                        onChange={(e) => updateVariant(variant.id, { price: e.target.value })}
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        className="pl-8"
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Déjalo en 0 si aún no defines el precio. Podrás asignarlo después desde el lote.</p>
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-medium text-muted-foreground">
-                      Costo
+                      Costo (S/)
                     </label>
-                    <Input
-                      value={variant.cost}
-                      onChange={(e) => updateVariant(variant.id, { cost: e.target.value })}
-                      inputMode="decimal"
-                      placeholder="opcional"
-                    />
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">S/</span>
+                      <Input
+                        value={variant.cost}
+                        onChange={(e) => updateVariant(variant.id, { cost: e.target.value })}
+                        inputMode="decimal"
+                        placeholder="opcional"
+                        className="pl-8"
+                      />
+                    </div>
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-medium text-muted-foreground">

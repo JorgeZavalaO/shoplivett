@@ -1,16 +1,18 @@
 "use client";
 
 import { useActionState, useState, useCallback, useRef } from "react";
-import { Search, X } from "lucide-react";
+import { Plus, Search, X } from "lucide-react";
 
 import type { BatchActionResult } from "@/actions/import-batches";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { FieldError } from "@/components/ui/field-error";
 import { FormMessage } from "@/components/ui/form-message";
 import { CancelLink } from "@/components/ui/cancel-link";
 import { searchVariantsForBatchAction } from "@/actions/import-batches";
+import { QuickProductDialog } from "@/components/forms/quick-product-form";
 
 type VariantOption = {
   id: string;
@@ -21,22 +23,62 @@ type VariantOption = {
   product: { id: string; name: string };
 };
 
+type CategoryOption = {
+  id: string;
+  name: string;
+  isActive: boolean;
+};
+
+type FormFields = {
+  purchaseDate: string;
+  estimatedArrivalDate: string;
+  exchangeRate: string;
+  shopper: string;
+  agency: string;
+  totalCostUsd: string;
+  totalAdditionalCostsUsd: string;
+  totalAdditionalCostsPen: string;
+  notes: string;
+};
+
 const initialState: BatchActionResult = { ok: false };
+
+const todayStr = new Date().toISOString().split("T")[0];
+
+const defaultFields: FormFields = {
+  purchaseDate: todayStr,
+  estimatedArrivalDate: "",
+  exchangeRate: "",
+  shopper: "",
+  agency: "",
+  totalCostUsd: "",
+  totalAdditionalCostsUsd: "0",
+  totalAdditionalCostsPen: "0",
+  notes: "",
+};
 
 export function BatchForm({
   action,
   cancelHref,
+  categories = [],
 }: {
   action: (
     prev: BatchActionResult | undefined,
     formData: FormData,
   ) => Promise<BatchActionResult>;
   cancelHref: string;
+  categories?: CategoryOption[];
 }) {
   const [state, formAction] = useActionState<BatchActionResult, FormData>(
     action,
     initialState,
   );
+
+  const [fields, setFields] = useState<FormFields>(defaultFields);
+
+  function updateField(name: keyof FormFields, value: string) {
+    setFields((prev) => ({ ...prev, [name]: value }));
+  }
 
   const [items, setItems] = useState<
     Array<{
@@ -121,10 +163,26 @@ export function BatchForm({
               name="purchaseDate"
               type="date"
               required
-              defaultValue={new Date().toISOString().split("T")[0]}
+              value={fields.purchaseDate}
+              onChange={(e) => updateField("purchaseDate", e.target.value)}
               aria-invalid={Boolean(state.fieldErrors?.purchaseDate)}
             />
             <FieldError message={state.fieldErrors?.purchaseDate} />
+            <p className="text-[11px] text-muted-foreground">Registra la fecha en que se realizó la compra al proveedor.</p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="estimatedArrivalDate" className="text-sm font-medium">
+              Fecha estimada de llegada
+            </label>
+            <Input
+              id="estimatedArrivalDate"
+              name="estimatedArrivalDate"
+              type="date"
+              value={fields.estimatedArrivalDate}
+              onChange={(e) => updateField("estimatedArrivalDate", e.target.value)}
+            />
+            <p className="text-[11px] text-muted-foreground">Fecha estimada en que los productos llegarán al almacén.</p>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -139,9 +197,12 @@ export function BatchForm({
               min="0.0001"
               required
               placeholder="3.75"
+              value={fields.exchangeRate}
+              onChange={(e) => updateField("exchangeRate", e.target.value)}
               aria-invalid={Boolean(state.fieldErrors?.exchangeRate)}
             />
             <FieldError message={state.fieldErrors?.exchangeRate} />
+            <p className="text-[11px] text-muted-foreground">Usa el tipo de cambio del día en que se realizó la compra.</p>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -154,9 +215,12 @@ export function BatchForm({
               required
               maxLength={100}
               placeholder="Nombre del shopper"
+              value={fields.shopper}
+              onChange={(e) => updateField("shopper", e.target.value)}
               aria-invalid={Boolean(state.fieldErrors?.shopper)}
             />
             <FieldError message={state.fieldErrors?.shopper} />
+            <p className="text-[11px] text-muted-foreground">Persona que realizó la compra en el exterior.</p>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -169,9 +233,12 @@ export function BatchForm({
               required
               maxLength={100}
               placeholder="Nombre de la agencia"
+              value={fields.agency}
+              onChange={(e) => updateField("agency", e.target.value)}
               aria-invalid={Boolean(state.fieldErrors?.agency)}
             />
             <FieldError message={state.fieldErrors?.agency} />
+            <p className="text-[11px] text-muted-foreground">Nombre del courier o agencia de importación.</p>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -186,9 +253,12 @@ export function BatchForm({
               min="0.01"
               required
               placeholder="1500.00"
+              value={fields.totalCostUsd}
+              onChange={(e) => updateField("totalCostUsd", e.target.value)}
               aria-invalid={Boolean(state.fieldErrors?.totalCostUsd)}
             />
             <FieldError message={state.fieldErrors?.totalCostUsd} />
+            <p className="text-[11px] text-muted-foreground">Debe coincidir con la suma del costo de todos los productos del lote.</p>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -201,8 +271,10 @@ export function BatchForm({
               type="number"
               step="0.01"
               min="0"
-              defaultValue="0"
+              value={fields.totalAdditionalCostsUsd}
+              onChange={(e) => updateField("totalAdditionalCostsUsd", e.target.value)}
             />
+            <p className="text-[11px] text-muted-foreground">Gastos en dólares no asignados a un producto (flete, seguro, etc.).</p>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -215,8 +287,10 @@ export function BatchForm({
               type="number"
               step="0.01"
               min="0"
-              defaultValue="0"
+              value={fields.totalAdditionalCostsPen}
+              onChange={(e) => updateField("totalAdditionalCostsPen", e.target.value)}
             />
+            <p className="text-[11px] text-muted-foreground">Gastos en soles no asignados a un producto específico.</p>
           </div>
 
           <div className="flex flex-col gap-1.5 md:col-span-2">
@@ -230,7 +304,10 @@ export function BatchForm({
               maxLength={1000}
               className="min-h-20 rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               placeholder="Notas del lote..."
+              value={fields.notes}
+              onChange={(e) => updateField("notes", e.target.value)}
             />
+            <p className="text-[11px] text-muted-foreground">Cualquier detalle relevante sobre el lote (proveedor, condiciones, etc.).</p>
           </div>
         </CardContent>
       </Card>
@@ -240,8 +317,8 @@ export function BatchForm({
           <CardTitle className="text-base">Productos del lote</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <div className="relative">
-            <div className="relative">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={searchQuery}
@@ -256,36 +333,49 @@ export function BatchForm({
                 className="pl-9"
               />
             </div>
-            {searchResults.length > 0 && (
-              <ul className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-card shadow-lg">
-                {searchResults.map((variant) => (
-                  <li
-                    key={variant.id}
-                    className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm hover:bg-accent"
-                    onClick={() => addItem(variant)}
-                  >
-                    <div>
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {variant.code}
-                      </span>
-                      <span className="ml-2">{variant.product.name}</span>
-                      {variant.color && (
-                        <span className="ml-1 text-muted-foreground">
-                          ({variant.color})
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      Stock: {variant.stock} · S/ {Number(variant.price).toFixed(2)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {searching && (
-              <p className="mt-1 text-xs text-muted-foreground">Buscando…</p>
-            )}
+            <QuickProductDialog
+              categories={categories}
+              onSuccess={(variant) => {
+                addItem({
+                  id: variant.id,
+                  code: variant.code,
+                  product: { id: variant.productId, name: variant.productName },
+                  color: null,
+                  price: "0",
+                  stock: 0,
+                });
+              }}
+            />
           </div>
+          {searchResults.length > 0 && (
+            <ul className="z-10 w-full rounded-lg border border-border bg-card shadow-lg">
+              {searchResults.map((variant) => (
+                <li
+                  key={variant.id}
+                  className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm hover:bg-accent"
+                  onClick={() => addItem(variant)}
+                >
+                  <div>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {variant.code}
+                    </span>
+                    <span className="ml-2">{variant.product.name}</span>
+                    {variant.color && (
+                      <span className="ml-1 text-muted-foreground">
+                        ({variant.color})
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    Stock: {variant.stock} · S/ {Number(variant.price).toFixed(2)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {searching && (
+            <p className="text-xs text-muted-foreground">Buscando…</p>
+          )}
 
           {items.length > 0 ? (
             <div className="overflow-x-auto">
