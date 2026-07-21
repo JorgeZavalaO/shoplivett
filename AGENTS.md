@@ -60,10 +60,23 @@ pnpm test:e2e          # corre smoke + 8 flujos obligatorios
 
 - `lib/permissions.ts` define roles (`ADMIN`, `SELLER`, `DISPATCH`) y
   helpers de guard (`requireUser`, `requireRole`, `requirePaymentValidator`).
+- **Para API routes (route handlers)** usar `requireApiRole(roles)` de
+  `lib/permissions.ts`. A diferencia de `requireRole`, este helper **no**
+  redirige: devuelve `NextResponse` con 401/403. Úsalo así:
+  ```ts
+  const denied = await requireApiRole("ADMIN");
+  if (denied) return denied;
+  ```
 - `lib/authorization.ts` define una capa por permiso (`Permission`).
   Convive con la capa por rol. Para código nuevo, preferir
   `assertPermission("payments.validate")` sobre `requireRole([...])` cuando
   aplique a una sola acción.
+- **Para server actions repetitivas** usar el wrapper `withAdminGuard(fn)`
+  de `actions/financial-reports.ts` (o crea uno similar):
+  ```ts
+  export const miAction = withAdminGuard(miFuncion);
+  ```
+  Esto elimina la repetición de `await requireRole("ADMIN")` en cada acción.
 
 ## Cache y consistencia
 
@@ -72,6 +85,11 @@ pnpm test:e2e          # corre smoke + 8 flujos obligatorios
 - Invalidación: `invalidateSettingsCache()` desde la server action. Internamente
   usa `updateTag` (read-your-own-writes dentro de acciones) y cae a
   `revalidateTag(..., "max")` si no estamos en acción.
+- **Tags de cache centralizados**: `lib/cache-tags.ts` define constantes
+  (`DASHBOARD_METRICS_TAG`, `REPORT_SUMMARY_TAG`, `SALE_CATALOG_TAG`,
+  `CATEGORIES_LIST_TAG`, etc.) y el array `DASHBOARD_ALL_TAGS`. Usar estos
+  tags en `revalidateTag` desde las mutaciones y en `unstable_cache` desde
+  las lecturas. No inventar tags ad-hoc.
 - No cachear datos financieros sensibles (saldos, métricas de negocio).
 - `revalidatePath` se sigue usando para refrescar páginas concretas.
 
@@ -109,7 +127,25 @@ pnpm test:e2e          # corre smoke + 8 flujos obligatorios
 - Índices compuestos: en `schema.prisma` ya hay varios
   (`(status, createdAt)`, `(customerId, status, expiresAt)`, etc.). No
   añadir índices nuevos sin antes correr `EXPLAIN ANALYZE` y validar el
-  costo de escritura.
+  costo de escritura. Para búsquedas `ILIKE %...%`, usar índices GIN con
+  `pg_trgm` (ver `prisma/migrations/20260719020000_add_trigram_indexes/`).
+- **Top-K en SQL**: cuando se necesita un Top-N de un conjunto grande, usar
+  `groupBy` + `orderBy` + `take` en Prisma en lugar de cargar todo en memoria
+  y truncar en JS. Ejemplo:
+  ```ts
+  const grouped = await prisma.orderItem.groupBy({
+    by: ["variantId"],
+    where: { ... },
+    _sum: { grossProfitPen: true },
+    orderBy: { _sum: { grossProfitPen: "desc" } },
+    take: 50,
+  });
+  ```
+- **N+1 en transacciones**: cuando un bucle `for (await ...)` hace queries
+  independientes por iteración, paralelizar con `Promise.all`. Para
+  movimientos de inventario dentro de una transacción, usar
+  `confirmSaleStockForOrder(tx, orderId, reason)` de `lib/inventory.ts`
+  que hace 1 findMany + 1 updateMany batch + 1 createMany.
 - Transacciones para operaciones que afectan múltiples tablas: usar
   `prisma.$transaction(async (tx) => { ... })` con `Serializable` cuando
   haya riesgo de carrera (stock, pagos, lives).
@@ -118,6 +154,34 @@ pnpm test:e2e          # corre smoke + 8 flujos obligatorios
   `closeUnpaidReservation(...)` de `lib/order-expiry.ts`. Esto garantiza que
   liberar stock, rechazar pagos pendientes y cambiar el estado del pedido
   se ejecuten de forma atómica y auditable.
+
+## Streaming CSV
+
+- `lib/csv-export.ts` ofrece `buildCsv(rows, columns)` para CSVs en memoria
+  y `buildCsvStream(rows, columns)` que devuelve un `ReadableStream<Uint8Array>`
+  para respuestas grandes sin materializar todo el string.
+- `csvStreamResponse(section, stream)` crea un `NextResponse` con headers
+  adecuados para streaming.
+- En los route handlers de `/api/reportes`, usar streaming para conjuntos
+  grandes (>500 filas).
+
+## Rate limit
+
+- `lib/rate-limit.ts` proporciona `assertApiRateLimit(scope, key, opts)` para
+  proteger endpoints API. Úsalo así:
+  ```ts
+  const rateLimited = await assertApiRateLimit({
+    scope: "csv-export",
+    key: apiRateKeyFromRequest(req),
+    opts: { windowMs: 60_000, maxHits: 10 },
+  });
+  if (rateLimited) return rateLimited;
+  ```
+- La tabla `ApiRateLimit` en Prisma almacena contadores por `(scope, key)`.
+- Para login existe `assertLoginAllowed` + `recordLoginFailure` en el mismo
+  módulo, usando la tabla `LoginRateLimit`.
+- `apiRateKeyFromRequest(request, actorId?)` genera una key a partir del
+  usuario autenticado o la IP del cliente.
 
 ## Despliegue y entorno
 
@@ -178,6 +242,12 @@ pnpm test:e2e          # corre smoke + 8 flujos obligatorios
   `EmptyState`), refuerzo de `useTransition`/`useActionState` con
   manejo explícito de `pending` y errores, scripts de verificación
   (`typecheck`, `verify`, `test:e2e`) y guía de deploy a Vercel.
-- **Fase 3**: cache distribuible de settings, sistema de auditoría con
-  `after()`, índices compuestos, `not-found` pages, capa de permisos
-  paralela.
+- **Fase 5 — Performance Sprint (v0.55.0)**: N+1 en transacciones
+  (`confirmSaleStockForOrder`), Top-K en SQL, selects específicos en 25+
+  queries, `requireApiRole` para API routes, `withAdminGuard` para server
+  actions, `assertApiRateLimit` con tabla `ApiRateLimit`, streaming CSV
+  (`buildCsvStream`), 13 nuevos índices compuestos, migración pg_trgm,
+  debounce en forms, `precomputedLink` en WhatsAppActions, tags de cache
+  centralizados (`lib/cache-tags.ts`), wire format simplificado
+  (`Prisma.Decimal` → `string` en el dominio), `Intl.DateTimeFormat` hoist
+  en 9 tablas.

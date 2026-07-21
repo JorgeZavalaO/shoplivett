@@ -812,4 +812,4 @@ Capa de cierre del proyecto. Entregables:
 
 ## Versión
 
-Versión actual: **0.55.0**. Rastreada en `package.json` y [CHANGELOG](./CHANGELOG.md).
+Versión actual: **0.56.0**. Rastreada en `package.json` y [CHANGELOG](./CHANGELOG.md).

@@ -7,6 +7,27 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.56.0] — Bloques 14-15: verificación final y documentación AGENTS.md
+
+### Documentación
+- `AGENTS.md`: actualizado con nuevas convenciones del Performance Sprint:
+  - `requireApiRole` para route handlers.
+  - `withAdminGuard(fn)` para server actions repetitivas.
+  - Tags de cache centralizados (`lib/cache-tags.ts`).
+  - `confirmSaleStockForOrder` para batch de inventario.
+  - Top-K en SQL con `groupBy` + `orderBy` + `take`.
+  - Streaming CSV (`buildCsvStream` + `csvStreamResponse`).
+  - Rate limit (`assertApiRateLimit` + `apiRateKeyFromRequest`).
+  - Índices GIN/trigram para búsquedas ILIKE.
+  - Lista completa de fases actualizada (Fase 5 Performance Sprint).
+  - Eliminada duplicación de "Fase 3" en cambios recientes.
+
+### Verificación
+- `pnpm verify` (typecheck + lint + build) → **0 errores**, 32 rutas.
+- Tests de dominio: **47/47 tests pasan** (perf 5/5, reports 12/12, batch 14/14, incidents 16/16).
+- Playwright E2E no ejecutado por limitaciones del entorno (falta `.env.e2e` con BD aislada + módulo `next` en ESM).
+- `scripts/measure-index-impact.ts` listo para medición con `EXPLAIN ANALYZE` en staging.
+
 ## [0.55.0] — Bloques 11-13: precomputedLink, collapsable metadata, withAdminGuard, logging, limpieza
 
 ### WhatsApp (Bloque 11)
