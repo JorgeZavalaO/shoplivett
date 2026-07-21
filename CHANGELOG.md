@@ -15,11 +15,14 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Recepción automática al cambiar a COMPLETE
 - Al cambiar el estado a `COMPLETE`, el sistema auto-recibe todos los productos pendientes: `quantityReceived` se actualiza a `quantityPurchased` y `quantityAvailable` se incrementa por la diferencia.
+- Se registra un movimiento de inventario tipo `IN` en `InventoryMovement` con razón "Recepción automática", visible en el historial del producto.
 - Se sincroniza `ProductVariant.stock` vía `applyBatchStockDelta` dentro de la misma transacción.
 - La `estimatedArrivalDate` se actualiza automáticamente a la fecha actual al marcar como `COMPLETE`.
 
-### Corrección de bug
+### Correcciones de bug
 - `readForm()` en `actions/import-batches.ts` no extraía el campo `status` del FormData, por lo que el cambio de estado desde el formulario de edición nunca se persistía.
+- `createBatchAction` y `addBatchItemAction` ahora evitan crear movimientos de inventario con `quantity: 0` (agregan guarda `> 0` antes de `inventoryMovement.create`).
+- `confirmSaleStockForOrder` ahora filtra cantidades `<= 0` antes de `inventoryMovement.createMany`, evitando movimientos `SALE` con valor 0.
 
 ## [0.56.0] — Bloques 14-15: verificación final y documentación AGENTS.md
 

@@ -329,14 +329,17 @@ export async function confirmSaleStockForOrder(
       }),
     ),
   );
-  await tx.inventoryMovement.createMany({
-    data: Array.from(byVariant.entries()).map(([variantId, quantity]) => ({
+  const movementData = Array.from(byVariant.entries())
+    .filter(([, quantity]) => quantity > 0)
+    .map(([variantId, quantity]) => ({
       variantId,
       type: "SALE" as const,
       quantity,
       reason,
-    })),
-  });
+    }));
+  if (movementData.length > 0) {
+    await tx.inventoryMovement.createMany({ data: movementData });
+  }
 }
 
 /** Cancela stock sin reserva previa (caso de error antes de reservar). */

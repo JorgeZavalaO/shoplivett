@@ -334,14 +334,16 @@ export async function createBatchAction(
             },
           });
 
-          await tx.inventoryMovement.create({
-            data: {
-              variantId: item.variantId,
-              type: "IN",
-              quantity: item.quantityReceived,
-              reason: `Lote ${code} - Recepción`,
-            },
-          });
+          if (item.quantityReceived > 0) {
+            await tx.inventoryMovement.create({
+              data: {
+                variantId: item.variantId,
+                type: "IN",
+                quantity: item.quantityReceived,
+                reason: `Lote ${code} - Recepción`,
+              },
+            });
+          }
 
           await applyBatchStockDelta(tx, {
             variantId: item.variantId,
@@ -674,6 +676,15 @@ export async function updateBatchStatusAction(
               },
             });
 
+            await tx.inventoryMovement.create({
+              data: {
+                variantId: item.variantId,
+                type: "IN",
+                quantity: delta,
+                reason: `Lote ${existing.code} - Recepción automática`,
+              },
+            });
+
             await applyBatchStockDelta(tx, {
               variantId: item.variantId,
               delta,
@@ -786,14 +797,16 @@ export async function addBatchItemAction(
           },
         });
 
-        await tx.inventoryMovement.create({
-          data: {
-            variantId: parsed.data.variantId,
-            type: "IN",
-            quantity: parsed.data.quantityReceived,
-            reason: `Lote ${batch.code} - Item agregado`,
-          },
-        });
+        if (parsed.data.quantityReceived > 0) {
+          await tx.inventoryMovement.create({
+            data: {
+              variantId: parsed.data.variantId,
+              type: "IN",
+              quantity: parsed.data.quantityReceived,
+              reason: `Lote ${batch.code} - Item agregado`,
+            },
+          });
+        }
 
         await applyBatchStockDelta(tx, {
           variantId: parsed.data.variantId,
