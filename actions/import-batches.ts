@@ -59,6 +59,7 @@ function fieldErrorsFromZod(
 }
 
 function readForm(formData: FormData) {
+  const rawStatus = String(formData.get("status") ?? "").trim();
   return {
     purchaseDate: String(formData.get("purchaseDate") ?? "").trim(),
     estimatedArrivalDate: String(formData.get("estimatedArrivalDate") ?? "").trim(),
@@ -69,6 +70,7 @@ function readForm(formData: FormData) {
     totalAdditionalCostsPen: String(formData.get("totalAdditionalCostsPen") ?? "0").trim(),
     exchangeRate: String(formData.get("exchangeRate") ?? "").trim(),
     notes: String(formData.get("notes") ?? "").trim(),
+    status: rawStatus || undefined,
   };
 }
 
@@ -607,6 +609,111 @@ export async function updateBatchAction(
   }
 
   redirect(`/lotes/${batchId}`);
+}
+
+export async function updateBatchStatusAction(
+  batchId: string,
+  status: ImportBatchStatus,
+): Promise<BatchActionResult> {
+  await requireRole(["ADMIN", "SELLER"]);
+  if (!batchId) return { ok: false, message: "Falta el identificador del lote." };
+
+  const validStatuses: ImportBatchStatus[] = ["PURCHASED", "IN_TRANSIT", "COMPLETE", "CLOSED"];
+  if (!validStatuses.includes(status)) {
+    return { ok: false, message: "Estado no válido." };
+  }
+
+  const user = await getCurrentUser();
+  const prisma = getPrisma();
+
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        const existing = await tx.importBatch.findUnique({
+          where: { id: batchId },
+          select: { id: true, code: true, status: true },
+        });
+        if (!existing) throw new BatchNotFoundError("El lote ya no existe.");
+        if (existing.status === status) {
+          throw new Error("El lote ya tiene ese estado.");
+        }
+
+        await tx.importBatch.update({
+          where: { id: batchId },
+          data: {
+            status,
+            ...(status === "COMPLETE" ? { estimatedArrivalDate: new Date() } : {}),
+          },
+        });
+
+        if (status === "COMPLETE") {
+          const pendingItems = await tx.importBatchItem.findMany({
+            where: { batchId },
+            select: {
+              id: true,
+              variantId: true,
+              quantityPurchased: true,
+              quantityReceived: true,
+              quantityAvailable: true,
+            },
+          });
+
+          const itemsToReceive = pendingItems.filter(
+            (item) => item.quantityReceived < item.quantityPurchased,
+          );
+
+          for (const item of itemsToReceive) {
+            const delta = item.quantityPurchased - item.quantityReceived;
+            if (delta <= 0) continue;
+
+            await tx.importBatchItem.update({
+              where: { id: item.id },
+              data: {
+                quantityReceived: item.quantityPurchased,
+                quantityAvailable: item.quantityAvailable + delta,
+              },
+            });
+
+            await applyBatchStockDelta(tx, {
+              variantId: item.variantId,
+              delta,
+              label: `Auto-recepción lote ${existing.code}`,
+            });
+          }
+        }
+
+        await auditInTx(tx, user?.id ?? null, {
+          action: "IMPORT_BATCH_STATUS_CHANGED",
+          entity: "ImportBatch",
+          entityId: batchId,
+          metadata: {
+            previousStatus: existing.status,
+            nextStatus: status,
+            code: existing.code,
+          },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 15000 },
+    );
+  } catch (error) {
+    if (error instanceof BatchNotFoundError) {
+      return { ok: false, message: error.message };
+    }
+    if (error instanceof Error && error.message === "El lote ya tiene ese estado.") {
+      return { ok: false, message: error.message };
+    }
+    if (isSerializationConflict(error)) {
+      return { ok: false, message: "Conflicto al actualizar el lote. Intenta nuevamente." };
+    }
+    throw error;
+  }
+
+  revalidatePath("/lotes");
+  revalidatePath("/inventario");
+  revalidatePath("/dashboard");
+  revalidatePath(`/lotes/${batchId}`);
+
+  return { ok: true, message: "Estado actualizado correctamente." };
 }
 
 export async function addBatchItemAction(

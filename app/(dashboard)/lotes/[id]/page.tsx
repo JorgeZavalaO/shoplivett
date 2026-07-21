@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { ArrowLeft, PackageIcon, Calculator, DollarSign, Receipt, Scale, TrendingUp, Clock, User, Hash, BadgeInfo, Calendar, Ship } from "lucide-react";
+import type { ImportBatchStatus } from "@prisma/client";
 
 import { requireRole } from "@/lib/permissions";
 import { getBatchDetailAction } from "@/actions/import-batches";
@@ -13,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RecalculateBatchButton } from "@/components/forms/recalculate-batch-button";
+import { BatchStatusActions } from "@/components/forms/batch-status-actions";
 import { BatchDetailActions } from "@/components/forms/batch-detail-actions";
 import { RemoveBatchItemButton } from "@/components/forms/remove-batch-item-button";
 import { EditBatchItemButton } from "@/components/forms/edit-batch-item-button";
@@ -163,6 +165,10 @@ export default async function LoteDetailPage({
               {items.length > 0 && (
                 <RecalculateBatchButton batchId={batch.id} />
               )}
+              <BatchStatusActions
+                batchId={batch.id}
+                currentStatus={batch.status as ImportBatchStatus}
+              />
               <BatchDetailActions
                 batchId={batch.id}
                 isClosed={batch.status === "CLOSED"}

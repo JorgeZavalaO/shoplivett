@@ -7,6 +7,20 @@ y este proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.57.0] — Cambio rápido de estado de lotes y recepción automática
+
+### Lotes — cambio de estado rápido
+- Nuevo componente `BatchStatusActions` en la página de detalle de lote: dropdown con los estados disponibles (excluye el actual). Al seleccionar uno, se abre un `ConfirmOverlay` propio (sin dependencia de `@base-ui/alert-dialog`) y se ejecuta `updateBatchStatusAction`.
+- Nueva server action `updateBatchStatusAction`: cambia solo el estado del lote de forma transaccional con auditoría y revalidación de rutas. Reutiliza `assertBatchNotClosed` para consistencia.
+
+### Recepción automática al cambiar a COMPLETE
+- Al cambiar el estado a `COMPLETE`, el sistema auto-recibe todos los productos pendientes: `quantityReceived` se actualiza a `quantityPurchased` y `quantityAvailable` se incrementa por la diferencia.
+- Se sincroniza `ProductVariant.stock` vía `applyBatchStockDelta` dentro de la misma transacción.
+- La `estimatedArrivalDate` se actualiza automáticamente a la fecha actual al marcar como `COMPLETE`.
+
+### Corrección de bug
+- `readForm()` en `actions/import-batches.ts` no extraía el campo `status` del FormData, por lo que el cambio de estado desde el formulario de edición nunca se persistía.
+
 ## [0.56.0] — Bloques 14-15: verificación final y documentación AGENTS.md
 
 ### Documentación
